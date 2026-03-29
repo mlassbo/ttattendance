@@ -7,10 +7,13 @@ function toHex(buf: ArrayBuffer): string {
     .join('')
 }
 
-function fromHex(hex: string): Uint8Array {
+function fromHex(hex: string): Uint8Array<ArrayBuffer> {
   const pairs = hex.match(/.{2}/g)
-  if (!pairs) return new Uint8Array(0)
-  return new Uint8Array(pairs.map(h => parseInt(h, 16)))
+  if (!pairs) return new Uint8Array(new ArrayBuffer(0))
+  const buf = new ArrayBuffer(pairs.length)
+  const view = new Uint8Array(buf)
+  pairs.forEach((h, i) => { view[i] = parseInt(h, 16) })
+  return view
 }
 
 async function importKey(secret: string): Promise<CryptoKey> {
