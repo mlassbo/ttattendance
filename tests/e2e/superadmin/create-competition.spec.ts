@@ -1,0 +1,39 @@
+import { test, expect } from '@playwright/test'
+import { config } from 'dotenv'
+import { createClient } from '@supabase/supabase-js'
+
+config({ path: '.env.test.local' })
+
+test.beforeEach(async () => {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  await supabase.from('competitions').delete().not('id', 'is', null)
+})
+
+test('super admin can create a competition and see it in the list', async ({ page }) => {
+  // Log in
+  await page.goto('/super')
+  await page.getByTestId('pin-input').fill('0000')
+  await page.getByTestId('login-button').click()
+  await page.waitForURL('/super/competitions')
+
+  // Open the create form
+  await page.getByTestId('new-competition-button').click()
+
+  // Fill in the form
+  await page.getByTestId('field-name').fill('Test SM 2025')
+  await page.getByTestId('field-slug').fill('test-sm-2025')
+  await page.getByTestId('field-start-date').fill('2025-06-14')
+  await page.getByTestId('field-end-date').fill('2025-06-15')
+  await page.getByTestId('field-player-pin').fill('1234')
+  await page.getByTestId('field-admin-pin').fill('5678')
+
+  // Submit
+  await page.getByTestId('submit-competition').click()
+
+  // Form should close and the new competition should appear in the list
+  await expect(page.getByTestId('competition-list')).toContainText('Test SM 2025')
+  await expect(page.getByTestId('competition-list')).toContainText('test-sm-2025')
+})

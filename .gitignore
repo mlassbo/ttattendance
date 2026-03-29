@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+
+# environment files — keep only the example
+.env*.local
+!.env.local.example
+
+# supabase local state
+supabase/.branches/
+supabase/.temp/
+
+# playwright output
+playwright-report/
+test-results/
