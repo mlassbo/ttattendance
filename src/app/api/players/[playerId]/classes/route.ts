@@ -64,7 +64,7 @@ export async function GET(
   type RegRow = { id: string; classes: ClassRow | null; attendance: AttRow | null }
 
   // Sort by session_order, then class start_time.
-  const sorted = ((registrations ?? []) as RegRow[]).sort((a, b) => {
+  const sorted = ((registrations ?? []) as unknown as RegRow[]).sort((a, b) => {
     const aOrder = a.classes?.sessions?.session_order ?? 0
     const bOrder = b.classes?.sessions?.session_order ?? 0
     if (aOrder !== bOrder) return aOrder - bOrder
