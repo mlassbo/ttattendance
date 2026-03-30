@@ -119,6 +119,49 @@ The Playwright webServer config starts Next.js automatically if it is not alread
 
 ---
 
+## When building new features
+
+Every new user-facing feature must include Playwright E2E tests before the work is considered done. This is non-negotiable — tests are not optional follow-up work.
+
+### Test file location
+| Feature area | Test directory |
+|---|---|
+| Super admin | `tests/e2e/superadmin/` |
+| Admin / secretariat | `tests/e2e/admin/` |
+| Player | `tests/e2e/player/` |
+
+### What to cover
+At minimum, test:
+1. **Auth gate** — unauthenticated access is blocked (redirect or 401)
+2. **Happy path** — the primary user action works end-to-end
+3. **Error/edge cases** — wrong PIN, deadline enforcement, empty states
+
+### Seed helpers
+Add any new seed function to `tests/helpers/db.ts`. Follow the existing patterns:
+- Accept a `slug` and any relevant PINs as parameters
+- Use bcrypt cost 4 (`bcrypt.hash(pin, 4)`) for speed
+- Return IDs needed for test assertions (registration IDs, class IDs, etc.)
+- Slugs must start with `test-` so global setup can clean them up
+
+### Scoped cleanup (important for parallel projects)
+Test projects run in parallel. Each `beforeEach` must only clean its own slugs — never all `test-*` slugs — otherwise projects stomp on each other's data.
+
+| Project | Slug prefix | beforeEach pattern |
+|---|---|---|
+| superadmin | `test-sm-*` | `cleanTestCompetitions(supabase, 'test-sm-%')` |
+| player | `test-player-*` | `cleanTestCompetitions(supabase, 'test-player-%')` |
+| admin | `test-admin-*` | `cleanTestCompetitions(supabase, 'test-admin-%')` |
+
+The global setup (`tests/global-setup.ts`) uses the default `'test-%'` pattern to clean everything once before the full run.
+
+### Selectors
+Always use `data-testid` attributes — never select by Swedish text, which is fragile. Add `data-testid` to any new interactive or verifiable element.
+
+### After writing tests
+Run `npm run test:e2e` and fix any failures before finishing the task. If Supabase is not running, start it first with `npx supabase start`.
+
+---
+
 ## Project conventions
 
 - **data-testid attributes** are used for all Playwright selectors — never select by Swedish text strings, which are fragile.

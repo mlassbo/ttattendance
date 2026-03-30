@@ -22,6 +22,17 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // ── Admin API routes ──────────────────────────────────────────────────────
+  // /api/admin/* require a valid competition cookie with role=admin.
+  if (pathname.startsWith('/api/admin/')) {
+    const signed = req.cookies.get('role')?.value
+    const auth = signed && secret ? await verifyCompetitionCookie(signed, secret) : null
+    if (!auth || auth.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    return NextResponse.next()
+  }
+
   // ── Competition-scoped API routes ─────────────────────────────────────────
   // /api/players/* and /api/attendance require a valid competition cookie.
   // The competition is fully identified by the cookie — no slug in these URLs.
@@ -41,6 +52,7 @@ export const config = {
   matcher: [
     '/super/:path*',
     '/api/super/:path*',
+    '/api/admin/:path*',
     '/api/players/:path*',
     // Both entries needed: `:path*` matches one-or-more in some Next.js versions
     // and would skip the bare `/api/attendance` path without the explicit entry.

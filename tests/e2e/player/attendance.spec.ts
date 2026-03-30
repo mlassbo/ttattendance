@@ -10,7 +10,7 @@ const PLAYER_PIN = '9999'
 test.describe('Player attendance flow', () => {
   test.beforeEach(async () => {
     const supabase = testClient()
-    await cleanTestCompetitions(supabase)
+    await cleanTestCompetitions(supabase, 'test-player-%')
     await seedPlayerTestCompetition(supabase, SLUG, PLAYER_PIN)
   })
 

@@ -5,7 +5,7 @@ import { testClient, cleanTestCompetitions } from '../../helpers/db'
 config({ path: '.env.test.local' })
 
 test.beforeEach(async () => {
-  await cleanTestCompetitions(testClient())
+  await cleanTestCompetitions(testClient(), 'test-sm-%')
 })
 
 test('super admin can create a competition and see it in the list', async ({ page }) => {

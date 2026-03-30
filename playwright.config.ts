@@ -21,6 +21,11 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       testMatch: '**/player/**',
     },
+    {
+      name: 'admin',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: '**/admin/**',
+    },
   ],
   webServer: {
     command: 'npm run dev',
