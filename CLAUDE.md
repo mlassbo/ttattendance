@@ -162,6 +162,37 @@ Run `npm run test:e2e` and fix any failures before finishing the task. If Supaba
 
 ---
 
+## Agent tooling secrets
+
+Secrets used by Claude for operational tasks (deployment checks, external API calls) live in `.env.agent.local`. This file is gitignored (matches `.env*.local`) and is separate from `.env.local`, which holds Next.js app variables.
+
+Create it by copying the example:
+```bash
+cp .env.agent.local.example .env.agent.local
+```
+
+Then fill in the values. The file is never loaded by Next.js — Claude reads it directly when needed.
+
+### Reading secrets from .env.agent.local
+
+To use a value from the file in a Bash command:
+```bash
+VERCEL_TOKEN=$(grep '^VERCEL_TOKEN=' .env.agent.local 2>/dev/null | cut -d '=' -f2-)
+```
+
+If the file is missing or the value is empty, tell the developer to create `.env.agent.local` from `.env.agent.local.example` and fill in the required token.
+
+### Checking Vercel deployment status
+
+```bash
+VERCEL_TOKEN=$(grep '^VERCEL_TOKEN=' .env.agent.local 2>/dev/null | cut -d '=' -f2-)
+curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+  "https://api.vercel.com/v6/deployments?limit=5" \
+  | jq '.deployments[] | {uid, url, state, created}'
+```
+
+---
+
 ## Project conventions
 
 - **data-testid attributes** are used for all Playwright selectors — never select by Swedish text strings, which are fragile.

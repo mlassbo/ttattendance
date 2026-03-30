@@ -125,6 +125,16 @@ ADMIN_PIN=0000
 SUPERADMIN_PIN=9999
 ```
 
+#### Agent tooling secrets (`.env.agent.local`)
+
+If you use Claude Code, create a separate file for agent tooling secrets (Vercel tokens, etc.). This file is gitignored and is **not** loaded by Next.js — Claude reads it directly.
+
+```bash
+cp .env.agent.local.example .env.agent.local
+```
+
+Then fill in the values. See `.env.agent.local.example` for the list of supported variables.
+
 ### 5. Seed the database with test data
 
 ```bash
