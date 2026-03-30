@@ -1,15 +1,11 @@
 import { test, expect } from '@playwright/test'
 import { config } from 'dotenv'
-import { createClient } from '@supabase/supabase-js'
+import { testClient, cleanTestCompetitions } from '../../helpers/db'
 
 config({ path: '.env.test.local' })
 
 test.beforeEach(async () => {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-  await supabase.from('competitions').delete().not('id', 'is', null)
+  await cleanTestCompetitions(testClient())
 })
 
 test('super admin can create a competition and see it in the list', async ({ page }) => {

@@ -128,9 +128,72 @@ The Playwright webServer config starts Next.js automatically if it is not alread
 - **All UI text is in Swedish.**
 - **Migrations** live in `supabase/migrations/` as plain SQL files. Create new ones with a timestamp prefix, e.g. `20240201000000_add_sessions.sql`.
 
+### Reliability Strategy (Critical)
+This system must work during live events.
+
+Address:
+- Handling many simultaneous users (e.g. morning rush)
+- Network instability (retry, idempotency, offline tolerance if applicable)
+- Preventing duplicate submissions
+- Preventing data loss
+- Simple fallback plan if system fails
+
+Favor simple, proven approaches over complex distributed systems.
+
+### Architecture Constraints
+
+- Prioritize simplicity and robustness over flexibility
+- Avoid overengineering
+- Prefer a monolith over microservices unless clearly justified
+- Assume a single developer will build and maintain this
+- This is a real system used under time pressure — reliability > elegance
+
+### Security
+It is ok that one player can see and accidentally report attendance for another players registrations. It is a trade-off with the simple pin-based login system so that we do not have to distribute personal authorization details to all players.
+
 ---
 
 ## Known issues
 
 - **Analytics container fails on Windows**: Docker Desktop does not expose its daemon on TCP port 2375. Fixed by setting `enabled = false` under `[analytics]` in `supabase/config.toml`. This is already done in this repo.
 - **Supabase CLI v2 key names**: The output from `npx supabase start` uses `Publishable` and `Secret` instead of the v1 names `anon key` and `service_role key`. The README mapping table reflects this.
+
+---
+
+## Project background
+### Goals
+- Replace a manual, paper-based attendance system
+- Reduce queues and manual work
+- Improve communication between check-in staff and competition secretariat
+- Work reliably under real-world conditions (many users, unstable WiFi, shared devices)
+
+---
+
+### Domain Description
+
+A competition:
+- Runs over 2 days (Saturday–Sunday)
+- Divided into sessions (2–3 per day)
+- Each session contains multiple classes
+
+A class:
+- Has a start time
+- Has an attendance deadline (typically 45–60 minutes before start)
+
+A player:
+- Can be registered in multiple classes
+- Must report attendance per class
+- Can:
+  - Confirm attendance
+  - Report absence
+  - (Future) register interest in a class they are not registered for (reserve handling — design placeholder only)
+
+---
+
+### Current Problems (Important Context)
+
+- Long queues in the morning
+- Hard to find players across paper lists
+- No structured reserve handling
+- Poor communication between check-in and secretariat
+- Requires continuous staffing
