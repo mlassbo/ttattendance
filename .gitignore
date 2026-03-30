@@ -13,3 +13,9 @@ supabase/.temp/
 # playwright output
 playwright-report/
 test-results/
+
+# typescript incremental build cache
+tsconfig.tsbuildinfo
+
+# claude code local config and memory
+.claude/
