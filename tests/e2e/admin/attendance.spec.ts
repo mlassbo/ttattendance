@@ -52,7 +52,8 @@ test.describe('Admin attendance flow', () => {
     await page.getByTestId('admin-pin-input').fill(ADMIN_PIN)
     await page.getByTestId('admin-login-button').click()
     await page.waitForURL(`/${SLUG}/admin/dashboard`)
-    await expect(page.getByTestId('refresh-button')).toBeVisible()
+    await expect(page.getByTestId('dashboard-competition-name')).toContainText('Test Admintävling')
+    await expect(page.getByTestId('auto-refresh-status')).toContainText('Automatisk uppdatering aktiv')
   })
 
   test('already authenticated admin is redirected from PIN page to dashboard', async ({
@@ -62,7 +63,7 @@ test.describe('Admin attendance flow', () => {
     // Navigate back to the PIN page — should skip it
     await page.goto(`/${SLUG}/admin`)
     await page.waitForURL(`/${SLUG}/admin/dashboard`)
-    await expect(page.getByTestId('refresh-button')).toBeVisible()
+    await expect(page.getByTestId('auto-refresh-status')).toBeVisible()
   })
 
   test('player cookie does not grant access to admin dashboard', async ({ page }) => {
@@ -109,6 +110,22 @@ test.describe('Admin attendance flow', () => {
     await expect(noResponseEl).toContainText('3')
   })
 
+  test('dashboard clearly highlights past-deadline classes with missing players', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page, SLUG, ADMIN_PIN)
+
+    await expect(page.getByTestId('dashboard-overdue-summary')).toContainText(
+      'Deadline passerad i 1 klass.'
+    )
+    await expect(page.getByTestId('dashboard-overdue-summary')).toContainText(
+      '3 spelare saknas fortfarande och bör ropas upp i sekretariatet.'
+    )
+    await expect(page.getByTestId(`class-overdue-badge-${seed.pastClassId}`)).toContainText(
+      'Deadline passerad · 3 saknas'
+    )
+  })
+
   // ── Class detail navigation ───────────────────────────────────────────────
 
   test('clicking Visa on a class navigates to class detail', async ({ page }) => {
@@ -116,6 +133,28 @@ test.describe('Admin attendance flow', () => {
     await page.getByTestId(`class-detail-link-${seed.futureClassId}`).click()
     await page.waitForURL(`/${SLUG}/admin/classes/${seed.futureClassId}`)
     await expect(page.locator('body')).toContainText('Herrar A-klass')
+    await expect(page.getByTestId('class-competition-name')).toContainText('Test Admintävling')
+    await expect(page.getByTestId('auto-refresh-status')).toContainText('Automatisk uppdatering aktiv')
+  })
+
+  test('dashboard clearly marks classes where everyone has answered', async ({ page }) => {
+    const supabase = testClient()
+    const now = new Date().toISOString()
+    await supabase.from('attendance').insert(
+      seed.players.map(p => ({
+        registration_id: p.pastRegId,
+        status: 'confirmed',
+        reported_at: now,
+        reported_by: 'admin',
+        idempotency_key: `complete-${p.pastRegId}-confirmed`,
+      }))
+    )
+
+    await loginAsAdmin(page, SLUG, ADMIN_PIN)
+
+    await expect(page.getByTestId(`class-complete-badge-${seed.pastClassId}`)).toContainText(
+      'Alla har svarat'
+    )
   })
 
   test('back button on class detail returns to dashboard', async ({ page }) => {
@@ -123,7 +162,7 @@ test.describe('Admin attendance flow', () => {
     await page.goto(`/${SLUG}/admin/classes/${seed.futureClassId}`)
     await page.getByTestId('back-to-dashboard').click()
     await page.waitForURL(`/${SLUG}/admin/dashboard`)
-    await expect(page.getByTestId('refresh-button')).toBeVisible()
+    await expect(page.getByTestId('auto-refresh-status')).toBeVisible()
   })
 
   // ── Class detail view ─────────────────────────────────────────────────────
@@ -196,6 +235,7 @@ test.describe('Admin attendance flow', () => {
 
     const warning = page.getByTestId('past-deadline-warning')
     await expect(warning).toBeVisible()
+    await expect(warning).toContainText('Dessa spelare bör ropas upp i sekretariatet')
     await expect(warning).toContainText('Anna Testsson')
     await expect(warning).toContainText('Bertil Testsson')
     await expect(warning).toContainText('Carin Testsson')
@@ -221,6 +261,9 @@ test.describe('Admin attendance flow', () => {
     await page.goto(`/${SLUG}/admin/classes/${seed.pastClassId}`)
 
     await expect(page.getByTestId('past-deadline-warning')).not.toBeVisible()
+    await expect(page.getByTestId('attendance-complete-banner')).toContainText(
+      'Alla 3 spelare har svarat i klassen.'
+    )
   })
 
   // ── CSV export ────────────────────────────────────────────────────────────

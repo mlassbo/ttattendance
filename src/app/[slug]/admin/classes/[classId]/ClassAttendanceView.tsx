@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import AutoRefreshStatus from '../../AutoRefreshStatus'
 import { formatTime } from '../../format'
+
+const REFRESH_INTERVAL_MS = 15_000
+const REFRESH_INTERVAL_SECONDS = REFRESH_INTERVAL_MS / 1000
 
 interface PlayerAttendance {
   registrationId: string
@@ -66,23 +70,32 @@ function StatusBadge({
 export default function ClassAttendanceView({
   slug,
   classId,
+  competitionName,
 }: {
   slug: string
   classId: string
+  competitionName: string
 }) {
   const router = useRouter()
   const [data, setData] = useState<ClassData | null>(null)
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [secondsUntilNextRefresh, setSecondsUntilNextRefresh] = useState<number | null>(null)
   const [overriding, setOverriding] = useState<string | null>(null)
   const [overrideError, setOverrideError] = useState<string | null>(null)
   const overridingRef = useRef(false)
+  const refreshInFlightRef = useRef(false)
 
   const fetchData = useCallback(async () => {
     // Skip poll if an override is in flight to avoid overwriting optimistic state.
-    if (overridingRef.current) return
+    if (overridingRef.current || refreshInFlightRef.current) return
+
+    refreshInFlightRef.current = true
+    setIsRefreshing(true)
+
     try {
-      const res = await fetch(`/api/admin/classes/${classId}/attendance`)
+      const res = await fetch(`/api/admin/classes/${classId}/attendance`, { cache: 'no-store' })
       if (res.status === 401) {
         router.push(`/${slug}/admin`)
         return
@@ -90,22 +103,40 @@ export default function ClassAttendanceView({
       if (res.ok) {
         setData(await res.json())
         setUpdatedAt(new Date())
+        setSecondsUntilNextRefresh(REFRESH_INTERVAL_SECONDS)
       }
     } catch {
       // network error — keep existing data
     } finally {
       setLoading(false)
+      setIsRefreshing(false)
+      refreshInFlightRef.current = false
     }
   }, [classId, slug, router])
 
   useEffect(() => {
-    fetchData()
-    const interval = setInterval(fetchData, 30_000)
+    void fetchData()
+    const interval = setInterval(() => {
+      void fetchData()
+    }, REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [fetchData])
 
+  useEffect(() => {
+    if (isRefreshing || secondsUntilNextRefresh === null) return
+
+    const countdown = setInterval(() => {
+      setSecondsUntilNextRefresh(current => {
+        if (current === null) return null
+        return current > 0 ? current - 1 : 0
+      })
+    }, 1000)
+
+    return () => clearInterval(countdown)
+  }, [isRefreshing, secondsUntilNextRefresh])
+
   async function setAttendance(registrationId: string, status: 'confirmed' | 'absent') {
-    if (overridingRef.current) return
+    if (overridingRef.current || refreshInFlightRef.current) return
     overridingRef.current = true
     setOverriding(registrationId)
     setOverrideError(null)
@@ -134,6 +165,7 @@ export default function ClassAttendanceView({
           }
         })
         setUpdatedAt(new Date())
+        setSecondsUntilNextRefresh(REFRESH_INTERVAL_SECONDS)
       } else {
         setOverrideError('Något gick fel, försök igen')
       }
@@ -172,6 +204,9 @@ export default function ClassAttendanceView({
   const confirmed = data.players.filter(p => p.status === 'confirmed')
   const absent = data.players.filter(p => p.status === 'absent')
   const noResponse = data.players.filter(p => p.status === null)
+  const missingPlayersText = noResponse.map(player => `${player.name}${player.club ? ` (${player.club})` : ''}`)
+  const answeredCount = confirmed.length + absent.length
+  const isFullyAttended = data.players.length > 0 && noResponse.length === 0
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -187,26 +222,30 @@ export default function ClassAttendanceView({
               >
                 ← Tillbaka
               </button>
+              <p data-testid="class-competition-name" className="text-sm text-gray-500">
+                {competitionName}
+              </p>
               <h1 className="text-lg font-bold text-gray-900">{data.class.name}</h1>
               <p className="text-xs text-gray-400">
                 Start {formatTime(data.class.startTime)}
                 {' · '}
-                <span className={isPastDeadline ? 'text-red-400' : ''}>
+                <span>
                   Deadline {formatTime(data.class.attendanceDeadline)}
                   {isPastDeadline ? ' (passerad)' : ''}
                 </span>
               </p>
             </div>
             <div className="text-right shrink-0">
-              {updatedAt && (
-                <p className="text-xs text-gray-400 mb-1">
-                  Senast uppdaterad: {updatedAt.toLocaleTimeString('sv-SE')}
-                </p>
-              )}
+              <AutoRefreshStatus
+                intervalSeconds={REFRESH_INTERVAL_SECONDS}
+                isRefreshing={isRefreshing}
+                updatedAt={updatedAt}
+                secondsUntilNextRefresh={secondsUntilNextRefresh}
+              />
               <button
                 data-testid="export-csv-button"
                 onClick={downloadCsv}
-                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded font-medium transition-colors"
+                className="mt-2 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded font-medium transition-colors"
               >
                 Exportera CSV
               </button>
@@ -224,8 +263,41 @@ export default function ClassAttendanceView({
             ? Ej rapporterat: {noResponse.length}
           </span>
           <span className="text-gray-400">Totalt: {data.players.length}</span>
+          <span className="text-gray-500">Svar inkomna: {answeredCount}/{data.players.length}</span>
         </div>
       </div>
+
+      {isPastDeadline && noResponse.length > 0 && (
+        <div
+          data-testid="past-deadline-warning"
+          className="border-b border-amber-300 bg-amber-50"
+        >
+          <div className="max-w-4xl mx-auto px-4 py-3">
+            <p className="text-sm font-semibold text-amber-950">
+              Deadline har passerat. {noResponse.length} spelare saknas fortfarande.
+            </p>
+            <p className="mt-1 text-sm text-amber-800">
+              Dessa spelare bör ropas upp i sekretariatet: {missingPlayersText.join(', ')}.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isFullyAttended && (
+        <div
+          data-testid="attendance-complete-banner"
+          className="border-b border-emerald-200 bg-emerald-50"
+        >
+          <div className="max-w-4xl mx-auto px-4 py-3">
+            <p className="text-sm font-semibold text-emerald-900">
+              Alla {data.players.length} spelare har svarat i klassen.
+            </p>
+            <p className="text-sm text-emerald-700">
+              Listan är komplett och uppdateras fortfarande automatiskt.
+            </p>
+          </div>
+        </div>
+      )}
 
       {overrideError && (
         <div className="max-w-4xl mx-auto px-4 pt-4">
@@ -266,7 +338,7 @@ export default function ClassAttendanceView({
                   <button
                     data-testid={`confirm-btn-${player.registrationId}`}
                     onClick={() => setAttendance(player.registrationId, 'confirmed')}
-                    disabled={isOverriding || player.status === 'confirmed'}
+                    disabled={isOverriding || isRefreshing || player.status === 'confirmed'}
                     className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                       player.status === 'confirmed'
                         ? 'bg-green-600 text-white cursor-default'
@@ -278,7 +350,7 @@ export default function ClassAttendanceView({
                   <button
                     data-testid={`absent-btn-${player.registrationId}`}
                     onClick={() => setAttendance(player.registrationId, 'absent')}
-                    disabled={isOverriding || player.status === 'absent'}
+                    disabled={isOverriding || isRefreshing || player.status === 'absent'}
                     className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                       player.status === 'absent'
                         ? 'bg-red-600 text-white cursor-default'
@@ -295,25 +367,6 @@ export default function ClassAttendanceView({
 
         {data.players.length === 0 && (
           <p className="text-gray-500 text-sm mt-4">Inga spelare registrerade i denna klass.</p>
-        )}
-
-        {/* Past-deadline, no-response callout */}
-        {isPastDeadline && noResponse.length > 0 && (
-          <div
-            data-testid="past-deadline-warning"
-            className="mt-4 bg-orange-50 border border-orange-200 rounded-lg px-4 py-3"
-          >
-            <p className="text-sm font-medium text-orange-800">
-              {noResponse.length} spelare har inte rapporterat efter deadline:
-            </p>
-            <ul className="mt-1 text-sm text-orange-700 space-y-0.5">
-              {noResponse.map(p => (
-                <li key={p.registrationId}>
-                  {p.name}{p.club ? ` (${p.club})` : ''}
-                </li>
-              ))}
-            </ul>
-          </div>
         )}
       </div>
     </div>

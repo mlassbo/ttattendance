@@ -1,4 +1,4 @@
-import { requireAdminAuth } from '../auth'
+import { getAdminCompetition } from '../auth'
 import AdminDashboard from './AdminDashboard'
 
 export default async function AdminDashboardPage({
@@ -7,6 +7,6 @@ export default async function AdminDashboardPage({
   params: { slug: string }
 }) {
   const { slug } = params
-  await requireAdminAuth(slug)
-  return <AdminDashboard slug={slug} />
+  const competition = await getAdminCompetition(slug)
+  return <AdminDashboard slug={slug} competitionName={competition.name} />
 }
