@@ -124,16 +124,18 @@ export default function AdminDashboard({
   const overdueMissingPlayers = overdueClasses.reduce((sum, cls) => sum + cls.noResponse, 0)
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide">Sekretariat</p>
-            <p data-testid="dashboard-competition-name" className="text-sm text-gray-500">
+    <main className="app-shell">
+      <div className="mx-auto max-w-5xl space-y-4">
+        <section className="app-card flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">Sekretariat</p>
+            <p data-testid="dashboard-competition-name" className="text-sm text-muted">
               {competitionName}
             </p>
-            <h1 className="text-lg font-bold text-gray-900">Närvaro</h1>
+            <h1 className="text-3xl font-semibold tracking-tight text-ink">Närvaro</h1>
+            <p className="text-sm leading-6 text-muted">
+              Håll koll på svaren i varje pass och fånga upp spelare som fortfarande saknas.
+            </p>
           </div>
           <AutoRefreshStatus
             intervalSeconds={REFRESH_INTERVAL_SECONDS}
@@ -141,24 +143,14 @@ export default function AdminDashboard({
             updatedAt={updatedAt}
             secondsUntilNextRefresh={secondsUntilNextRefresh}
           />
-        </div>
-      </div>
+        </section>
 
-      {/* Content */}
-      <div className="max-w-5xl mx-auto px-4 py-6">
-        {loading && (
-          <p className="text-gray-500 text-sm">Laddar...</p>
-        )}
+        {loading && <p className="px-1 text-sm text-muted">Laddar...</p>}
 
-        {error && (
-          <p className="text-red-600 text-sm mb-4">{error}</p>
-        )}
+        {error && <p className="app-banner-error">{error}</p>}
 
         {overdueClasses.length > 0 && (
-          <div
-            data-testid="dashboard-overdue-summary"
-            className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm"
-          >
+          <div data-testid="dashboard-overdue-summary" className="app-banner-warning">
             <p className="text-sm font-semibold text-amber-950">
               Deadline passerad i {formatClassCount(overdueClasses.length)}.
             </p>
@@ -169,19 +161,19 @@ export default function AdminDashboard({
         )}
 
         {!loading && sessions.length === 0 && !error && (
-          <p className="text-gray-500 text-sm">Inga pass hittades.</p>
+          <p className="px-1 text-sm text-muted">Inga pass hittades.</p>
         )}
 
         <div className="space-y-8">
           {sessions.map(session => (
-            <div key={session.id}>
-              <h2 className="text-base font-semibold text-gray-700 mb-2">
+            <section key={session.id} className="space-y-3">
+              <h2 className="px-1 text-base font-semibold text-ink">
                 {session.name}
-                <span className="ml-2 text-sm font-normal text-gray-400">
+                <span className="ml-2 text-sm font-normal text-muted">
                   {formatDate(session.date)}
                 </span>
               </h2>
-              <div className="bg-white rounded-lg shadow-sm divide-y">
+              <div className="space-y-3">
                 {session.classes.map(cls => {
                   const isPastDeadline = new Date() > new Date(cls.attendanceDeadline)
                   const needsAnnouncement = isPastDeadline && cls.counts.noResponse > 0
@@ -191,58 +183,57 @@ export default function AdminDashboard({
                     <div
                       key={cls.id}
                       data-testid={`class-row-${cls.id}`}
-                      className={`flex items-center px-4 py-3 gap-4 ${
+                      className={`app-card flex flex-col gap-4 sm:flex-row sm:items-center ${
                         needsAnnouncement
-                          ? 'border-l-4 border-amber-500 bg-amber-50/80'
+                          ? 'border-amber-300 bg-amber-50/85'
                           : isFullyAttended
-                            ? 'bg-emerald-50/80'
+                            ? 'border-green-200 bg-green-50/80'
                             : ''
                       }`}
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium text-gray-900 truncate">{cls.name}</p>
+                          <p className="text-lg font-semibold text-ink truncate">{cls.name}</p>
                           {needsAnnouncement && (
                             <span
                               data-testid={`class-overdue-badge-${cls.id}`}
-                              className="inline-flex items-center rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-950"
+                              className="app-pill-warning"
                             >
                               Deadline passerad · {cls.counts.noResponse} saknas
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-sm text-muted">
                           Start {formatTime(cls.startTime)}
                           {' · '}
-                          <span className={needsAnnouncement ? 'text-amber-700 font-semibold' : ''}>
+                          <span className={needsAnnouncement ? 'font-semibold text-amber-800' : ''}>
                             Deadline {formatTime(cls.attendanceDeadline)}
                             {needsAnnouncement ? ' - ropa upp saknade spelare' : ''}
                           </span>
                         </p>
                       </div>
 
-                      {/* Counts */}
-                      <div className="flex items-center gap-3 shrink-0">
+                      <div className="grid flex-1 grid-cols-3 gap-2 sm:max-w-sm">
                         <span
                           data-testid={`count-confirmed-${cls.id}`}
-                          className="inline-flex items-center gap-1 text-sm font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full"
+                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-700"
                           title="Bekräftade"
                         >
                           <span>✓</span> {cls.counts.confirmed}
                         </span>
                         <span
                           data-testid={`count-absent-${cls.id}`}
-                          className="inline-flex items-center gap-1 text-sm font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full"
+                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"
                           title="Frånvaro"
                         >
                           <span>✗</span> {cls.counts.absent}
                         </span>
                         <span
                           data-testid={`count-no-response-${cls.id}`}
-                          className={`inline-flex items-center gap-1 text-sm font-medium px-2 py-0.5 rounded-full ${
+                          className={`inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold ${
                             cls.counts.noResponse > 0 && isPastDeadline
-                              ? 'text-orange-700 bg-orange-50'
-                              : 'text-gray-500 bg-gray-100'
+                              ? 'bg-orange-50 text-orange-700'
+                              : 'bg-stone-100 text-muted'
                           }`}
                           title="Ej rapporterat"
                         >
@@ -250,7 +241,7 @@ export default function AdminDashboard({
                         </span>
                       </div>
 
-                      <div className="shrink-0 text-right">
+                      <div className="flex items-center justify-between gap-3 sm:ml-auto sm:flex-col sm:items-end sm:text-right">
                         {needsAnnouncement ? (
                           <p className="text-xs font-semibold text-amber-800">
                             Ropa upp {cls.counts.noResponse}
@@ -258,34 +249,34 @@ export default function AdminDashboard({
                         ) : isFullyAttended ? (
                           <span
                             data-testid={`class-complete-badge-${cls.id}`}
-                            className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800"
+                            className="app-pill-success"
                           >
                             Alla har svarat
                           </span>
                         ) : cls.counts.total === 0 ? (
-                          <p className="text-xs font-medium text-gray-500">Inga spelare</p>
+                          <p className="text-xs font-medium text-muted">Inga spelare</p>
                         ) : (
-                          <p className="text-xs font-medium text-gray-500">
+                          <p className="text-xs font-medium text-muted">
                             {answeredCount}/{cls.counts.total} svar
                           </p>
                         )}
-                      </div>
 
-                      <Link
-                        data-testid={`class-detail-link-${cls.id}`}
-                        href={`/${slug}/admin/classes/${cls.id}`}
-                        className="shrink-0 text-sm text-indigo-600 hover:underline font-medium"
-                      >
-                        Visa →
-                      </Link>
+                        <Link
+                          data-testid={`class-detail-link-${cls.id}`}
+                          href={`/${slug}/admin/classes/${cls.id}`}
+                          className="app-button-secondary min-h-10 shrink-0 px-4 py-2"
+                        >
+                          Visa detaljer
+                        </Link>
+                      </div>
                     </div>
                   )
                 })}
               </div>
-            </div>
+            </section>
           ))}
         </div>
       </div>
-    </div>
+    </main>
   )
 }

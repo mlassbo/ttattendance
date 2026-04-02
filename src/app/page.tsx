@@ -1,6 +1,8 @@
 import LandingEntryCard from '@/components/LandingEntryCard'
 import { createServerClient } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 function formatCompetitionDateRange(startDate: string, endDate: string) {
   const start = new Date(startDate)
   const end = new Date(endDate)
@@ -33,47 +35,41 @@ export default async function HomePage() {
   const competitions = data ?? []
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-100 px-4 py-10 text-slate-950 sm:px-6 lg:px-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_28%),linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.98))]" />
-
-      <div className="relative mx-auto max-w-6xl space-y-10">
-        <header className="mx-auto max-w-3xl space-y-3 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+    <main className="app-shell">
+      <div className="relative mx-auto max-w-6xl space-y-8 sm:space-y-10">
+        <header className="mx-auto max-w-3xl space-y-4 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             TTAttendance
           </p>
-          <div className="space-y-2">
-            <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+          <div className="space-y-3">
+            <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-5xl">
               Närvarorapportering för pingistävlingar
             </h1>
-            <p className="text-base leading-7 text-slate-600 sm:text-lg">
-              Logga in med den pin-kod som skickats med i tävlingsprogrammet
+            <p className="text-base leading-7 text-muted sm:text-lg">
+              Välj din tävling och logga in med pin-koden från tävlingsprogrammet.
             </p>
           </div>
         </header>
 
         {competitions.length === 0 ? (
-          <section className="mx-auto max-w-2xl rounded-[28px] border border-dashed border-slate-300 bg-white/80 p-8 text-center shadow-[0_24px_60px_-32px_rgba(15,23,42,0.2)]">
-            <h2 className="text-2xl font-semibold text-slate-900">Inga tävlingar upplagda</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+          <section className="app-card-soft mx-auto max-w-2xl border-dashed text-center">
+            <h2 className="text-2xl font-semibold text-ink">Inga tävlingar upplagda</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
               Lägg upp en tävling i superadminvyn innan spelare eller sekretariat loggar in.
             </p>
           </section>
         ) : (
           <section
             data-testid="competition-entry-list"
-            className="grid gap-6 lg:grid-cols-2"
+            className="grid gap-4 lg:grid-cols-2 lg:gap-6"
           >
             {competitions.map(competition => (
               <LandingEntryCard
                 key={competition.slug}
+                eyebrow={formatCompetitionDateRange(competition.start_date, competition.end_date)}
                 title={competition.name}
-                description={formatCompetitionDateRange(
-                  competition.start_date,
-                  competition.end_date
-                )}
-                href={`/${competition.slug}`}
+                description="Välj om du ska rapportera som spelare eller arbeta i sekretariatet."
                 testId={`competition-entry-card-${competition.slug}`}
-                hrefTestId={`competition-entry-link-${competition.slug}`}
                 actions={[
                   {
                     href: `/${competition.slug}/player`,

@@ -38,7 +38,7 @@ test.describe('Player attendance flow', () => {
 
   // ── Authentication ──────────────────────────────────────────────────────
 
-  test('root landing page lists the competition and links to the competition chooser', async ({
+  test('root landing page lists the competition and login actions', async ({
     page,
   }) => {
     await page.goto('/')
@@ -52,11 +52,7 @@ test.describe('Player attendance flow', () => {
     )
 
     await expect(page.getByRole('link', { name: 'Superadmin' })).toHaveCount(0)
-
-    await page.getByTestId(`competition-entry-link-${SLUG}`).click()
-    await page.waitForURL(`/${SLUG}`)
-    await expect(page.getByTestId('competition-role-card-player')).toBeVisible()
-    await expect(page.getByTestId('competition-role-card-admin')).toBeVisible()
+    await expect(page.getByTestId(`competition-entry-card-${SLUG}`)).toContainText('Test Tävling')
   })
 
   test('competition chooser links to the player PIN page', async ({ page }) => {

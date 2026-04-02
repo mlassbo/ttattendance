@@ -40,38 +40,38 @@ export default function PinLoginCard({
   return (
     <main
       data-testid="pin-login-page"
-      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 px-4 py-10"
+      className="app-shell flex items-center justify-center"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_32%),linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.98))]" />
-
       <div
         data-testid="pin-login-card"
-        className="relative w-full max-w-md rounded-[28px] border border-slate-200/80 bg-white/95 p-8 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.35)] backdrop-blur sm:p-10"
+        className="app-card relative w-full max-w-md overflow-hidden p-6 sm:p-8"
       >
-        <div className="mb-8 space-y-3">
+        <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-brand/10 blur-3xl" />
+
+        <div className="relative mb-8 space-y-3">
           <p
             data-testid="pin-login-eyebrow"
-            className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500"
+            className="text-xs font-semibold uppercase tracking-[0.24em] text-muted"
           >
             {eyebrow}
           </p>
           <div className="space-y-2">
             <h1
               data-testid="pin-login-title"
-              className="text-3xl font-semibold tracking-tight text-slate-950"
+              className="text-3xl font-semibold tracking-tight text-ink"
             >
               {title}
             </h1>
             <p
               data-testid="pin-login-description"
-              className="text-sm leading-6 text-slate-600"
+              className="text-sm leading-6 text-muted"
             >
               {description}
             </p>
           </div>
         </div>
 
-        <form data-testid="pin-login-form" onSubmit={onSubmit} className="space-y-4">
+        <form data-testid="pin-login-form" onSubmit={onSubmit} className="relative space-y-4">
           <label className="block">
             <input
               data-testid={inputTestId}
@@ -81,7 +81,7 @@ export default function PinLoginCard({
               value={pin}
               onChange={event => onPinChange(event.target.value)}
               placeholder={inputPlaceholder}
-              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-center text-lg tracking-[0.35em] text-slate-950 outline-none transition placeholder:text-center placeholder:text-base placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+              className="app-input rounded-2xl text-center text-lg tracking-[0.35em] placeholder:text-center placeholder:text-base placeholder:font-normal placeholder:tracking-normal"
               autoFocus
             />
           </label>
@@ -89,7 +89,7 @@ export default function PinLoginCard({
           {error && (
             <p
               data-testid={errorTestId}
-              className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+              className="app-banner-error"
             >
               {error}
             </p>
@@ -99,7 +99,7 @@ export default function PinLoginCard({
             data-testid={buttonTestId}
             type="submit"
             disabled={disabled}
-            className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="app-button-primary w-full rounded-2xl"
           >
             {loading ? loadingLabel : submitLabel}
           </button>

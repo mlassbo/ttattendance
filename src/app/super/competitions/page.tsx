@@ -62,137 +62,131 @@ export default function CompetitionsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold">Tävlingar</h1>
-        <button
-          data-testid="new-competition-button"
-          onClick={() => setShowForm(v => !v)}
-          className="bg-blue-600 text-white rounded px-4 py-2 text-sm hover:bg-blue-700"
-        >
-          Ny tävling
-        </button>
-      </div>
-
-      {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-3 mb-8 border rounded p-4 bg-gray-50"
-        >
-          <input
-            data-testid="field-name"
-            placeholder="Namn"
-            value={form.name}
-            onChange={field('name')}
-            required
-            className="border rounded px-3 py-2"
-          />
-          <input
-            data-testid="field-slug"
-            placeholder="Slug (t.ex. smd-2025)"
-            value={form.slug}
-            onChange={field('slug')}
-            required
-            className="border rounded px-3 py-2"
-          />
-          <input
-            data-testid="field-start-date"
-            type="date"
-            value={form.startDate}
-            onChange={field('startDate')}
-            required
-            className="border rounded px-3 py-2"
-          />
-          <input
-            data-testid="field-end-date"
-            type="date"
-            value={form.endDate}
-            onChange={field('endDate')}
-            required
-            className="border rounded px-3 py-2"
-          />
-          <input
-            data-testid="field-player-pin"
-            type="password"
-            placeholder="Spelar-PIN"
-            value={form.playerPin}
-            onChange={field('playerPin')}
-            required
-            className="border rounded px-3 py-2"
-          />
-          <input
-            data-testid="field-admin-pin"
-            type="password"
-            placeholder="Admin-PIN"
-            value={form.adminPin}
-            onChange={field('adminPin')}
-            required
-            className="border rounded px-3 py-2"
-          />
-          {error && (
-            <p data-testid="form-error" className="text-red-600 text-sm">
-              {error}
+    <main className="app-shell">
+      <div className="mx-auto max-w-4xl space-y-4">
+        <section className="app-card flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">Superadmin</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-ink">Tävlingar</h1>
+            <p className="text-sm leading-6 text-muted">
+              Skapa tävlingar, kontrollera inloggningskoder och gå vidare till importen.
             </p>
-          )}
+          </div>
           <button
-            type="submit"
-            data-testid="submit-competition"
-            className="bg-green-600 text-white rounded px-4 py-2 hover:bg-green-700"
+            data-testid="new-competition-button"
+            onClick={() => setShowForm(v => !v)}
+            className="app-button-primary w-full sm:w-auto"
           >
-            Skapa tävling
+            Ny tävling
           </button>
-        </form>
-      )}
+        </section>
 
-      <ul data-testid="competition-list" className="flex flex-col gap-3">
-        {competitions.map(c => (
-          <li
-            key={c.id}
-            data-testid="competition-item"
-            className="rounded border border-slate-200 bg-white p-4"
-          >
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="space-y-3">
-                <div>
-                  <p className="font-medium text-slate-900">{c.name}</p>
-                  <p className="text-sm text-slate-500">{c.slug}</p>
+        {showForm && (
+          <form onSubmit={handleSubmit} className="app-card flex flex-col gap-3">
+            <input
+              data-testid="field-name"
+              placeholder="Namn"
+              value={form.name}
+              onChange={field('name')}
+              required
+              className="app-input"
+            />
+            <input
+              data-testid="field-slug"
+              placeholder="Slug (t.ex. smd-2025)"
+              value={form.slug}
+              onChange={field('slug')}
+              required
+              className="app-input"
+            />
+            <input
+              data-testid="field-start-date"
+              type="date"
+              value={form.startDate}
+              onChange={field('startDate')}
+              required
+              className="app-input"
+            />
+            <input
+              data-testid="field-end-date"
+              type="date"
+              value={form.endDate}
+              onChange={field('endDate')}
+              required
+              className="app-input"
+            />
+            <input
+              data-testid="field-player-pin"
+              type="password"
+              placeholder="Spelar-PIN"
+              value={form.playerPin}
+              onChange={field('playerPin')}
+              required
+              className="app-input"
+            />
+            <input
+              data-testid="field-admin-pin"
+              type="password"
+              placeholder="Admin-PIN"
+              value={form.adminPin}
+              onChange={field('adminPin')}
+              required
+              className="app-input"
+            />
+            {error && <p data-testid="form-error" className="app-banner-error">{error}</p>}
+            <button
+              type="submit"
+              data-testid="submit-competition"
+              className="app-button-primary"
+            >
+              Skapa tävling
+            </button>
+          </form>
+        )}
+
+        <ul data-testid="competition-list" className="flex flex-col gap-3">
+          {competitions.map(c => (
+            <li key={c.id} data-testid="competition-item" className="app-card">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-lg font-semibold text-ink">{c.name}</p>
+                    <p className="text-sm text-muted">{c.slug}</p>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted">Spelar-PIN</p>
+                      <p data-testid={`player-pin-${c.slug}`} className="font-mono text-sm text-ink">
+                        {c.playerPin ?? 'Saknas'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted">Admin-PIN</p>
+                      <p data-testid={`admin-pin-${c.slug}`} className="font-mono text-sm text-ink">
+                        {c.adminPin ?? 'Saknas'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Spelar-PIN</p>
-                    <p data-testid={`player-pin-${c.slug}`} className="font-mono text-sm text-slate-900">
-                      {c.playerPin ?? 'Saknas'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Admin-PIN</p>
-                    <p data-testid={`admin-pin-${c.slug}`} className="font-mono text-sm text-slate-900">
-                      {c.adminPin ?? 'Saknas'}
-                    </p>
-                  </div>
+                <div className="flex flex-col items-start gap-2 md:items-end">
+                  <span data-testid={`import-status-${c.slug}`} className="app-pill-muted">
+                    {c.importedRegistrationCount} importerade anmälningar
+                  </span>
+                  <Link
+                    href={`/super/competitions/${c.id}/import`}
+                    data-testid={`import-action-${c.slug}`}
+                    className="app-button-secondary min-h-10 h-fit px-4 py-2"
+                  >
+                    Importera startlista
+                  </Link>
                 </div>
               </div>
-
-              <div className="flex flex-col items-start gap-2 md:items-end">
-                <span
-                  data-testid={`import-status-${c.slug}`}
-                  className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
-                >
-                  {c.importedRegistrationCount} importerade anmälningar
-                </span>
-                <Link
-                  href={`/super/competitions/${c.id}/import`}
-                  data-testid={`import-action-${c.slug}`}
-                  className="inline-flex h-fit rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
-                >
-                  Importera startlista
-                </Link>
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      </div>
     </main>
   )
 }

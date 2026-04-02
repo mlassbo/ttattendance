@@ -150,16 +150,16 @@ export default function ClassesView({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Laddar...</p>
+      <div className="app-shell flex items-center justify-center">
+        <p className="text-muted">Laddar...</p>
       </div>
     )
   }
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Spelaren hittades inte.</p>
+      <div className="app-shell flex items-center justify-center">
+        <p className="text-muted">Spelaren hittades inte.</p>
       </div>
     )
   }
@@ -178,48 +178,45 @@ export default function ClassesView({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-lg mx-auto px-4 py-8">
-        <button
-          data-testid="back-button"
-          onClick={() => router.push(`/${slug}/search`)}
-          className="text-blue-600 text-sm mb-4 hover:underline"
-        >
-          ← Sök igen
-        </button>
+    <main className="app-shell">
+      <div className="mx-auto max-w-2xl space-y-4">
+        <section className="app-card space-y-4">
+          <button
+            data-testid="back-button"
+            onClick={() => router.push(`/${slug}/search`)}
+            className="w-fit text-sm font-medium text-brand transition-colors duration-150 hover:text-brand-hover"
+          >
+            ← Sök igen
+          </button>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">{data.player.name}</h1>
-        {data.player.club && (
-          <p className="text-gray-500 text-sm mb-1">{data.player.club}</p>
-        )}
-        {updatedAt && (
-          <p className="text-xs text-gray-400 mb-6">
-            Senast uppdaterad: {formatSwedishTime(updatedAt)}
-          </p>
-        )}
+          <div className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight text-ink">{data.player.name}</h1>
+            {data.player.club && <p className="text-sm text-muted">{data.player.club}</p>}
+            {updatedAt && (
+              <p className="text-xs font-medium text-muted/80">
+                Senast uppdaterad: {formatSwedishTime(updatedAt)}
+              </p>
+            )}
+          </div>
+        </section>
 
         {!attendanceIsOpen && (
-          <p
-            data-testid="attendance-not-open-banner"
-            className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
-          >
+          <p data-testid="attendance-not-open-banner" className="app-banner-warning">
             {getAttendanceNotOpenMessage(attendanceOpensAt)}
           </p>
         )}
 
         {actionError && (
-          <p data-testid="deadline-error" className="text-red-600 text-sm mb-4">
+          <p data-testid="deadline-error" className="app-banner-error">
             {actionError}
           </p>
         )}
 
-        {data.registrations.length === 0 && (
-          <p className="text-gray-500">Inga klasser registrerade.</p>
-        )}
+        {data.registrations.length === 0 && <p className="px-1 text-sm text-muted">Inga klasser registrerade.</p>}
 
         {Array.from(sessionGroups.values()).map(({ session, registrations }) => (
-          <div key={session.id} className="mb-8">
-            <h2 className="text-base font-semibold text-gray-600 mb-3 border-b pb-2 uppercase tracking-wide text-xs">
+          <section key={session.id} className="space-y-3">
+            <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.22em] text-muted">
               {formatPlayerSessionLabel(
                 session.date,
                 session.daySessionOrder ?? session.sessionOrder
@@ -239,22 +236,22 @@ export default function ClassesView({
                   <div
                     key={reg.registrationId}
                     data-testid={`class-card-${reg.registrationId}`}
-                    className="bg-white rounded-lg shadow-sm p-4"
+                    className="app-card"
                   >
-                    <div className="flex items-start justify-between mb-3">
+                    <div className="mb-4 flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-medium text-gray-900">{reg.class.name}</p>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-lg font-semibold text-ink">{reg.class.name}</p>
+                        <p className="text-sm text-muted">
                           Start: {formatSwedishTime(reg.class.startTime)}
                         </p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-muted/80">
                           Anmäl senast: {formatSwedishTime(reg.class.attendanceDeadline)}
                         </p>
                       </div>
                       {currentStatus && (
                         <span
                           data-testid={`status-badge-${reg.registrationId}`}
-                          className={`text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap ${
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap ${
                             currentStatus === 'confirmed'
                               ? 'bg-green-100 text-green-700'
                               : 'bg-red-100 text-red-700'
@@ -268,27 +265,27 @@ export default function ClassesView({
                     {availability.state === 'not_open' ? (
                       <p
                         data-testid={`attendance-not-open-${reg.registrationId}`}
-                        className="text-xs text-amber-700"
+                        className="text-xs font-medium text-amber-800"
                       >
                         {getAttendanceNotOpenMessage(availability.attendanceOpensAt)}
                       </p>
                     ) : availability.state === 'deadline_passed' ? (
                       <p
                         data-testid={`deadline-passed-${reg.registrationId}`}
-                        className="text-xs text-gray-400"
+                        className="text-xs font-medium text-muted"
                       >
                         Anmälningstiden har gått ut
                       </p>
                     ) : (
-                      <div className="flex gap-2">
+                      <div className="grid gap-2 sm:grid-cols-2">
                         <button
                           data-testid={`confirm-btn-${reg.registrationId}`}
                           onClick={() => submitAttendance(reg.registrationId, 'confirmed')}
                           disabled={isSubmitting || currentStatus === 'confirmed'}
-                          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                          className={`min-h-[44px] rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 ${
                             currentStatus === 'confirmed'
                               ? 'bg-green-600 text-white cursor-default'
-                              : 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
+                              : 'border border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
                           } disabled:opacity-60`}
                         >
                           Bekräfta närvaro
@@ -297,10 +294,10 @@ export default function ClassesView({
                           data-testid={`absent-btn-${reg.registrationId}`}
                           onClick={() => submitAttendance(reg.registrationId, 'absent')}
                           disabled={isSubmitting || currentStatus === 'absent'}
-                          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                          className={`min-h-[44px] rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 ${
                             currentStatus === 'absent'
                               ? 'bg-red-600 text-white cursor-default'
-                              : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+                              : 'border border-red-200 bg-surface text-red-700 hover:bg-red-50'
                           } disabled:opacity-60`}
                         >
                           Anmäl frånvaro
@@ -311,9 +308,9 @@ export default function ClassesView({
                 )
               })}
             </div>
-          </div>
+          </section>
         ))}
       </div>
-    </div>
+    </main>
   )
 }

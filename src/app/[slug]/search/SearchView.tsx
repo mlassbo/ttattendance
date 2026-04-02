@@ -184,101 +184,107 @@ export default function SearchView({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-lg mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">{competitionName}</h1>
+    <main className="app-shell">
+      <div className="mx-auto max-w-2xl space-y-4">
+        <section className="app-card space-y-4">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
+              Spelare
+            </p>
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-ink">{competitionName}</h1>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Sök snabbt efter spelare eller klubb och rapportera närvaro direkt.
+              </p>
+            </div>
+          </div>
+
+          <div
+            role="tablist"
+            aria-label="Söktyp"
+            className="grid grid-cols-2 gap-2 rounded-2xl bg-brand-soft/60 p-1"
+          >
+            <button
+              data-testid="search-mode-player"
+              type="button"
+              role="tab"
+              aria-selected={searchMode === 'player'}
+              onClick={() => selectSearchMode('player')}
+              className={`rounded-xl px-4 py-3 text-sm font-medium transition-all duration-150 ${
+                searchMode === 'player'
+                  ? 'bg-surface text-brand shadow-sm'
+                  : 'text-muted hover:bg-surface/70 hover:text-ink'
+              }`}
+            >
+              Sök spelare
+            </button>
+            <button
+              data-testid="search-mode-club"
+              type="button"
+              role="tab"
+              aria-selected={searchMode === 'club'}
+              onClick={() => selectSearchMode('club')}
+              className={`rounded-xl px-4 py-3 text-sm font-medium transition-all duration-150 ${
+                searchMode === 'club'
+                  ? 'bg-surface text-brand shadow-sm'
+                  : 'text-muted hover:bg-surface/70 hover:text-ink'
+              }`}
+            >
+              Sök klubb
+            </button>
+          </div>
+
+          <input
+            data-testid="search-input"
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder={searchMode === 'player' ? 'Sök spelare...' : 'Sök klubb...'}
+            className="app-input text-lg"
+            autoFocus
+          />
+        </section>
+
         {!attendanceIsOpen && (
           <p
             data-testid="attendance-not-open-banner"
-            className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+            className="app-banner-warning"
           >
             {getAttendanceNotOpenMessage(attendanceOpensAt)}
           </p>
         )}
-        <div
-          role="tablist"
-          aria-label="Söktyp"
-          className="mb-4 flex border-b border-gray-200"
-        >
-          <button
-            data-testid="search-mode-player"
-            type="button"
-            role="tab"
-            aria-selected={searchMode === 'player'}
-            onClick={() => selectSearchMode('player')}
-            className={`-mb-px border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-              searchMode === 'player'
-                ? 'border-blue-600 text-blue-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Sök spelare
-          </button>
-          <button
-            data-testid="search-mode-club"
-            type="button"
-            role="tab"
-            aria-selected={searchMode === 'club'}
-            onClick={() => selectSearchMode('club')}
-            className={`-mb-px border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-              searchMode === 'club'
-                ? 'border-blue-600 text-blue-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Sök klubb
-          </button>
-        </div>
-        <input
-          data-testid="search-input"
-          type="text"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder={
-            searchMode === 'player'
-              ? 'Sök spelare...'
-              : 'Sök klubb...'
-          }
-          className="w-full border border-gray-300 rounded-md px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-          autoFocus
-        />
-        {loading && (
-          <p className="text-gray-500 text-sm mb-2">Söker...</p>
-        )}
+
+        {loading && <p className="px-1 text-sm text-muted">Söker...</p>}
+
         {!loading && fetchedQuery === query && query.length >= 2 && results.length === 0 && (
-          <p data-testid="no-results" className="text-gray-500 text-sm mb-2">
-            {searchMode === 'player'
-              ? 'Inga spelare hittades.'
-              : 'Inga klubbar hittades.'}
+          <p data-testid="no-results" className="px-1 text-sm text-muted">
+            {searchMode === 'player' ? 'Inga spelare hittades.' : 'Inga klubbar hittades.'}
           </p>
         )}
-        <ul data-testid="search-results" className="space-y-2">
+
+        <ul data-testid="search-results" className="space-y-3">
           {results.map(player => (
             <li
               key={player.id}
               data-testid={`player-result-card-${player.id}`}
-              className="rounded-md border border-gray-200 bg-white p-4 shadow-sm"
+              className="app-card"
             >
-              <div className="mb-3">
+              <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-medium text-gray-900">{player.name}</p>
-                  {player.club && (
-                    <p className="text-sm text-gray-500">{player.club}</p>
-                  )}
+                  <p className="text-lg font-semibold text-ink">{player.name}</p>
+                  {player.club && <p className="text-sm text-muted">{player.club}</p>}
                 </div>
+                <span className="app-pill-muted">{player.registrations.length} klasser</span>
               </div>
 
               {playerMessages[player.id] && (
-                <p
-                  data-testid={`player-message-${player.id}`}
-                  className="mb-3 text-sm text-red-600"
-                >
+                <p data-testid={`player-message-${player.id}`} className="app-banner-error mb-4">
                   {playerMessages[player.id]}
                 </p>
               )}
 
               {player.registrations.length === 0 ? (
-                <p className="text-sm text-gray-500">Inga klasser registrerade.</p>
+                <p className="text-sm text-muted">Inga klasser registrerade.</p>
               ) : (
                 <div className="space-y-4">
                   {Array.from(
@@ -302,7 +308,7 @@ export default function SearchView({
                     <section key={group.session?.id ?? group.registrations[0].registrationId}>
                       <h3
                         data-testid={`search-session-${player.id}-${group.session?.id ?? 'unknown'}`}
-                        className="mb-2 border-b border-gray-200 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500"
+                        className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted"
                       >
                         {group.session
                           ? formatPlayerSessionLabel(
@@ -311,7 +317,7 @@ export default function SearchView({
                             )
                           : 'Okänt pass'}
                       </h3>
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         {group.registrations.map(registration => {
                           const availability = getPlayerAttendanceAvailability(
                             competitionStartDate,
@@ -324,24 +330,24 @@ export default function SearchView({
                           return (
                             <div
                               key={registration.registrationId}
-                              className="rounded-md border border-gray-200 bg-gray-50 px-3 py-3"
+                              className="rounded-2xl border border-line bg-brand-soft/25 px-4 py-4"
                             >
-                              <div className="mb-2 flex items-start justify-between gap-3">
+                              <div className="mb-3 flex items-start justify-between gap-3">
                                 <div>
-                                  <p className="text-sm font-medium text-gray-900">
+                                  <p className="text-sm font-semibold text-ink">
                                     {registration.class.name}
                                   </p>
-                                  <p className="text-xs text-gray-500">
+                                  <p className="text-xs text-muted">
                                     Start {formatSwedishTime(registration.class.startTime)}
                                   </p>
-                                  <p className="text-xs text-gray-400">
+                                  <p className="text-xs text-muted/80">
                                     Anmäl senast {formatSwedishTime(registration.class.attendanceDeadline)}
                                   </p>
                                 </div>
                                 {currentStatus && (
                                   <span
                                     data-testid={`search-status-badge-${registration.registrationId}`}
-                                    className={`rounded-full px-2 py-1 text-xs font-medium whitespace-nowrap ${
+                                    className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap ${
                                       currentStatus === 'confirmed'
                                         ? 'bg-green-100 text-green-700'
                                         : 'bg-red-100 text-red-700'
@@ -355,26 +361,26 @@ export default function SearchView({
                               {availability.state === 'not_open' ? (
                                 <p
                                   data-testid={`attendance-not-open-${registration.registrationId}`}
-                                  className="text-xs text-amber-700"
+                                  className="text-xs font-medium text-amber-800"
                                 >
                                   {getAttendanceNotOpenMessage(availability.attendanceOpensAt)}
                                 </p>
                               ) : availability.state === 'deadline_passed' ? (
                                 <p
                                   data-testid={`search-deadline-passed-${registration.registrationId}`}
-                                  className="text-xs text-gray-500"
+                                  className="text-xs font-medium text-muted"
                                 >
                                   Anmälningstiden har gått ut
                                 </p>
                               ) : (
-                                <div className="flex gap-2">
+                                <div className="grid gap-2 sm:grid-cols-2">
                                   <button
                                     data-testid={`search-confirm-btn-${registration.registrationId}`}
                                     onClick={() =>
                                       submitAttendance(player.id, registration.registrationId, 'confirmed')
                                     }
                                     disabled={isSubmitting || currentStatus === 'confirmed'}
-                                    className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                                    className={`min-h-[44px] rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 ${
                                       currentStatus === 'confirmed'
                                         ? 'bg-green-600 text-white cursor-default'
                                         : 'border border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
@@ -388,10 +394,10 @@ export default function SearchView({
                                       submitAttendance(player.id, registration.registrationId, 'absent')
                                     }
                                     disabled={isSubmitting || currentStatus === 'absent'}
-                                    className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                                    className={`min-h-[44px] rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 ${
                                       currentStatus === 'absent'
                                         ? 'bg-red-600 text-white cursor-default'
-                                        : 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                                        : 'border border-red-200 bg-surface text-red-700 hover:bg-red-50'
                                     } disabled:opacity-60`}
                                   >
                                     Frånvaro
@@ -410,6 +416,6 @@ export default function SearchView({
           ))}
         </ul>
       </div>
-    </div>
+    </main>
   )
 }

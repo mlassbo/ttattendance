@@ -41,7 +41,7 @@ function StatusBadge({
     return (
       <span
         data-testid={`status-badge-${registrationId}`}
-        className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 whitespace-nowrap"
+        className="app-pill-success whitespace-nowrap"
       >
         Bekräftad
       </span>
@@ -51,7 +51,7 @@ function StatusBadge({
     return (
       <span
         data-testid={`status-badge-${registrationId}`}
-        className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700 whitespace-nowrap"
+        className="app-pill-danger whitespace-nowrap"
       >
         Frånvaro
       </span>
@@ -60,7 +60,7 @@ function StatusBadge({
   return (
     <span
       data-testid={`status-badge-${registrationId}`}
-      className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap"
+      className="app-pill-muted whitespace-nowrap"
     >
       Ej rapporterat
     </span>
@@ -185,16 +185,16 @@ export default function ClassAttendanceView({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <p className="text-gray-500">Laddar...</p>
+      <div className="app-shell flex items-center justify-center">
+        <p className="text-muted">Laddar...</p>
       </div>
     )
   }
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <p className="text-gray-500">Klassen hittades inte.</p>
+      <div className="app-shell flex items-center justify-center">
+        <p className="text-muted">Klassen hittades inte.</p>
       </div>
     )
   }
@@ -209,24 +209,23 @@ export default function ClassAttendanceView({
   const isFullyAttended = data.players.length > 0 && noResponse.length === 0
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-3">
-          <div className="flex items-start justify-between gap-4">
-            <div>
+    <main className="app-shell">
+      <div className="mx-auto max-w-4xl space-y-4">
+        <section className="app-card space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-2">
               <button
                 data-testid="back-to-dashboard"
                 onClick={() => router.push(`/${slug}/admin/dashboard`)}
-                className="text-indigo-600 text-sm hover:underline mb-1"
+                className="w-fit text-sm font-medium text-brand transition-colors duration-150 hover:text-brand-hover"
               >
                 ← Tillbaka
               </button>
-              <p data-testid="class-competition-name" className="text-sm text-gray-500">
+              <p data-testid="class-competition-name" className="text-sm text-muted">
                 {competitionName}
               </p>
-              <h1 className="text-lg font-bold text-gray-900">{data.class.name}</h1>
-              <p className="text-xs text-gray-400">
+              <h1 className="text-3xl font-semibold tracking-tight text-ink">{data.class.name}</h1>
+              <p className="text-sm text-muted">
                 Start {formatTime(data.class.startTime)}
                 {' · '}
                 <span>
@@ -235,7 +234,7 @@ export default function ClassAttendanceView({
                 </span>
               </p>
             </div>
-            <div className="text-right shrink-0">
+            <div className="shrink-0 text-right">
               <AutoRefreshStatus
                 intervalSeconds={REFRESH_INTERVAL_SECONDS}
                 isRefreshing={isRefreshing}
@@ -245,34 +244,41 @@ export default function ClassAttendanceView({
               <button
                 data-testid="export-csv-button"
                 onClick={downloadCsv}
-                className="mt-2 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded font-medium transition-colors"
+                className="app-button-secondary mt-3 min-h-10 px-4 py-2 text-xs"
               >
                 Exportera CSV
               </button>
             </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* Summary bar */}
-      <div className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 py-2 flex gap-6 text-sm">
-          <span className="text-green-700 font-medium">✓ Bekräftade: {confirmed.length}</span>
-          <span className="text-red-700 font-medium">✗ Frånvaro: {absent.length}</span>
-          <span className={`font-medium ${noResponse.length > 0 && isPastDeadline ? 'text-orange-600' : 'text-gray-500'}`}>
-            ? Ej rapporterat: {noResponse.length}
-          </span>
-          <span className="text-gray-400">Totalt: {data.players.length}</span>
-          <span className="text-gray-500">Svar inkomna: {answeredCount}/{data.players.length}</span>
-        </div>
-      </div>
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="app-card-soft text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Bekräftade</p>
+            <p className="mt-2 text-2xl font-semibold text-green-700">{confirmed.length}</p>
+          </div>
+          <div className="app-card-soft text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Frånvaro</p>
+            <p className="mt-2 text-2xl font-semibold text-red-700">{absent.length}</p>
+          </div>
+          <div className="app-card-soft text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Ej rapporterat</p>
+            <p className={`mt-2 text-2xl font-semibold ${noResponse.length > 0 && isPastDeadline ? 'text-orange-700' : 'text-muted'}`}>
+              {noResponse.length}
+            </p>
+          </div>
+          <div className="app-card-soft text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Totalt</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">{data.players.length}</p>
+          </div>
+          <div className="app-card-soft text-center sm:col-span-2 lg:col-span-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Svar inkomna</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">{answeredCount}/{data.players.length}</p>
+          </div>
+        </section>
 
-      {isPastDeadline && noResponse.length > 0 && (
-        <div
-          data-testid="past-deadline-warning"
-          className="border-b border-amber-300 bg-amber-50"
-        >
-          <div className="max-w-4xl mx-auto px-4 py-3">
+        {isPastDeadline && noResponse.length > 0 && (
+          <div data-testid="past-deadline-warning" className="app-banner-warning">
             <p className="text-sm font-semibold text-amber-950">
               Deadline har passerat. {noResponse.length} spelare saknas fortfarande.
             </p>
@@ -280,46 +286,33 @@ export default function ClassAttendanceView({
               Dessa spelare bör ropas upp i sekretariatet: {missingPlayersText.join(', ')}.
             </p>
           </div>
-        </div>
-      )}
+        )}
 
-      {isFullyAttended && (
-        <div
-          data-testid="attendance-complete-banner"
-          className="border-b border-emerald-200 bg-emerald-50"
-        >
-          <div className="max-w-4xl mx-auto px-4 py-3">
-            <p className="text-sm font-semibold text-emerald-900">
+        {isFullyAttended && (
+          <div data-testid="attendance-complete-banner" className="app-banner-success">
+            <p className="text-sm font-semibold text-green-900">
               Alla {data.players.length} spelare har svarat i klassen.
             </p>
-            <p className="text-sm text-emerald-700">
+            <p className="text-sm text-green-700">
               Listan är komplett och uppdateras fortfarande automatiskt.
             </p>
           </div>
-        </div>
-      )}
+        )}
 
-      {overrideError && (
-        <div className="max-w-4xl mx-auto px-4 pt-4">
-          <p data-testid="override-error" className="text-red-600 text-sm">{overrideError}</p>
-        </div>
-      )}
+        {overrideError && <p data-testid="override-error" className="app-banner-error">{overrideError}</p>}
 
-      {/* Player list */}
-      <div className="max-w-4xl mx-auto px-4 py-4">
-        <div className="bg-white rounded-lg shadow-sm divide-y">
+        <section className="space-y-3">
           {data.players.map(player => {
             const isOverriding = overriding === player.registrationId
             return (
               <div
                 key={player.registrationId}
                 data-testid={`player-row-${player.registrationId}`}
-                className="flex items-center px-4 py-3 gap-3"
+                className="app-card flex flex-col gap-4 sm:flex-row sm:items-center"
               >
-                {/* Player info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">{player.name}</p>
-                  <p className="text-xs text-gray-400 truncate">
+                  <p className="text-lg font-medium text-ink truncate">{player.name}</p>
+                  <p className="text-xs text-muted/80 truncate">
                     {player.club ?? '–'}
                     {player.reportedAt && (
                       <span className="ml-2">
@@ -330,16 +323,14 @@ export default function ClassAttendanceView({
                   </p>
                 </div>
 
-                {/* Status badge */}
                 <StatusBadge status={player.status} registrationId={player.registrationId} />
 
-                {/* Override buttons — always visible for admin */}
-                <div className="flex gap-2 shrink-0">
+                <div className="grid gap-2 sm:min-w-[220px] sm:grid-cols-2">
                   <button
                     data-testid={`confirm-btn-${player.registrationId}`}
                     onClick={() => setAttendance(player.registrationId, 'confirmed')}
                     disabled={isOverriding || isRefreshing || player.status === 'confirmed'}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                    className={`min-h-[44px] rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 ${
                       player.status === 'confirmed'
                         ? 'bg-green-600 text-white cursor-default'
                         : 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
@@ -351,10 +342,10 @@ export default function ClassAttendanceView({
                     data-testid={`absent-btn-${player.registrationId}`}
                     onClick={() => setAttendance(player.registrationId, 'absent')}
                     disabled={isOverriding || isRefreshing || player.status === 'absent'}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                    className={`min-h-[44px] rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-150 ${
                       player.status === 'absent'
                         ? 'bg-red-600 text-white cursor-default'
-                        : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+                        : 'bg-surface text-red-700 hover:bg-red-50 border border-red-200'
                     } disabled:opacity-60`}
                   >
                     Frånvaro
@@ -363,12 +354,12 @@ export default function ClassAttendanceView({
               </div>
             )
           })}
-        </div>
 
-        {data.players.length === 0 && (
-          <p className="text-gray-500 text-sm mt-4">Inga spelare registrerade i denna klass.</p>
-        )}
+          {data.players.length === 0 && (
+            <p className="px-1 text-sm text-muted">Inga spelare registrerade i denna klass.</p>
+          )}
+        </section>
       </div>
-    </div>
+    </main>
   )
 }

@@ -19,10 +19,10 @@ export default function AutoRefreshStatus({
       : `Nästa uppdatering om ${secondsUntilNextRefresh} s`
 
   return (
-    <div className="text-right shrink-0">
+    <div className="shrink-0 text-right">
       <div
         data-testid="auto-refresh-status"
-        className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800"
+        className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-800"
       >
         <span
           aria-hidden="true"
@@ -32,11 +32,11 @@ export default function AutoRefreshStatus({
           ? 'Uppdaterar nu'
           : `Automatisk uppdatering aktiv var ${intervalSeconds}:e sekund`}
       </div>
-      <p data-testid="auto-refresh-next" className="mt-1 text-xs text-gray-500">
+      <p data-testid="auto-refresh-next" className="mt-1 text-xs text-muted">
         {isRefreshing ? 'Hämtar senaste närvarodata...' : nextRefreshLabel}
       </p>
       {updatedAt && (
-        <p data-testid="auto-refresh-updated-at" className="text-xs text-gray-400">
+        <p data-testid="auto-refresh-updated-at" className="text-xs text-muted/80">
           Senast uppdaterad: {updatedAt.toLocaleTimeString('sv-SE')}
         </p>
       )}

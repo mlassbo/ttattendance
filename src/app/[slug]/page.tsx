@@ -18,33 +18,44 @@ export default async function CompetitionPage({
 
   if (!competition) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Tävlingen hittades inte.</p>
+      <div className="app-shell flex items-center justify-center">
+        <p className="text-muted">Tävlingen hittades inte.</p>
       </div>
     )
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-100 px-4 py-10 text-slate-950 sm:px-6 lg:px-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.1),_transparent_32%),linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.98))]" />
+    <main className="app-shell">
+      <div className="relative mx-auto max-w-3xl space-y-6">
+        <div className="mx-auto max-w-2xl space-y-3 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">Tävling</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+            {competition.name}
+          </h1>
+          <p className="text-base leading-7 text-muted">
+            Välj den roll som passar dig just nu. Båda vyerna är anpassade för snabb användning på mobilen.
+          </p>
+        </div>
 
-      <div className="relative mx-auto max-w-3xl">
-        <LandingEntryCard
-          title={competition.name}
-          testId="competition-role-card"
-          actions={[
-            {
-              href: `/${slug}/player`,
-              label: 'Logga in som spelare',
-              testId: 'competition-role-link-player',
-            },
-            {
-              href: `/${slug}/admin`,
-              label: 'Logga in som sekretariat',
-              testId: 'competition-role-link-admin',
-            },
-          ]}
-        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <LandingEntryCard
+            eyebrow="Spelare"
+            title="Rapportera närvaro"
+            description="Sök efter ditt namn eller din klubb och markera snabbt om du kommer eller inte."
+            href={`/${slug}/player`}
+            hrefTestId="competition-role-link-player"
+            testId="competition-role-card-player"
+          />
+
+          <LandingEntryCard
+            eyebrow="Sekretariat"
+            title="Följ upp svaren"
+            description="Se läget i varje pass, fånga upp sena svar och hjälp spelare på plats."
+            href={`/${slug}/admin`}
+            hrefTestId="competition-role-link-admin"
+            testId="competition-role-card-admin"
+          />
+        </div>
       </div>
     </main>
   )

@@ -115,6 +115,22 @@ Then:
 npm run test:e2e
 ```
 
+### Important for agent-driven Playwright runs
+
+Do **not** use a Playwright invocation that auto-opens the HTML report from the agent, because that leaves the process waiting for `Ctrl+C` and makes the agent appear hung.
+
+For agent-driven runs, prefer:
+```bash
+npm run test:e2e:agent
+```
+
+If you need an ad hoc Playwright command, use a non-blocking reporter such as:
+```bash
+npx playwright test --reporter=line
+```
+
+Only use the HTML report interactively when a developer explicitly wants it.
+
 The Playwright webServer config starts Next.js automatically if it is not already running. The global setup cleans up any competitions whose slug starts with `test-` before each run.
 
 ---
@@ -158,7 +174,7 @@ The global setup (`tests/global-setup.ts`) uses the default `'test-%'` pattern t
 Always use `data-testid` attributes — never select by Swedish text, which is fragile. Add `data-testid` to any new interactive or verifiable element.
 
 ### After writing tests
-Run `npm run test:e2e` and fix any failures before finishing the task. If Supabase is not running, start it first with `npx supabase start`.
+Run `npm run test:e2e:agent` when the agent is executing the suite itself, and fix any failures before finishing the task. If a developer explicitly wants the default Playwright report behavior, they can still run `npm run test:e2e` manually. If Supabase is not running, start it first with `npx supabase start`.
 
 ---
 

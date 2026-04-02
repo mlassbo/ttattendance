@@ -27,26 +27,26 @@ export default function LandingEntryCard({
 }: LandingEntryCardProps) {
   const content = (
     <>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {eyebrow ? (
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             {eyebrow}
           </p>
         ) : null}
         <div className="space-y-2">
-          <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h2>
-          {description ? <p className="text-sm leading-6 text-slate-600">{description}</p> : null}
+          <h2 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{title}</h2>
+          {description ? <p className="text-sm leading-6 text-muted sm:text-base">{description}</p> : null}
         </div>
       </div>
 
       {actions.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2">
-          {actions.map(action => (
+          {actions.map((action, index) => (
             <Link
               key={action.testId}
               href={action.href}
               data-testid={action.testId}
-              className="relative z-10 inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-white"
+              className={`relative z-10 ${index === 0 ? 'app-button-primary' : 'app-button-secondary'} w-full`}
             >
               {action.label}
             </Link>
@@ -62,12 +62,13 @@ export default function LandingEntryCard({
         href={href}
         data-testid={hrefTestId}
         aria-label={title}
-        className="group block"
+        className="group block focus-visible:outline-none"
       >
         <article
           data-testid={testId}
-          className="relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.35)] backdrop-blur transition group-hover:border-slate-300 group-hover:bg-white group-focus-visible:border-slate-400"
+          className="app-card relative overflow-hidden transition-all duration-150 group-hover:-translate-y-0.5 group-hover:border-brand/25 group-hover:shadow-glow group-focus-visible:border-brand/40"
         >
+          <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-brand/10 blur-3xl" />
           <div className="space-y-4">{content}</div>
         </article>
       </Link>
@@ -77,9 +78,10 @@ export default function LandingEntryCard({
   return (
     <article
       data-testid={testId}
-      className="relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/95 p-6 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.35)] backdrop-blur"
+      className="app-card relative overflow-hidden"
     >
-      {href && hrefTestId ? (
+      <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-brand/10 blur-3xl" />
+      {href && hrefTestId && actions.length === 0 ? (
         <Link
           href={href}
           data-testid={hrefTestId}
@@ -88,7 +90,7 @@ export default function LandingEntryCard({
         />
       ) : null}
 
-      <div className="relative space-y-4">{content}</div>
+      <div className="relative z-10 space-y-4">{content}</div>
     </article>
   )
 }
