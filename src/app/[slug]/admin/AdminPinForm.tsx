@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import PinLoginCard from '@/components/PinLoginCard'
 
 export default function AdminPinForm({
   slug,
@@ -41,37 +42,20 @@ export default function AdminPinForm({
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-sm">
-        <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Sekretariat</p>
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">{competitionName}</h1>
-        <p className="text-gray-500 mb-6 text-sm">Ange admin-PIN för att fortsätta</p>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            data-testid="admin-pin-input"
-            type="password"
-            inputMode="numeric"
-            value={pin}
-            onChange={e => setPin(e.target.value)}
-            placeholder="Admin-PIN"
-            className="w-full border border-gray-300 rounded-md px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            autoFocus
-          />
-          {error && (
-            <p data-testid="admin-pin-error" className="text-red-600 text-sm">
-              {error}
-            </p>
-          )}
-          <button
-            data-testid="admin-login-button"
-            type="submit"
-            disabled={loading || pin.length === 0}
-            className="w-full bg-indigo-600 text-white rounded-md py-3 font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-          >
-            {loading ? 'Loggar in...' : 'Logga in'}
-          </button>
-        </form>
-      </div>
-    </div>
+    <PinLoginCard
+      eyebrow="Sekretariat"
+      title={competitionName}
+      description="Logga in som sekretariat"
+      inputPlaceholder="Admin-PIN"
+      pin={pin}
+      onPinChange={setPin}
+      onSubmit={handleSubmit}
+      inputTestId="admin-pin-input"
+      errorTestId="admin-pin-error"
+      buttonTestId="admin-login-button"
+      error={error}
+      loading={loading}
+      disabled={loading || pin.length === 0}
+    />
   )
 }

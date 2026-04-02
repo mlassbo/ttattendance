@@ -16,6 +16,16 @@ test.describe('Player attendance flow', () => {
 
   // ── Authentication ──────────────────────────────────────────────────────
 
+  test('player PIN page renders the shared login shell', async ({ page }) => {
+    await page.goto(`/${SLUG}`)
+
+    await expect(page.getByTestId('pin-login-page')).toBeVisible()
+    await expect(page.getByTestId('pin-login-card')).toBeVisible()
+    await expect(page.getByTestId('pin-login-form')).toBeVisible()
+    await expect(page.getByTestId('pin-login-eyebrow')).toContainText('Spelare')
+    await expect(page.getByTestId('pin-login-title')).toContainText('Test Tävling')
+  })
+
   test('wrong PIN shows error', async ({ page }) => {
     await page.goto(`/${SLUG}`)
     await page.getByTestId('pin-input').fill('0000')

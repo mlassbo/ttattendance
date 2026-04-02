@@ -8,6 +8,16 @@ test.beforeEach(async () => {
   await cleanTestCompetitions(testClient(), 'test-sm-%')
 })
 
+test('super admin PIN page renders the shared login shell', async ({ page }) => {
+  await page.goto('/super')
+
+  await expect(page.getByTestId('pin-login-page')).toBeVisible()
+  await expect(page.getByTestId('pin-login-card')).toBeVisible()
+  await expect(page.getByTestId('pin-login-form')).toBeVisible()
+  await expect(page.getByTestId('pin-login-eyebrow')).toContainText('System')
+  await expect(page.getByTestId('pin-login-title')).toContainText('Superadmin')
+})
+
 test('super admin can create a competition and see it in the list', async ({ page }) => {
   // Log in
   await page.goto('/super')

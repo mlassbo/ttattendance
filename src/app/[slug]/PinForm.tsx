@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import PinLoginCard from '@/components/PinLoginCard'
 
 export default function PinForm({
   slug,
@@ -41,36 +42,20 @@ export default function PinForm({
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">{competitionName}</h1>
-        <p className="text-gray-500 mb-6 text-sm">Ange PIN-kod för att fortsätta</p>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            data-testid="pin-input"
-            type="password"
-            inputMode="numeric"
-            value={pin}
-            onChange={e => setPin(e.target.value)}
-            placeholder="PIN-kod"
-            className="w-full border border-gray-300 rounded-md px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            autoFocus
-          />
-          {error && (
-            <p data-testid="pin-error" className="text-red-600 text-sm">
-              {error}
-            </p>
-          )}
-          <button
-            data-testid="login-button"
-            type="submit"
-            disabled={loading || pin.length === 0}
-            className="w-full bg-blue-600 text-white rounded-md py-3 font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {loading ? 'Loggar in...' : 'Logga in'}
-          </button>
-        </form>
-      </div>
-    </div>
+    <PinLoginCard
+      eyebrow="Spelare"
+      title={competitionName}
+      description="Logga in som spelare för att anmäla närvaro"
+      inputPlaceholder="PIN-kod"
+      pin={pin}
+      onPinChange={setPin}
+      onSubmit={handleSubmit}
+      inputTestId="pin-input"
+      errorTestId="pin-error"
+      buttonTestId="login-button"
+      error={error}
+      loading={loading}
+      disabled={loading || pin.length === 0}
+    />
   )
 }

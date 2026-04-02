@@ -30,6 +30,16 @@ test.describe('Admin attendance flow', () => {
 
   // ── Authentication ────────────────────────────────────────────────────────
 
+  test('admin PIN page renders the shared login shell', async ({ page }) => {
+    await page.goto(`/${SLUG}/admin`)
+
+    await expect(page.getByTestId('pin-login-page')).toBeVisible()
+    await expect(page.getByTestId('pin-login-card')).toBeVisible()
+    await expect(page.getByTestId('pin-login-form')).toBeVisible()
+    await expect(page.getByTestId('pin-login-eyebrow')).toContainText('Sekretariat')
+    await expect(page.getByTestId('pin-login-title')).toContainText('Test Admintävling')
+  })
+
   test('wrong admin PIN shows error', async ({ page }) => {
     await page.goto(`/${SLUG}/admin`)
     await page.getByTestId('admin-pin-input').fill('0000')

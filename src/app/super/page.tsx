@@ -2,58 +2,54 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import PinLoginCard from '@/components/PinLoginCard'
 
 export default function SuperLoginPage() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setLoading(true)
     setError('')
 
-    const res = await fetch('/api/auth/super', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin }),
-    })
+    try {
+      const res = await fetch('/api/auth/super', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      })
 
-    if (res.ok) {
-      router.push('/super/competitions')
-    } else {
-      setError('Felaktig PIN')
+      if (res.ok) {
+        router.push('/super/competitions')
+      } else {
+        const data = await res.json().catch(() => null)
+        setError(data?.error ?? 'Felaktig PIN')
+      }
+    } catch {
+      setError('Nätverksfel, försök igen')
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50">
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-4 w-full max-w-xs bg-white p-8 rounded shadow"
-      >
-        <h1 className="text-xl font-semibold text-center">Super Admin</h1>
-        <input
-          type="password"
-          data-testid="pin-input"
-          value={pin}
-          onChange={e => setPin(e.target.value)}
-          placeholder="PIN"
-          autoComplete="current-password"
-          className="border rounded px-3 py-2 text-center tracking-widest"
-        />
-        {error && (
-          <p data-testid="error-message" className="text-red-600 text-sm text-center">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          data-testid="login-button"
-          className="bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700"
-        >
-          Logga in
-        </button>
-      </form>
-    </main>
+    <PinLoginCard
+      eyebrow="System"
+      title="Superadmin"
+      description="Logga in som superadmin för att hantera tävlingar"
+      inputPlaceholder="PIN-kod"
+      pin={pin}
+      onPinChange={setPin}
+      onSubmit={handleSubmit}
+      inputTestId="pin-input"
+      errorTestId="error-message"
+      buttonTestId="login-button"
+      error={error}
+      loading={loading}
+      disabled={loading || pin.length === 0}
+    />
   )
 }
