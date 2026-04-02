@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getCompetitionAuth } from '@/lib/auth'
+import { getCompetitionDateRange } from '@/lib/competition-dates'
 import {
   getAttendanceNotOpenMessage,
   getCompetitionAttendanceOpensAt,
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
   if (auth.role === 'player') {
     const { data: competition, error: competitionError } = await supabase
       .from('competitions')
-      .select('start_date')
+      .select('id')
       .eq('id', auth.competitionId)
       .is('deleted_at', null)
       .single()
@@ -63,8 +64,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Tävlingen hittades inte' }, { status: 404 })
     }
 
+    const competitionDateRange = await getCompetitionDateRange(supabase, competition.id)
+    if (!competitionDateRange.firstClassStart) {
+      return NextResponse.json(
+        {
+          error: 'Tävlingsschemat är inte importerat än',
+          code: 'competition_schedule_missing',
+        },
+        { status: 409 }
+      )
+    }
+
     const now = new Date()
-    const attendanceOpensAt = getCompetitionAttendanceOpensAt(competition.start_date)
+    const attendanceOpensAt = getCompetitionAttendanceOpensAt(competitionDateRange.firstClassStart)
     if (now.getTime() < attendanceOpensAt.getTime()) {
       return NextResponse.json(
         {

@@ -1,5 +1,6 @@
 import { expect, test, Page } from '@playwright/test'
 import { config } from 'dotenv'
+import { signCookie } from '@/lib/cookie-signing'
 import {
   cleanTestCompetitions,
   seedSuperadminCompetition,
@@ -9,13 +10,27 @@ import { buildCompetitionImportText } from '../../helpers/competition-import'
 
 config({ path: '.env.test.local' })
 
-const SUPERADMIN_PIN = '0000'
+const TEST_PREFIX = 'test-sm-import-'
 
 async function loginAsSuperadmin(page: Page) {
-  await page.goto('/super')
-  await page.getByTestId('pin-input').fill(SUPERADMIN_PIN)
-  await page.getByTestId('login-button').click()
-  await page.waitForURL('/super/competitions')
+  const secret = process.env.COOKIE_SECRET
+  if (!secret) {
+    throw new Error('COOKIE_SECRET is required for superadmin E2E tests')
+  }
+
+  const signedRole = await signCookie('superadmin', secret)
+
+  await page.context().addCookies([
+    {
+      name: 'role',
+      value: signedRole,
+      url: 'http://127.0.0.1:3001',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ])
+
+  await page.goto('/super/competitions')
 }
 
 async function openImportPage(page: Page, slug: string) {
@@ -34,11 +49,11 @@ async function selectClassSession(page: Page, index: number, sessionNumber: numb
 
 test.describe('Competition import', () => {
   test.beforeEach(async () => {
-    await cleanTestCompetitions(testClient(), 'test-sm-%')
+    await cleanTestCompetitions(testClient(), `${TEST_PREFIX}%`)
   })
 
   test('unauthenticated user is redirected away from the import page', async ({ page }) => {
-    const { competitionId } = await seedSuperadminCompetition(testClient(), 'test-sm-auth-import')
+    const { competitionId } = await seedSuperadminCompetition(testClient(), `${TEST_PREFIX}auth`)
 
     await page.goto(`/super/competitions/${competitionId}/import`)
 
@@ -48,7 +63,7 @@ test.describe('Competition import', () => {
 
   test('initial import creates sessions, classes, players, and registrations', async ({ page }) => {
     const supabase = testClient()
-    const slug = 'test-sm-initial-import'
+    const slug = `${TEST_PREFIX}initial`
     const { competitionId } = await seedSuperadminCompetition(supabase, slug)
 
     const sourceText = buildCompetitionImportText({
@@ -146,7 +161,7 @@ test.describe('Competition import', () => {
 
   test('suggested pass can be overridden and is preserved on re-import preview', async ({ page }) => {
     const supabase = testClient()
-    const slug = 'test-sm-session-override'
+    const slug = `${TEST_PREFIX}session-override`
     const { competitionId } = await seedSuperadminCompetition(supabase, slug)
 
     const sourceText = buildCompetitionImportText({
@@ -189,7 +204,7 @@ test.describe('Competition import', () => {
 
   test('re-import adds new registrations and removes missing registrations', async ({ page }) => {
     const supabase = testClient()
-    const slug = 'test-sm-sync-import'
+    const slug = `${TEST_PREFIX}sync`
     const { competitionId } = await seedSuperadminCompetition(supabase, slug)
 
     const initialSource = buildCompetitionImportText({
@@ -250,7 +265,7 @@ test.describe('Competition import', () => {
 
   test('re-import preview shows removals that already have attendance', async ({ page }) => {
     const supabase = testClient()
-    const slug = 'test-sm-preview-warning'
+    const slug = `${TEST_PREFIX}preview-warning`
     const { competitionId } = await seedSuperadminCompetition(supabase, slug)
 
     const initialSource = buildCompetitionImportText({
@@ -325,7 +340,7 @@ test.describe('Competition import', () => {
 
   test('apply is blocked until destructive removals are confirmed', async ({ page }) => {
     const supabase = testClient()
-    const slug = 'test-sm-apply-warning'
+    const slug = `${TEST_PREFIX}apply-warning`
     const { competitionId } = await seedSuperadminCompetition(supabase, slug)
 
     const initialSource = buildCompetitionImportText({
@@ -408,7 +423,7 @@ test.describe('Competition import', () => {
   })
 
   test('page-break boilerplate inside a class block is ignored', async ({ page }) => {
-    const slug = 'test-sm-pagebreak-import'
+    const slug = `${TEST_PREFIX}pagebreak`
     await seedSuperadminCompetition(testClient(), slug)
 
     const sourceText = buildCompetitionImportText({
@@ -439,7 +454,7 @@ test.describe('Competition import', () => {
   })
 
   test('import fails when the declared class count does not match parsed registrations', async ({ page }) => {
-    const slug = 'test-sm-count-mismatch'
+    const slug = `${TEST_PREFIX}count-mismatch`
     await seedSuperadminCompetition(testClient(), slug)
 
     const sourceText = buildCompetitionImportText({

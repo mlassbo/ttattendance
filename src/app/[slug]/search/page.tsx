@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { verifyCompetitionCookie } from '@/lib/auth'
+import { getCompetitionDateRange } from '@/lib/competition-dates'
 import { createServerClient } from '@/lib/supabase'
 import SearchView from './SearchView'
 
@@ -23,7 +24,7 @@ export default async function SearchPage({
   const supabase = createServerClient()
   const { data: competition } = await supabase
     .from('competitions')
-    .select('name, start_date')
+    .select('id, name')
     .eq('slug', slug)
     .is('deleted_at', null)
     .single()
@@ -32,10 +33,12 @@ export default async function SearchPage({
     redirect(`/${slug}/player`)
   }
 
+  const competitionDateRange = await getCompetitionDateRange(supabase, competition.id)
+
   return (
     <SearchView
       competitionName={competition.name}
-      competitionStartDate={competition.start_date}
+      competitionFirstClassStart={competitionDateRange.firstClassStart}
     />
   )
 }

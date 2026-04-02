@@ -46,11 +46,11 @@ interface PlayerData {
 export default function ClassesView({
   slug,
   playerId,
-  competitionStartDate,
+  competitionFirstClassStart,
 }: {
   slug: string
   playerId: string
-  competitionStartDate: string
+  competitionFirstClassStart: string | null
 }) {
   const router = useRouter()
   const [data, setData] = useState<PlayerData | null>(null)
@@ -126,10 +126,12 @@ export default function ClassesView({
         setUpdatedAt(new Date())
       } else if (res.status === 409) {
         const message =
-          payload?.code === 'attendance_not_open'
-            ? getAttendanceNotOpenMessage(
-                payload.opensAt ?? getCompetitionAttendanceOpensAt(competitionStartDate)
-              )
+          payload?.code === 'competition_schedule_missing'
+            ? 'Tävlingsschemat är inte importerat än.'
+            : payload?.code === 'attendance_not_open' && competitionFirstClassStart
+              ? getAttendanceNotOpenMessage(
+                  payload.opensAt ?? getCompetitionAttendanceOpensAt(competitionFirstClassStart)
+                )
             : payload?.error ?? 'Anmälningstiden har gått ut'
 
         setActionError(message)
@@ -164,8 +166,13 @@ export default function ClassesView({
     )
   }
 
-  const attendanceOpensAt = getCompetitionAttendanceOpensAt(competitionStartDate)
-  const attendanceIsOpen = isCompetitionAttendanceOpen(competitionStartDate, now)
+  const competitionScheduleMissingMessage = 'Tävlingsschemat är inte importerat än.'
+  const attendanceOpensAt = competitionFirstClassStart
+    ? getCompetitionAttendanceOpensAt(competitionFirstClassStart)
+    : null
+  const attendanceIsOpen = competitionFirstClassStart
+    ? isCompetitionAttendanceOpen(competitionFirstClassStart, now)
+    : false
 
   // Group registrations by session.
   const sessionGroups = new Map<string, { session: Session; registrations: Registration[] }>()
@@ -200,11 +207,15 @@ export default function ClassesView({
           </div>
         </section>
 
-        {!attendanceIsOpen && (
+        {!competitionFirstClassStart ? (
+          <p data-testid="attendance-not-open-banner" className="app-banner-warning">
+            {competitionScheduleMissingMessage}
+          </p>
+        ) : !attendanceIsOpen && attendanceOpensAt ? (
           <p data-testid="attendance-not-open-banner" className="app-banner-warning">
             {getAttendanceNotOpenMessage(attendanceOpensAt)}
           </p>
-        )}
+        ) : null}
 
         {actionError && (
           <p data-testid="deadline-error" className="app-banner-error">
@@ -224,11 +235,13 @@ export default function ClassesView({
             </h2>
             <div className="space-y-3">
               {registrations.map(reg => {
-                const availability = getPlayerAttendanceAvailability(
-                  competitionStartDate,
-                  reg.class.attendanceDeadline,
-                  now
-                )
+                const availability = competitionFirstClassStart
+                  ? getPlayerAttendanceAvailability(
+                      competitionFirstClassStart,
+                      reg.class.attendanceDeadline,
+                      now,
+                    )
+                  : null
                 const isSubmitting = submitting === reg.registrationId
                 const currentStatus = reg.attendance?.status ?? null
 
@@ -262,7 +275,14 @@ export default function ClassesView({
                       )}
                     </div>
 
-                    {availability.state === 'not_open' ? (
+                    {!availability ? (
+                      <p
+                        data-testid={`attendance-not-open-${reg.registrationId}`}
+                        className="text-xs font-medium text-amber-800"
+                      >
+                        {competitionScheduleMissingMessage}
+                      </p>
+                    ) : availability.state === 'not_open' ? (
                       <p
                         data-testid={`attendance-not-open-${reg.registrationId}`}
                         className="text-xs font-medium text-amber-800"

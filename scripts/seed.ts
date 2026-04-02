@@ -21,16 +21,14 @@ const DEFAULT_SLUG = 'dev-2025'
 const DEFAULT_NAME = 'Utvecklingstävling 2025'
 const DEFAULT_PLAYER_PIN = '1234'
 const DEFAULT_ADMIN_PIN = '5678'
-const DEFAULT_START_DATE = '2025-09-13'
-const DEFAULT_END_DATE = '2025-09-14'
+const DEFAULT_SCHEDULE_DATE = '2025-09-13'
 
 interface SeedOptions {
   slug: string
   name: string
   playerPin: string
   adminPin: string
-  startDate: string
-  endDate: string
+  scheduleDate: string
 }
 
 function parseOptions(argv: string[]): SeedOptions {
@@ -39,8 +37,7 @@ function parseOptions(argv: string[]): SeedOptions {
     name: DEFAULT_NAME,
     playerPin: DEFAULT_PLAYER_PIN,
     adminPin: DEFAULT_ADMIN_PIN,
-    startDate: DEFAULT_START_DATE,
-    endDate: DEFAULT_END_DATE,
+    scheduleDate: DEFAULT_SCHEDULE_DATE,
   }
 
   for (let index = 0; index < argv.length; index++) {
@@ -68,14 +65,9 @@ function parseOptions(argv: string[]): SeedOptions {
         options.adminPin = value
         index++
         break
-      case '--start-date':
-        if (!value) throw new Error('Missing value for --start-date')
-        options.startDate = value
-        index++
-        break
-      case '--end-date':
-        if (!value) throw new Error('Missing value for --end-date')
-        options.endDate = value
+      case '--schedule-date':
+        if (!value) throw new Error('Missing value for --schedule-date')
+        options.scheduleDate = value
         index++
         break
       default:
@@ -92,7 +84,7 @@ function parseOptions(argv: string[]): SeedOptions {
 
 async function main() {
   const options = parseOptions(process.argv.slice(2))
-  const { slug, name, playerPin, adminPin, startDate, endDate } = options
+  const { slug, name, playerPin, adminPin, scheduleDate } = options
 
   console.log(`Seeding competition "${slug}" (player PIN: ${playerPin}, admin PIN: ${adminPin})`)
 
@@ -117,8 +109,6 @@ async function main() {
       .from('competitions')
       .update({
         name,
-        start_date: startDate,
-        end_date: endDate,
         player_pin_hash: playerPinHash,
         admin_pin_hash: adminPinHash,
         deleted_at: null,
@@ -135,8 +125,6 @@ async function main() {
       .insert({
         name,
         slug,
-        start_date: startDate,
-        end_date: endDate,
         player_pin_hash: playerPinHash,
         admin_pin_hash: adminPinHash,
       })
@@ -161,8 +149,8 @@ async function main() {
   const { data: sessions, error: sessErr } = await supabase
     .from('sessions')
     .insert([
-      { competition_id: competitionId, name: 'Lördag förmiddag', date: '2025-09-13', session_order: 1 },
-      { competition_id: competitionId, name: 'Lördag eftermiddag', date: '2025-09-13', session_order: 2 },
+      { competition_id: competitionId, name: 'Lördag förmiddag', date: scheduleDate, session_order: 1 },
+      { competition_id: competitionId, name: 'Lördag eftermiddag', date: scheduleDate, session_order: 2 },
     ])
     .select('id, name')
 
@@ -176,7 +164,7 @@ async function main() {
 
   // ── Classes ───────────────────────────────────────────────────────────────
   // Deadlines far in the future so local testing is never blocked.
-  const d = '2099-09-13'
+  const deadlineDate = '2099-09-13'
 
   const { data: classes, error: classErr } = await supabase
     .from('classes')
@@ -184,26 +172,26 @@ async function main() {
       {
         session_id: morning.id,
         name: 'Herrar A-klass',
-        start_time: `${d}T09:00:00+02:00`,
-        attendance_deadline: `${d}T08:15:00+02:00`,
+        start_time: `${scheduleDate}T09:00:00+02:00`,
+        attendance_deadline: `${deadlineDate}T08:15:00+02:00`,
       },
       {
         session_id: morning.id,
         name: 'Damer A-klass',
-        start_time: `${d}T09:30:00+02:00`,
-        attendance_deadline: `${d}T08:45:00+02:00`,
+        start_time: `${scheduleDate}T09:30:00+02:00`,
+        attendance_deadline: `${deadlineDate}T08:45:00+02:00`,
       },
       {
         session_id: afternoon.id,
         name: 'Herrar B-klass',
-        start_time: `${d}T13:00:00+02:00`,
-        attendance_deadline: `${d}T12:15:00+02:00`,
+        start_time: `${scheduleDate}T13:00:00+02:00`,
+        attendance_deadline: `${deadlineDate}T12:15:00+02:00`,
       },
       {
         session_id: afternoon.id,
         name: 'Damer B-klass',
-        start_time: `${d}T13:30:00+02:00`,
-        attendance_deadline: `${d}T12:45:00+02:00`,
+        start_time: `${scheduleDate}T13:30:00+02:00`,
+        attendance_deadline: `${deadlineDate}T12:45:00+02:00`,
       },
     ])
     .select('id, name')

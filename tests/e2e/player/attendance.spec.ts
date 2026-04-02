@@ -229,8 +229,8 @@ test.describe('Player attendance flow', () => {
     await cleanTestCompetitions(supabase, 'test-player-%')
     const lockedSeeded = await seedPlayerTestCompetition(supabase, lockedSlug, PLAYER_PIN, {
       competitionName: 'Låst Test Tävling',
-      competitionStartDate: '2099-09-13',
-      competitionEndDate: '2099-09-13',
+      scheduleDate: '2099-09-13',
+      futureDeadlineDate: '2099-09-13',
     })
 
     await page.goto(`/${lockedSlug}/player`)

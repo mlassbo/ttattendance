@@ -48,10 +48,10 @@ type SearchMode = 'player' | 'club'
 
 export default function SearchView({
   competitionName,
-  competitionStartDate,
+  competitionFirstClassStart,
 }: {
   competitionName: string
-  competitionStartDate: string
+  competitionFirstClassStart: string | null
 }) {
   const [searchMode, setSearchMode] = useState<SearchMode>('player')
   const [query, setQuery] = useState('')
@@ -71,8 +71,13 @@ export default function SearchView({
     return () => clearInterval(timer)
   }, [])
 
-  const attendanceOpensAt = getCompetitionAttendanceOpensAt(competitionStartDate)
-  const attendanceIsOpen = isCompetitionAttendanceOpen(competitionStartDate, now)
+  const competitionScheduleMissingMessage = 'Tävlingsschemat är inte importerat än.'
+  const attendanceOpensAt = competitionFirstClassStart
+    ? getCompetitionAttendanceOpensAt(competitionFirstClassStart)
+    : null
+  const attendanceIsOpen = competitionFirstClassStart
+    ? isCompetitionAttendanceOpen(competitionFirstClassStart, now)
+    : false
 
   useEffect(() => {
     if (query.length < 2) {
@@ -170,8 +175,10 @@ export default function SearchView({
       }
 
       const message =
-        payload?.code === 'attendance_not_open'
-          ? getAttendanceNotOpenMessage(payload.opensAt ?? attendanceOpensAt)
+        payload?.code === 'competition_schedule_missing'
+          ? competitionScheduleMissingMessage
+          : payload?.code === 'attendance_not_open' && attendanceOpensAt
+            ? getAttendanceNotOpenMessage(payload.opensAt ?? attendanceOpensAt)
           : payload?.error ?? 'Något gick fel, försök igen'
 
       setPlayerMessages(prev => ({ ...prev, [playerId]: message }))
@@ -245,14 +252,21 @@ export default function SearchView({
           />
         </section>
 
-        {!attendanceIsOpen && (
+        {!competitionFirstClassStart ? (
+          <p
+            data-testid="attendance-not-open-banner"
+            className="app-banner-warning"
+          >
+            {competitionScheduleMissingMessage}
+          </p>
+        ) : !attendanceIsOpen && attendanceOpensAt ? (
           <p
             data-testid="attendance-not-open-banner"
             className="app-banner-warning"
           >
             {getAttendanceNotOpenMessage(attendanceOpensAt)}
           </p>
-        )}
+        ) : null}
 
         {loading && <p className="px-1 text-sm text-muted">Söker...</p>}
 
@@ -319,11 +333,13 @@ export default function SearchView({
                       </h3>
                       <div className="space-y-3">
                         {group.registrations.map(registration => {
-                          const availability = getPlayerAttendanceAvailability(
-                            competitionStartDate,
-                            registration.class.attendanceDeadline,
-                            now
-                          )
+                          const availability = competitionFirstClassStart
+                            ? getPlayerAttendanceAvailability(
+                                competitionFirstClassStart,
+                                registration.class.attendanceDeadline,
+                                now,
+                              )
+                            : null
                           const currentStatus = registration.attendance?.status ?? null
                           const isSubmitting = submitting === registration.registrationId
 
@@ -358,7 +374,14 @@ export default function SearchView({
                                 )}
                               </div>
 
-                              {availability.state === 'not_open' ? (
+                              {!availability ? (
+                                <p
+                                  data-testid={`attendance-not-open-${registration.registrationId}`}
+                                  className="text-xs font-medium text-amber-800"
+                                >
+                                  {competitionScheduleMissingMessage}
+                                </p>
+                              ) : availability.state === 'not_open' ? (
                                 <p
                                   data-testid={`attendance-not-open-${registration.registrationId}`}
                                   className="text-xs font-medium text-amber-800"

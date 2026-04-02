@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { verifyCompetitionCookie } from '@/lib/auth'
+import { getCompetitionDateRange } from '@/lib/competition-dates'
 import { createServerClient } from '@/lib/supabase'
 import ClassesView from './ClassesView'
 
@@ -23,7 +24,7 @@ export default async function PlayerClassesPage({
   const supabase = createServerClient()
   const { data: competition } = await supabase
     .from('competitions')
-    .select('start_date')
+    .select('id')
     .eq('id', auth.competitionId)
     .is('deleted_at', null)
     .single()
@@ -32,11 +33,13 @@ export default async function PlayerClassesPage({
     redirect(`/${slug}/player`)
   }
 
+  const competitionDateRange = await getCompetitionDateRange(supabase, competition.id)
+
   return (
     <ClassesView
       slug={slug}
       playerId={playerId}
-      competitionStartDate={competition.start_date}
+      competitionFirstClassStart={competitionDateRange.firstClassStart}
     />
   )
 }

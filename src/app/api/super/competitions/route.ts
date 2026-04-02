@@ -13,7 +13,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('competitions')
-    .select('id, name, slug, start_date, end_date, created_at, player_pin_ciphertext, admin_pin_ciphertext')
+    .select('id, name, slug, created_at, player_pin_ciphertext, admin_pin_ciphertext')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -46,8 +46,6 @@ export async function GET() {
       id: competition.id,
       name: competition.name,
       slug: competition.slug,
-      start_date: competition.start_date,
-      end_date: competition.end_date,
       importedRegistrationCount: importedRegistrationCountByCompetitionId.get(competition.id) ?? 0,
       playerPin: decryptStoredPin(competition.player_pin_ciphertext as string | null, secret),
       adminPin: decryptStoredPin(competition.admin_pin_ciphertext as string | null, secret),
@@ -57,22 +55,22 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { name, slug, startDate, endDate, playerPin, adminPin } = body
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  const slug = typeof body.slug === 'string' ? body.slug.trim() : ''
+  const playerPin = typeof body.playerPin === 'string' ? body.playerPin.trim() : ''
+  const adminPin = typeof body.adminPin === 'string' ? body.adminPin.trim() : ''
+
+  if (!name || !playerPin || !adminPin) {
+    return NextResponse.json({ error: 'Alla fält måste fyllas i' }, { status: 400 })
+  }
 
   if (!/^[a-z][a-z0-9-]{2,29}$/.test(slug)) {
     return NextResponse.json({ error: 'Ogiltigt slug-format' }, { status: 400 })
   }
 
-  if (new Date(startDate) > new Date(endDate)) {
-    return NextResponse.json(
-      { error: 'Startdatum måste vara före slutdatum' },
-      { status: 400 }
-    )
-  }
-
   const [playerPinHash, adminPinHash] = await Promise.all([
-    bcrypt.hash(String(playerPin), 10),
-    bcrypt.hash(String(adminPin), 10),
+    bcrypt.hash(playerPin, 10),
+    bcrypt.hash(adminPin, 10),
   ])
 
   const secret = process.env.COOKIE_SECRET
@@ -87,12 +85,10 @@ export async function POST(req: NextRequest) {
     .insert({
       name,
       slug,
-      start_date: startDate,
-      end_date: endDate,
       player_pin_hash: playerPinHash,
       admin_pin_hash: adminPinHash,
-      player_pin_ciphertext: encryptStoredPin(String(playerPin), secret),
-      admin_pin_ciphertext: encryptStoredPin(String(adminPin), secret),
+      player_pin_ciphertext: encryptStoredPin(playerPin, secret),
+      admin_pin_ciphertext: encryptStoredPin(adminPin, secret),
     })
     .select('id, name, slug')
     .single()

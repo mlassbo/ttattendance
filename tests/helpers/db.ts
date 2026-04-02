@@ -49,15 +49,11 @@ export async function seedSuperadminCompetition(
     name?: string
     playerPin?: string
     adminPin?: string
-    startDate?: string
-    endDate?: string
   },
 ): Promise<{ competitionId: string }> {
   const name = options?.name ?? 'Test Importtävling'
   const playerPin = options?.playerPin ?? '1111'
   const adminPin = options?.adminPin ?? '2222'
-  const startDate = options?.startDate ?? '2025-05-03'
-  const endDate = options?.endDate ?? '2025-05-04'
 
   const [playerPinHash, adminPinHash] = await Promise.all([
     bcrypt.hash(playerPin, 4),
@@ -70,8 +66,6 @@ export async function seedSuperadminCompetition(
     .insert({
       name,
       slug,
-      start_date: startDate,
-      end_date: endDate,
       player_pin_hash: playerPinHash,
       admin_pin_hash: adminPinHash,
       player_pin_ciphertext: encryptStoredPin(playerPin, secret),
@@ -134,8 +128,6 @@ export async function seedAdminTestCompetition(
     .insert({
       name: 'Test Admintävling',
       slug,
-      start_date: '2025-09-13',
-      end_date: '2025-09-13',
       player_pin_hash: playerPinHash,
       admin_pin_hash: adminPinHash,
     })
@@ -157,7 +149,7 @@ export async function seedAdminTestCompetition(
       {
         session_id: sessionId,
         name: 'Herrar A-klass',
-        start_time:          '2099-09-13T09:00:00+02:00',
+        start_time:          '2025-09-13T09:00:00+02:00',
         attendance_deadline: '2099-09-13T08:15:00+02:00',
       },
       {
@@ -241,13 +233,13 @@ export async function seedPlayerTestCompetition(
   playerPin: string,
   options?: {
     competitionName?: string
-    competitionStartDate?: string
-    competitionEndDate?: string
+    scheduleDate?: string
+    futureDeadlineDate?: string
   }
 ): Promise<SeededCompetition> {
   const competitionName = options?.competitionName ?? 'Test Tävling'
-  const competitionStartDate = options?.competitionStartDate ?? '2025-09-13'
-  const competitionEndDate = options?.competitionEndDate ?? competitionStartDate
+  const scheduleDate = options?.scheduleDate ?? '2025-09-13'
+  const futureDeadlineDate = options?.futureDeadlineDate ?? '2099-09-13'
 
   const [playerPinHash, adminPinHash] = await Promise.all([
     bcrypt.hash(playerPin, 4),
@@ -259,8 +251,6 @@ export async function seedPlayerTestCompetition(
     .insert({
       name: competitionName,
       slug,
-      start_date: competitionStartDate,
-      end_date: competitionEndDate,
       player_pin_hash: playerPinHash,
       admin_pin_hash: adminPinHash,
     })
@@ -271,7 +261,7 @@ export async function seedPlayerTestCompetition(
 
   const { data: sessions } = await supabase
     .from('sessions')
-    .insert({ competition_id: competitionId, name: 'Lördag förmiddag', date: '2025-09-13', session_order: 1 })
+    .insert({ competition_id: competitionId, name: 'Lördag förmiddag', date: scheduleDate, session_order: 1 })
     .select('id')
 
   const sessionId = sessions![0].id
@@ -282,13 +272,13 @@ export async function seedPlayerTestCompetition(
       {
         session_id: sessionId,
         name: 'Herrar A-klass',
-        start_time:           '2099-09-13T09:00:00+02:00',
-        attendance_deadline:  '2099-09-13T08:15:00+02:00',
+        start_time:           `${scheduleDate}T09:00:00+02:00`,
+        attendance_deadline:  `${futureDeadlineDate}T08:15:00+02:00`,
       },
       {
         session_id: sessionId,
         name: 'Utgången klass',
-        start_time:           '2020-09-13T09:00:00+02:00',
+        start_time:           `${scheduleDate}T11:00:00+02:00`,
         attendance_deadline:  '2020-09-13T08:15:00+02:00',
       },
     ])

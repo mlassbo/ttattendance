@@ -1,38 +1,47 @@
 import LandingEntryCard from '@/components/LandingEntryCard'
+import {
+  formatCompetitionDateRange,
+  getCompetitionDateRanges,
+} from '@/lib/competition-dates'
 import { createServerClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
-
-function formatCompetitionDateRange(startDate: string, endDate: string) {
-  const start = new Date(startDate)
-  const end = new Date(endDate)
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return 'Datum saknas'
-  }
-
-  const formatter = new Intl.DateTimeFormat('sv-SE', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-
-  if (start.toISOString().slice(0, 10) === end.toISOString().slice(0, 10)) {
-    return formatter.format(start)
-  }
-
-  return `${formatter.format(start)} - ${formatter.format(end)}`
-}
 
 export default async function HomePage() {
   const supabase = createServerClient()
   const { data } = await supabase
     .from('competitions')
-    .select('name, slug, start_date, end_date')
+    .select('id, name, slug')
     .is('deleted_at', null)
-    .order('start_date', { ascending: true })
 
-  const competitions = data ?? []
+  const competitionRows = data ?? []
+  const dateRangesByCompetitionId = await getCompetitionDateRanges(
+    supabase,
+    competitionRows.map(competition => competition.id),
+  )
+
+  const competitions = competitionRows
+    .map(competition => ({
+      ...competition,
+      ...(dateRangesByCompetitionId.get(competition.id) ?? {
+        firstClassStart: null,
+        lastClassStart: null,
+      }),
+    }))
+    .sort((left, right) => {
+      const leftStart = left.firstClassStart
+        ? new Date(left.firstClassStart).getTime()
+        : Number.MAX_SAFE_INTEGER
+      const rightStart = right.firstClassStart
+        ? new Date(right.firstClassStart).getTime()
+        : Number.MAX_SAFE_INTEGER
+
+      if (leftStart !== rightStart) {
+        return leftStart - rightStart
+      }
+
+      return left.name.localeCompare(right.name, 'sv')
+    })
 
   return (
     <main className="app-shell">
@@ -66,7 +75,10 @@ export default async function HomePage() {
             {competitions.map(competition => (
               <LandingEntryCard
                 key={competition.slug}
-                eyebrow={formatCompetitionDateRange(competition.start_date, competition.end_date)}
+                eyebrow={formatCompetitionDateRange(
+                  competition.firstClassStart,
+                  competition.lastClassStart,
+                )}
                 title={competition.name}
                 description="Välj om du ska rapportera som spelare eller arbeta i sekretariatet."
                 testId={`competition-entry-card-${competition.slug}`}
