@@ -3,6 +3,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
+import { encryptStoredPin } from '@/lib/pin-encryption'
 
 export function testClient(): SupabaseClient {
   return createClient(
@@ -38,6 +39,51 @@ export interface SeededPlayer {
 export interface SeededCompetition {
   competitionId: string
   player: SeededPlayer
+}
+
+export async function seedSuperadminCompetition(
+  supabase: SupabaseClient,
+  slug: string,
+  options?: {
+    name?: string
+    playerPin?: string
+    adminPin?: string
+    startDate?: string
+    endDate?: string
+  },
+): Promise<{ competitionId: string }> {
+  const name = options?.name ?? 'Test Importtävling'
+  const playerPin = options?.playerPin ?? '1111'
+  const adminPin = options?.adminPin ?? '2222'
+  const startDate = options?.startDate ?? '2025-05-03'
+  const endDate = options?.endDate ?? '2025-05-04'
+
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash(playerPin, 4),
+    bcrypt.hash(adminPin, 4),
+  ])
+  const secret = process.env.COOKIE_SECRET!
+
+  const { data: competition, error } = await supabase
+    .from('competitions')
+    .insert({
+      name,
+      slug,
+      start_date: startDate,
+      end_date: endDate,
+      player_pin_hash: playerPinHash,
+      admin_pin_hash: adminPinHash,
+      player_pin_ciphertext: encryptStoredPin(playerPin, secret),
+      admin_pin_ciphertext: encryptStoredPin(adminPin, secret),
+    })
+    .select('id')
+    .single()
+
+  if (error || !competition) {
+    throw new Error(`Failed to seed superadmin competition: ${error?.message ?? 'Unknown error'}`)
+  }
+
+  return { competitionId: competition.id }
 }
 
 /**

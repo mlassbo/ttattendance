@@ -32,4 +32,8 @@ test('super admin can create a competition and see it in the list', async ({ pag
   // Form should close and the new competition should appear in the list
   await expect(page.getByTestId('competition-list')).toContainText('Test SM 2025')
   await expect(page.getByTestId('competition-list')).toContainText('test-sm-2025')
+  await expect(page.getByTestId('import-status-test-sm-2025')).toContainText('0 importerade anmälningar')
+  await expect(page.getByTestId('player-pin-test-sm-2025')).toContainText('1234')
+  await expect(page.getByTestId('admin-pin-test-sm-2025')).toContainText('5678')
+  await expect(page.getByTestId('import-action-test-sm-2025')).toContainText('Importera startlista')
 })
