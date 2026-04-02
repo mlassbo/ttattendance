@@ -1,8 +1,9 @@
 // Seed script — populates local dev data for manual testing.
 // Run with: npm run db:seed
+// Example: npm run db:seed -- --slug manual-2026 --name "Manuell testtävling"
 //
-// Creates and seeds a "dev-2025" competition (player PIN: 1234, admin PIN: 5678).
-// Safe to re-run: clears and rebuilds data each time.
+// Creates and seeds a non-test competition (default: "dev-2025").
+// Safe to re-run: clears and rebuilds data for the chosen slug each time.
 // Does NOT touch test-* competitions (those are owned by Playwright tests).
 
 import { createClient } from '@supabase/supabase-js'
@@ -16,24 +17,96 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const DEV_SLUG = 'dev-2025'
-const PLAYER_PIN = '1234'
-const ADMIN_PIN  = '5678'
+const DEFAULT_SLUG = 'dev-2025'
+const DEFAULT_NAME = 'Utvecklingstävling 2025'
+const DEFAULT_PLAYER_PIN = '1234'
+const DEFAULT_ADMIN_PIN = '5678'
+const DEFAULT_START_DATE = '2025-09-13'
+const DEFAULT_END_DATE = '2025-09-14'
+
+interface SeedOptions {
+  slug: string
+  name: string
+  playerPin: string
+  adminPin: string
+  startDate: string
+  endDate: string
+}
+
+function parseOptions(argv: string[]): SeedOptions {
+  const options: SeedOptions = {
+    slug: DEFAULT_SLUG,
+    name: DEFAULT_NAME,
+    playerPin: DEFAULT_PLAYER_PIN,
+    adminPin: DEFAULT_ADMIN_PIN,
+    startDate: DEFAULT_START_DATE,
+    endDate: DEFAULT_END_DATE,
+  }
+
+  for (let index = 0; index < argv.length; index++) {
+    const argument = argv[index]
+    const value = argv[index + 1]
+
+    switch (argument) {
+      case '--slug':
+        if (!value) throw new Error('Missing value for --slug')
+        options.slug = value
+        index++
+        break
+      case '--name':
+        if (!value) throw new Error('Missing value for --name')
+        options.name = value
+        index++
+        break
+      case '--player-pin':
+        if (!value) throw new Error('Missing value for --player-pin')
+        options.playerPin = value
+        index++
+        break
+      case '--admin-pin':
+        if (!value) throw new Error('Missing value for --admin-pin')
+        options.adminPin = value
+        index++
+        break
+      case '--start-date':
+        if (!value) throw new Error('Missing value for --start-date')
+        options.startDate = value
+        index++
+        break
+      case '--end-date':
+        if (!value) throw new Error('Missing value for --end-date')
+        options.endDate = value
+        index++
+        break
+      default:
+        throw new Error(`Unknown argument: ${argument}`)
+    }
+  }
+
+  if (options.slug.startsWith('test-')) {
+    throw new Error('Manual seed slugs must not start with "test-" because Playwright cleans those up.')
+  }
+
+  return options
+}
 
 async function main() {
-  console.log(`Seeding competition "${DEV_SLUG}" (player PIN: ${PLAYER_PIN}, admin PIN: ${ADMIN_PIN})`)
+  const options = parseOptions(process.argv.slice(2))
+  const { slug, name, playerPin, adminPin, startDate, endDate } = options
+
+  console.log(`Seeding competition "${slug}" (player PIN: ${playerPin}, admin PIN: ${adminPin})`)
 
   // ── Upsert competition ────────────────────────────────────────────────────
   const [playerPinHash, adminPinHash] = await Promise.all([
-    bcrypt.hash(PLAYER_PIN, 10),
-    bcrypt.hash(ADMIN_PIN, 10),
+    bcrypt.hash(playerPin, 10),
+    bcrypt.hash(adminPin, 10),
   ])
 
   // Check for existing (possibly soft-deleted) competition.
   const { data: existing } = await supabase
     .from('competitions')
     .select('id')
-    .eq('slug', DEV_SLUG)
+    .eq('slug', slug)
     .single()
 
   let competitionId: string
@@ -43,7 +116,9 @@ async function main() {
     const { error: updateError } = await supabase
       .from('competitions')
       .update({
-        name: 'Utvecklingstävling 2025',
+        name,
+        start_date: startDate,
+        end_date: endDate,
         player_pin_hash: playerPinHash,
         admin_pin_hash: adminPinHash,
         deleted_at: null,
@@ -58,10 +133,10 @@ async function main() {
     const { data: created, error } = await supabase
       .from('competitions')
       .insert({
-        name: 'Utvecklingstävling 2025',
-        slug: DEV_SLUG,
-        start_date: '2025-09-13',
-        end_date: '2025-09-14',
+        name,
+        slug,
+        start_date: startDate,
+        end_date: endDate,
         player_pin_hash: playerPinHash,
         admin_pin_hash: adminPinHash,
       })
@@ -192,9 +267,12 @@ async function main() {
   console.log(`  Registrations: 12 inserted`)
   console.log()
   console.log(`Done!`)
-  console.log(`  URL:        http://localhost:3000/${DEV_SLUG}`)
-  console.log(`  Player PIN: ${PLAYER_PIN}`)
-  console.log(`  Admin PIN:  ${ADMIN_PIN}`)
+  console.log(`  URL:        http://localhost:3000/${slug}`)
+  console.log(`  Player PIN: ${playerPin}`)
+  console.log(`  Admin PIN:  ${adminPin}`)
 }
 
-main()
+main().catch(error => {
+  console.error(error instanceof Error ? error.message : error)
+  process.exit(1)
+})

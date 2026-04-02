@@ -39,6 +39,7 @@ export interface SeededPlayer {
 export interface SeededCompetition {
   competitionId: string
   player: SeededPlayer
+  players: SeededPlayer[]
 }
 
 export async function seedSuperadminCompetition(
@@ -237,8 +238,17 @@ export async function seedAdminTestCompetition(
 export async function seedPlayerTestCompetition(
   supabase: SupabaseClient,
   slug: string,
-  playerPin: string
+  playerPin: string,
+  options?: {
+    competitionName?: string
+    competitionStartDate?: string
+    competitionEndDate?: string
+  }
 ): Promise<SeededCompetition> {
+  const competitionName = options?.competitionName ?? 'Test Tävling'
+  const competitionStartDate = options?.competitionStartDate ?? '2025-09-13'
+  const competitionEndDate = options?.competitionEndDate ?? competitionStartDate
+
   const [playerPinHash, adminPinHash] = await Promise.all([
     bcrypt.hash(playerPin, 4),
     bcrypt.hash('0000', 4),
@@ -247,10 +257,10 @@ export async function seedPlayerTestCompetition(
   const { data: comp } = await supabase
     .from('competitions')
     .insert({
-      name: 'Test Tävling',
+      name: competitionName,
       slug,
-      start_date: '2025-09-13',
-      end_date: '2025-09-13',
+      start_date: competitionStartDate,
+      end_date: competitionEndDate,
       player_pin_hash: playerPinHash,
       admin_pin_hash: adminPinHash,
     })
@@ -289,21 +299,52 @@ export async function seedPlayerTestCompetition(
 
   const { data: players } = await supabase
     .from('players')
-    .insert({ competition_id: competitionId, name: 'Anna Testsson', club: 'Test BTK' })
-    .select('id')
+    .insert([
+      { competition_id: competitionId, name: 'Anna Testsson', club: 'Test BTK' },
+      { competition_id: competitionId, name: 'Bertil Berg', club: 'Test BTK' },
+      { competition_id: competitionId, name: 'Karl Valtersson', club: 'Valbo BTK' },
+    ])
+    .select('id, name')
 
-  const playerId = players![0].id
+  const seededPlayers = players!.sort((a, b) => a.name.localeCompare(b.name, 'sv'))
+  const primaryPlayer = seededPlayers.find(player => player.name === 'Anna Testsson')!
 
   const { data: regs } = await supabase
     .from('registrations')
     .insert([
-      { player_id: playerId, class_id: futureClass.id },
-      { player_id: playerId, class_id: pastClass.id },
+      { player_id: seededPlayers[0].id, class_id: futureClass.id },
+      { player_id: seededPlayers[0].id, class_id: pastClass.id },
+      { player_id: seededPlayers[1].id, class_id: futureClass.id },
+      { player_id: seededPlayers[1].id, class_id: pastClass.id },
+      { player_id: seededPlayers[2].id, class_id: futureClass.id },
+      { player_id: seededPlayers[2].id, class_id: pastClass.id },
     ])
-    .select('id, class_id')
+    .select('id, player_id, class_id')
 
-  const futureRegId = regs!.find(r => r.class_id === futureClass.id)!.id
-  const pastRegId   = regs!.find(r => r.class_id === pastClass.id)!.id
+  const registrationsFor = (playerId: string) => {
+    const futureRegId = regs!.find(
+      reg => reg.player_id === playerId && reg.class_id === futureClass.id
+    )!.id
+    const pastRegId = regs!.find(
+      reg => reg.player_id === playerId && reg.class_id === pastClass.id
+    )!.id
 
-  return { competitionId, player: { id: playerId, name: 'Anna Testsson', futureRegId, pastRegId } }
+    return { futureRegId, pastRegId }
+  }
+
+  const playersWithRegistrations = seededPlayers.map(player => ({
+    id: player.id,
+    name: player.name,
+    ...registrationsFor(player.id),
+  }))
+
+  const primaryPlayerWithRegistrations = playersWithRegistrations.find(
+    player => player.id === primaryPlayer.id
+  )!
+
+  return {
+    competitionId,
+    player: primaryPlayerWithRegistrations,
+    players: playersWithRegistrations,
+  }
 }

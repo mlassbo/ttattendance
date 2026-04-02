@@ -23,10 +23,19 @@ export default async function SearchPage({
   const supabase = createServerClient()
   const { data: competition } = await supabase
     .from('competitions')
-    .select('name')
+    .select('name, start_date')
     .eq('slug', slug)
     .is('deleted_at', null)
     .single()
 
-  return <SearchView slug={slug} competitionName={competition?.name ?? ''} />
+  if (!competition) {
+    redirect(`/${slug}`)
+  }
+
+  return (
+    <SearchView
+      competitionName={competition.name}
+      competitionStartDate={competition.start_date}
+    />
+  )
 }

@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { verifyCompetitionCookie } from '@/lib/auth'
+import { createServerClient } from '@/lib/supabase'
 import ClassesView from './ClassesView'
 
 export default async function PlayerClassesPage({
@@ -19,5 +20,23 @@ export default async function PlayerClassesPage({
     redirect(`/${slug}`)
   }
 
-  return <ClassesView slug={slug} playerId={playerId} />
+  const supabase = createServerClient()
+  const { data: competition } = await supabase
+    .from('competitions')
+    .select('start_date')
+    .eq('id', auth.competitionId)
+    .is('deleted_at', null)
+    .single()
+
+  if (!competition) {
+    redirect(`/${slug}`)
+  }
+
+  return (
+    <ClassesView
+      slug={slug}
+      playerId={playerId}
+      competitionStartDate={competition.start_date}
+    />
+  )
 }

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getCompetitionAuth } from '@/lib/auth'
+import {
+  getAttendanceNotOpenMessage,
+  getCompetitionAttendanceOpensAt,
+} from '@/lib/attendance-window'
 
 export async function POST(req: NextRequest) {
   const auth = await getCompetitionAuth(req.cookies)
@@ -48,10 +52,34 @@ export async function POST(req: NextRequest) {
 
   // Enforce deadline for player role; admin bypasses.
   if (auth.role === 'player') {
-    const deadline = new Date(reg.classes?.attendance_deadline ?? 0)
-    if (new Date() > deadline) {
+    const { data: competition, error: competitionError } = await supabase
+      .from('competitions')
+      .select('start_date')
+      .eq('id', auth.competitionId)
+      .is('deleted_at', null)
+      .single()
+
+    if (competitionError || !competition) {
+      return NextResponse.json({ error: 'Tävlingen hittades inte' }, { status: 404 })
+    }
+
+    const now = new Date()
+    const attendanceOpensAt = getCompetitionAttendanceOpensAt(competition.start_date)
+    if (now.getTime() < attendanceOpensAt.getTime()) {
       return NextResponse.json(
-        { error: 'Anmälningstiden har gått ut' },
+        {
+          error: getAttendanceNotOpenMessage(attendanceOpensAt),
+          code: 'attendance_not_open',
+          opensAt: attendanceOpensAt.toISOString(),
+        },
+        { status: 409 }
+      )
+    }
+
+    const deadline = new Date(reg.classes?.attendance_deadline ?? 0)
+    if (now.getTime() > deadline.getTime()) {
+      return NextResponse.json(
+        { error: 'Anmälningstiden har gått ut', code: 'deadline_passed' },
         { status: 409 }
       )
     }

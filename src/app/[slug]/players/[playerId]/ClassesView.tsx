@@ -2,12 +2,21 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  formatSwedishTime,
+  getAttendanceNotOpenMessage,
+  getCompetitionAttendanceOpensAt,
+  getPlayerAttendanceAvailability,
+  isCompetitionAttendanceOpen,
+} from '@/lib/attendance-window'
+import { formatPlayerSessionLabel } from '@/lib/session-format'
 
 interface Session {
   id: string
   name: string
   date: string
   sessionOrder: number
+  daySessionOrder?: number
 }
 
 interface ClassInfo {
@@ -37,16 +46,18 @@ interface PlayerData {
 export default function ClassesView({
   slug,
   playerId,
+  competitionStartDate,
 }: {
   slug: string
   playerId: string
+  competitionStartDate: string
 }) {
   const router = useRouter()
   const [data, setData] = useState<PlayerData | null>(null)
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [submitting, setSubmitting] = useState<string | null>(null)
-  const [deadlineError, setDeadlineError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const submittingRef = useRef(false)
   // Live clock: re-evaluates deadline status every minute so buttons disappear
   // on deadline without requiring a page refresh.
@@ -82,7 +93,7 @@ export default function ClassesView({
     if (submittingRef.current) return
     submittingRef.current = true
     setSubmitting(registrationId)
-    setDeadlineError(null)
+    setActionError(null)
 
     try {
       const res = await fetch('/api/attendance', {
@@ -96,6 +107,8 @@ export default function ClassesView({
           idempotencyKey: `${registrationId}:${status}`,
         }),
       })
+
+      const payload = res.ok ? null : await res.json().catch(() => null)
 
       if (res.ok) {
         // Optimistic update — reflect the new status immediately.
@@ -112,13 +125,23 @@ export default function ClassesView({
         })
         setUpdatedAt(new Date())
       } else if (res.status === 409) {
-        setDeadlineError('Anmälningstiden har gått ut')
-        await fetchData()
+        const message =
+          payload?.code === 'attendance_not_open'
+            ? getAttendanceNotOpenMessage(
+                payload.opensAt ?? getCompetitionAttendanceOpensAt(competitionStartDate)
+              )
+            : payload?.error ?? 'Anmälningstiden har gått ut'
+
+        setActionError(message)
+
+        if (payload?.code === 'deadline_passed') {
+          await fetchData()
+        }
       } else {
-        setDeadlineError('Något gick fel, försök igen')
+        setActionError(payload?.error ?? 'Något gick fel, försök igen')
       }
     } catch {
-      setDeadlineError('Nätverksfel, försök igen')
+      setActionError('Nätverksfel, försök igen')
     } finally {
       submittingRef.current = false
       setSubmitting(null)
@@ -140,6 +163,9 @@ export default function ClassesView({
       </div>
     )
   }
+
+  const attendanceOpensAt = getCompetitionAttendanceOpensAt(competitionStartDate)
+  const attendanceIsOpen = isCompetitionAttendanceOpen(competitionStartDate, now)
 
   // Group registrations by session.
   const sessionGroups = new Map<string, { session: Session; registrations: Registration[] }>()
@@ -168,13 +194,22 @@ export default function ClassesView({
         )}
         {updatedAt && (
           <p className="text-xs text-gray-400 mb-6">
-            Senast uppdaterad: {updatedAt.toLocaleTimeString('sv-SE')}
+            Senast uppdaterad: {formatSwedishTime(updatedAt)}
           </p>
         )}
 
-        {deadlineError && (
+        {!attendanceIsOpen && (
+          <p
+            data-testid="attendance-not-open-banner"
+            className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            {getAttendanceNotOpenMessage(attendanceOpensAt)}
+          </p>
+        )}
+
+        {actionError && (
           <p data-testid="deadline-error" className="text-red-600 text-sm mb-4">
-            {deadlineError}
+            {actionError}
           </p>
         )}
 
@@ -185,12 +220,18 @@ export default function ClassesView({
         {Array.from(sessionGroups.values()).map(({ session, registrations }) => (
           <div key={session.id} className="mb-8">
             <h2 className="text-base font-semibold text-gray-600 mb-3 border-b pb-2 uppercase tracking-wide text-xs">
-              {session.name}
+              {formatPlayerSessionLabel(
+                session.date,
+                session.daySessionOrder ?? session.sessionOrder
+              )}
             </h2>
             <div className="space-y-3">
               {registrations.map(reg => {
-                const deadline = new Date(reg.class.attendanceDeadline)
-                const isPastDeadline = now > deadline
+                const availability = getPlayerAttendanceAvailability(
+                  competitionStartDate,
+                  reg.class.attendanceDeadline,
+                  now
+                )
                 const isSubmitting = submitting === reg.registrationId
                 const currentStatus = reg.attendance?.status ?? null
 
@@ -204,18 +245,10 @@ export default function ClassesView({
                       <div>
                         <p className="font-medium text-gray-900">{reg.class.name}</p>
                         <p className="text-sm text-gray-500">
-                          Start:{' '}
-                          {new Date(reg.class.startTime).toLocaleTimeString('sv-SE', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          Start: {formatSwedishTime(reg.class.startTime)}
                         </p>
                         <p className="text-xs text-gray-400">
-                          Anmäl senast:{' '}
-                          {deadline.toLocaleTimeString('sv-SE', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          Anmäl senast: {formatSwedishTime(reg.class.attendanceDeadline)}
                         </p>
                       </div>
                       {currentStatus && (
@@ -232,7 +265,14 @@ export default function ClassesView({
                       )}
                     </div>
 
-                    {isPastDeadline ? (
+                    {availability.state === 'not_open' ? (
+                      <p
+                        data-testid={`attendance-not-open-${reg.registrationId}`}
+                        className="text-xs text-amber-700"
+                      >
+                        {getAttendanceNotOpenMessage(availability.attendanceOpensAt)}
+                      </p>
+                    ) : availability.state === 'deadline_passed' ? (
                       <p
                         data-testid={`deadline-passed-${reg.registrationId}`}
                         className="text-xs text-gray-400"

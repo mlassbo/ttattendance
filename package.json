@@ -8,6 +8,7 @@
     "start": "next start",
     "hash-pin": "tsx scripts/hash-pin.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "db:seed:manual": "tsx scripts/seed.ts --slug manual-2026 --name \"Manuell testtävling\" --player-pin 1111 --admin-pin 2222",
     "db:reset": "supabase db reset && npm run db:seed",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

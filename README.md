@@ -143,6 +143,22 @@ npm run db:seed
 
 This inserts a test competition with sessions, classes, and players so you can use the app immediately.
 
+For manual testing, keep your own competitions on non-`test-*` slugs. Playwright intentionally deletes `test-*` competitions before test runs.
+
+Quick manual seed:
+
+```bash
+npm run db:seed:manual
+```
+
+This creates `manual-2026` with player PIN `1111` and admin PIN `2222`.
+
+Custom manual seed:
+
+```bash
+npm run db:seed -- --slug manual-2026 --name "Manuell testtävling"
+```
+
 ---
 
 ## Running locally
@@ -199,6 +215,8 @@ npx supabase start    # skip if already running
 ```bash
 npm run test:e2e
 ```
+
+This cleanup removes competitions whose slug starts with `test-`. Avoid using that prefix for manual testing data.
 
 ### Run with the Playwright visual UI (recommended for development)
 

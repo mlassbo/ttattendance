@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getCompetitionAuth } from '@/lib/auth'
+import { buildDaySessionOrderMap } from '@/lib/session-order'
 
 export async function GET(
   req: NextRequest,
@@ -24,6 +25,17 @@ export async function GET(
   if (playerError || !player) {
     return NextResponse.json({ error: 'Spelaren hittades inte' }, { status: 404 })
   }
+
+  const { data: competitionSessions, error: competitionSessionsError } = await supabase
+    .from('sessions')
+    .select('id, date, session_order')
+    .eq('competition_id', auth.competitionId)
+
+  if (competitionSessionsError) {
+    return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
+  }
+
+  const daySessionOrderById = buildDaySessionOrderMap(competitionSessions ?? [])
 
   // Fetch registrations with class, session, and current attendance.
   // attendance has unique(registration_id) so Supabase returns it as an array
@@ -91,6 +103,9 @@ export async function GET(
             name: session?.name,
             date: session?.date,
             sessionOrder: session?.session_order,
+            daySessionOrder: session?.id
+              ? (daySessionOrderById.get(session.id) ?? session.session_order)
+              : undefined,
           },
         },
         attendance: att
