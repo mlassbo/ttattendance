@@ -30,6 +30,17 @@ test.describe('Admin attendance flow', () => {
 
   // ── Authentication ────────────────────────────────────────────────────────
 
+  test('competition chooser links to the admin PIN page', async ({ page }) => {
+    await page.goto(`/${SLUG}`)
+
+    await expect(page.getByTestId('competition-role-card-player')).toBeVisible()
+    await expect(page.getByTestId('competition-role-card-admin')).toBeVisible()
+
+    await page.getByTestId('competition-role-link-admin').click()
+    await page.waitForURL(`/${SLUG}/admin`)
+    await expect(page.getByTestId('admin-pin-input')).toBeVisible()
+  })
+
   test('admin PIN page renders the shared login shell', async ({ page }) => {
     await page.goto(`/${SLUG}/admin`)
 
@@ -68,7 +79,7 @@ test.describe('Admin attendance flow', () => {
 
   test('player cookie does not grant access to admin dashboard', async ({ page }) => {
     // Login as player
-    await page.goto(`/${SLUG}`)
+    await page.goto(`/${SLUG}/player`)
     await page.getByTestId('pin-input').fill('0000')
     await page.getByTestId('login-button').click()
     await page.waitForURL(`/${SLUG}/search`)

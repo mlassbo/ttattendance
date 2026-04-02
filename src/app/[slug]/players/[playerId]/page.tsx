@@ -17,7 +17,7 @@ export default async function PlayerClassesPage({
   const auth = signed && secret ? await verifyCompetitionCookie(signed, secret) : null
 
   if (!auth || auth.slug !== slug || auth.role !== 'player') {
-    redirect(`/${slug}`)
+    redirect(`/${slug}/player`)
   }
 
   const supabase = createServerClient()
@@ -29,7 +29,7 @@ export default async function PlayerClassesPage({
     .single()
 
   if (!competition) {
-    redirect(`/${slug}`)
+    redirect(`/${slug}/player`)
   }
 
   return (

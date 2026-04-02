@@ -1,8 +1,5 @@
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
+import LandingEntryCard from '@/components/LandingEntryCard'
 import { createServerClient } from '@/lib/supabase'
-import { verifyCompetitionCookie } from '@/lib/auth'
-import PinForm from './PinForm'
 
 export default async function CompetitionPage({
   params,
@@ -10,17 +7,6 @@ export default async function CompetitionPage({
   params: { slug: string }
 }) {
   const { slug } = params
-
-  // If the player already has a valid cookie for this competition, skip the PIN screen.
-  const cookieStore = cookies()
-  const secret = process.env.COOKIE_SECRET
-  const signed = cookieStore.get('role')?.value
-  if (signed && secret) {
-    const auth = await verifyCompetitionCookie(signed, secret)
-    if (auth?.slug === slug && auth.role === 'player') {
-      redirect(`/${slug}/search`)
-    }
-  }
 
   const supabase = createServerClient()
   const { data: competition } = await supabase
@@ -38,5 +24,28 @@ export default async function CompetitionPage({
     )
   }
 
-  return <PinForm slug={slug} competitionName={competition.name} />
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-slate-100 px-4 py-10 text-slate-950 sm:px-6 lg:px-8">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.1),_transparent_32%),linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.98))]" />
+
+      <div className="relative mx-auto max-w-3xl">
+        <LandingEntryCard
+          title={competition.name}
+          testId="competition-role-card"
+          actions={[
+            {
+              href: `/${slug}/player`,
+              label: 'Logga in som spelare',
+              testId: 'competition-role-link-player',
+            },
+            {
+              href: `/${slug}/admin`,
+              label: 'Logga in som sekretariat',
+              testId: 'competition-role-link-admin',
+            },
+          ]}
+        />
+      </div>
+    </main>
+  )
 }

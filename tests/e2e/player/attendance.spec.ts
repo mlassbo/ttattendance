@@ -13,7 +13,7 @@ const SLUG = 'test-player-2025'
 const PLAYER_PIN = '9999'
 
 async function loginAsPlayer(page: Page) {
-  await page.goto(`/${SLUG}`)
+  await page.goto(`/${SLUG}/player`)
   await page.getByTestId('pin-input').fill(PLAYER_PIN)
   await page.getByTestId('login-button').click()
   await page.waitForURL(`/${SLUG}/search`)
@@ -38,8 +38,37 @@ test.describe('Player attendance flow', () => {
 
   // ── Authentication ──────────────────────────────────────────────────────
 
-  test('player PIN page renders the shared login shell', async ({ page }) => {
+  test('root landing page lists the competition and links to the competition chooser', async ({
+    page,
+  }) => {
+    await page.goto('/')
+
+    await expect(page.getByTestId(`competition-entry-card-${SLUG}`)).toBeVisible()
+    await expect(page.getByTestId(`player-login-link-${SLUG}`)).toContainText(
+      'Logga in som spelare'
+    )
+    await expect(page.getByTestId(`admin-login-link-${SLUG}`)).toContainText(
+      'Logga in som sekretariat'
+    )
+
+    await expect(page.getByRole('link', { name: 'Superadmin' })).toHaveCount(0)
+
+    await page.getByTestId(`competition-entry-link-${SLUG}`).click()
+    await page.waitForURL(`/${SLUG}`)
+    await expect(page.getByTestId('competition-role-card-player')).toBeVisible()
+    await expect(page.getByTestId('competition-role-card-admin')).toBeVisible()
+  })
+
+  test('competition chooser links to the player PIN page', async ({ page }) => {
     await page.goto(`/${SLUG}`)
+
+    await page.getByTestId('competition-role-link-player').click()
+    await page.waitForURL(`/${SLUG}/player`)
+    await expect(page.getByTestId('pin-login-page')).toBeVisible()
+  })
+
+  test('player PIN page renders the shared login shell', async ({ page }) => {
+    await page.goto(`/${SLUG}/player`)
 
     await expect(page.getByTestId('pin-login-page')).toBeVisible()
     await expect(page.getByTestId('pin-login-card')).toBeVisible()
@@ -49,7 +78,7 @@ test.describe('Player attendance flow', () => {
   })
 
   test('wrong PIN shows error', async ({ page }) => {
-    await page.goto(`/${SLUG}`)
+    await page.goto(`/${SLUG}/player`)
     await page.getByTestId('pin-input').fill('0000')
     await page.getByTestId('login-button').click()
     await expect(page.getByTestId('pin-error')).toContainText('Fel PIN-kod')
@@ -66,7 +95,7 @@ test.describe('Player attendance flow', () => {
     await loginAsPlayer(page)
 
     // Navigate back to PIN page — should skip it
-    await page.goto(`/${SLUG}`)
+    await page.goto(`/${SLUG}/player`)
     await page.waitForURL(`/${SLUG}/search`)
     await expect(page.getByTestId('search-input')).toBeVisible()
   })
@@ -208,7 +237,7 @@ test.describe('Player attendance flow', () => {
       competitionEndDate: '2099-09-13',
     })
 
-    await page.goto(`/${lockedSlug}`)
+    await page.goto(`/${lockedSlug}/player`)
     await page.getByTestId('pin-input').fill(PLAYER_PIN)
     await page.getByTestId('login-button').click()
     await page.waitForURL(`/${lockedSlug}/search`)

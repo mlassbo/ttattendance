@@ -71,7 +71,7 @@ export default function ClassesView({
     try {
       const res = await fetch(`/api/players/${playerId}/classes`)
       if (res.status === 401) {
-        router.push(`/${slug}`)
+        router.push(`/${slug}/player`)
         return
       }
       if (res.ok) {
