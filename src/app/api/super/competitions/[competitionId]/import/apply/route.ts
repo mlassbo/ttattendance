@@ -5,6 +5,7 @@ import {
   CompetitionImportClassSessionAssignment,
   CompetitionImportNotFoundError,
 } from '@/lib/import/competition-import'
+import { revalidateCompetitionPaths } from '@/lib/revalidate-competition-paths'
 
 export async function POST(
   req: NextRequest,
@@ -31,6 +32,11 @@ export async function POST(
   }
 
   const supabase = createServerClient()
+  const { data: competition } = await supabase
+    .from('competitions')
+    .select('slug')
+    .eq('id', params.competitionId)
+    .maybeSingle()
 
   try {
     const applied = await applyCompetitionImport(
@@ -47,6 +53,8 @@ export async function POST(
         : 400
       return NextResponse.json(applied.preview, { status })
     }
+
+    revalidateCompetitionPaths(competition?.slug)
 
     return NextResponse.json(applied.result)
   } catch (error) {

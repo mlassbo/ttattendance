@@ -43,6 +43,9 @@ test.describe('Player attendance flow', () => {
   }) => {
     await page.goto('/')
 
+    await expect(page.locator('main')).toContainText(
+      'Välj din tävling och logga in med pin-koden du fått från klubben som arrangerar tävlingen.'
+    )
     await expect(page.getByTestId(`competition-entry-card-${SLUG}`)).toBeVisible()
     await expect(page.getByTestId(`player-login-link-${SLUG}`)).toContainText(
       'Logga in som spelare'
@@ -58,6 +61,12 @@ test.describe('Player attendance flow', () => {
   test('competition chooser links to the player PIN page', async ({ page }) => {
     await page.goto(`/${SLUG}`)
 
+    await expect(page.getByTestId('competition-role-card')).toBeVisible()
+    await expect(
+      page.getByText(
+        'Välj den roll som passar dig just nu. Båda vyerna är anpassade för snabb användning på mobilen.'
+      )
+    ).toHaveCount(0)
     await page.getByTestId('competition-role-link-player').click()
     await page.waitForURL(`/${SLUG}/player`)
     await expect(page.getByTestId('pin-login-page')).toBeVisible()
@@ -71,6 +80,7 @@ test.describe('Player attendance flow', () => {
     await expect(page.getByTestId('pin-login-form')).toBeVisible()
     await expect(page.getByTestId('pin-login-eyebrow')).toContainText('Spelare')
     await expect(page.getByTestId('pin-login-title')).toContainText('Test Tävling')
+    await expect(page.getByTestId('pin-input')).toHaveAttribute('placeholder', 'PIN-kod')
   })
 
   test('wrong PIN shows error', async ({ page }) => {

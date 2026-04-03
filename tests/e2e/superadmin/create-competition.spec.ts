@@ -38,6 +38,7 @@ test('super admin PIN page renders the shared login shell', async ({ page }) => 
   await expect(page.getByTestId('pin-login-form')).toBeVisible()
   await expect(page.getByTestId('pin-login-eyebrow')).toContainText('System')
   await expect(page.getByTestId('pin-login-title')).toContainText('Superadmin')
+  await expect(page.getByTestId('pin-input')).toHaveAttribute('placeholder', 'PIN-kod')
 })
 
 test('unauthenticated user is redirected away from the competitions page', async ({ page }) => {
@@ -70,6 +71,33 @@ test('super admin can create a competition and see it in the list', async ({ pag
   await expect(page.getByTestId(`player-pin-${TEST_PREFIX}2025`)).toContainText('1234')
   await expect(page.getByTestId(`admin-pin-${TEST_PREFIX}2025`)).toContainText('5678')
   await expect(page.getByTestId(`import-action-${TEST_PREFIX}2025`)).toContainText('Importera startlista')
+})
+
+test('newly created competitions appear on the root landing page after cache invalidation', async ({ page }) => {
+  const slug = `${TEST_PREFIX}root-2026`
+
+  await page.goto('/')
+  await expect(page.getByTestId(`competition-entry-card-${slug}`)).toHaveCount(0)
+
+  await authenticateSuperadmin(page)
+  await page.goto('/super/competitions')
+
+  await page.getByTestId('new-competition-button').click()
+  await page.getByTestId('field-name').fill('Test Root 2026')
+  await page.getByTestId('field-slug').fill(slug)
+  await page.getByTestId('field-player-pin').fill('1234')
+  await page.getByTestId('field-admin-pin').fill('5678')
+  await page.getByTestId('submit-competition').click()
+
+  await page.goto('/')
+
+  await expect(page.getByTestId(`competition-entry-card-${slug}`)).toBeVisible()
+  await expect(page.getByTestId(`player-login-link-${slug}`)).toContainText(
+    'Logga in som spelare'
+  )
+  await expect(page.getByTestId(`admin-login-link-${slug}`)).toContainText(
+    'Logga in som sekretariat'
+  )
 })
 
 test('super admin can permanently delete a competition', async ({ page }) => {

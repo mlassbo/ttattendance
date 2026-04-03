@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidateCompetitionPaths } from '@/lib/revalidate-competition-paths'
 import { createServerClient } from '@/lib/supabase'
 
 export async function DELETE(
@@ -11,7 +12,7 @@ export async function DELETE(
     .from('competitions')
     .delete()
     .eq('id', params.competitionId)
-    .select('id')
+    .select('id, slug')
     .maybeSingle()
 
   if (error) {
@@ -21,6 +22,8 @@ export async function DELETE(
   if (!data) {
     return NextResponse.json({ error: 'Tävlingen hittades inte' }, { status: 404 })
   }
+
+  revalidateCompetitionPaths(data.slug)
 
   return NextResponse.json({ ok: true })
 }

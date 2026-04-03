@@ -33,8 +33,7 @@ test.describe('Admin attendance flow', () => {
   test('competition chooser links to the admin PIN page', async ({ page }) => {
     await page.goto(`/${SLUG}`)
 
-    await expect(page.getByTestId('competition-role-card-player')).toBeVisible()
-    await expect(page.getByTestId('competition-role-card-admin')).toBeVisible()
+    await expect(page.getByTestId('competition-role-card')).toBeVisible()
 
     await page.getByTestId('competition-role-link-admin').click()
     await page.waitForURL(`/${SLUG}/admin`)
@@ -49,6 +48,7 @@ test.describe('Admin attendance flow', () => {
     await expect(page.getByTestId('pin-login-form')).toBeVisible()
     await expect(page.getByTestId('pin-login-eyebrow')).toContainText('Sekretariat')
     await expect(page.getByTestId('pin-login-title')).toContainText('Test Admintävling')
+    await expect(page.getByTestId('admin-pin-input')).toHaveAttribute('placeholder', 'PIN-kod')
   })
 
   test('wrong admin PIN shows error', async ({ page }) => {

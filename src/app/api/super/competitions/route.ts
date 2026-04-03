@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { decryptStoredPin, encryptStoredPin } from '@/lib/pin-encryption'
+import { revalidateCompetitionPaths } from '@/lib/revalidate-competition-paths'
 import { createServerClient } from '@/lib/supabase'
 
 export async function GET() {
@@ -99,6 +100,8 @@ export async function POST(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  revalidateCompetitionPaths(slug)
 
   return NextResponse.json(data, { status: 201 })
 }

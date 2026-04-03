@@ -55,7 +55,7 @@ export default async function HomePage() {
               Närvarorapportering för pingistävlingar
             </h1>
             <p className="text-base leading-7 text-muted sm:text-lg">
-              Välj din tävling och logga in med pin-koden från tävlingsprogrammet.
+              Välj din tävling och logga in med pin-koden du fått från klubben som arrangerar tävlingen.
             </p>
           </div>
         </header>
@@ -73,28 +73,34 @@ export default async function HomePage() {
             className="grid gap-4 lg:grid-cols-2 lg:gap-6"
           >
             {competitions.map(competition => (
-              <LandingEntryCard
+              <div
                 key={competition.slug}
-                eyebrow={formatCompetitionDateRange(
-                  competition.firstClassStart,
-                  competition.lastClassStart,
-                )}
-                title={competition.name}
-                description="Välj om du ska rapportera som spelare eller arbeta i sekretariatet."
-                testId={`competition-entry-card-${competition.slug}`}
-                actions={[
-                  {
-                    href: `/${competition.slug}/player`,
-                    label: 'Logga in som spelare',
-                    testId: `player-login-link-${competition.slug}`,
-                  },
-                  {
-                    href: `/${competition.slug}/admin`,
-                    label: 'Logga in som sekretariat',
-                    testId: `admin-login-link-${competition.slug}`,
-                  },
-                ]}
-              />
+                className={competitions.length === 1
+                  ? 'lg:col-span-2 lg:mx-auto lg:w-full lg:max-w-2xl'
+                  : undefined}
+              >
+                <LandingEntryCard
+                  eyebrow={formatCompetitionDateRange(
+                    competition.firstClassStart,
+                    competition.lastClassStart,
+                  )}
+                  title={competition.name}
+                  description="Välj om du ska rapportera som spelare eller arbeta i sekretariatet."
+                  testId={`competition-entry-card-${competition.slug}`}
+                  actions={[
+                    {
+                      href: `/${competition.slug}/player`,
+                      label: 'Logga in som spelare',
+                      testId: `player-login-link-${competition.slug}`,
+                    },
+                    {
+                      href: `/${competition.slug}/admin`,
+                      label: 'Logga in som sekretariat',
+                      testId: `admin-login-link-${competition.slug}`,
+                    },
+                  ]}
+                />
+              </div>
             ))}
           </section>
         )}

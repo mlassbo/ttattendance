@@ -46,7 +46,7 @@ export default function AdminPinForm({
       eyebrow="Sekretariat"
       title={competitionName}
       description="Logga in som sekretariat"
-      inputPlaceholder="Admin-PIN"
+      inputPlaceholder="PIN-kod"
       pin={pin}
       onPinChange={setPin}
       onSubmit={handleSubmit}
