@@ -217,6 +217,7 @@ Use a commit message that a stakeholder can understand without reading code.
 - Describe the user-visible outcome or business value
 - Avoid implementation details unless the developer explicitly asks for them
 - Before committing or pushing code changes, run `npm run build` and fix any failures first. This project can pass local feature tests while still failing the production build on type checks.
+- In the response, always include a short flat bullet list of manual smoke tests the developer can run to quickly assess quality. Keep it focused on the happy path and the specific changed behavior rather than broad regression coverage.
 
 ---
 

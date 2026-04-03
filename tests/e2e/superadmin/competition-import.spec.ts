@@ -47,6 +47,13 @@ async function selectClassSession(page: Page, index: number, sessionNumber: numb
   await page.getByTestId(`class-session-select-${index}`).selectOption(String(sessionNumber))
 }
 
+async function loginAsCompetitionAdmin(page: Page, slug: string, pin: string) {
+  await page.goto(`/${slug}/admin`)
+  await page.getByTestId('admin-pin-input').fill(pin)
+  await page.getByTestId('admin-login-button').click()
+  await page.waitForURL(`/${slug}/admin/dashboard`)
+}
+
 test.describe('Competition import', () => {
   test.beforeEach(async () => {
     await cleanTestCompetitions(testClient(), `${TEST_PREFIX}%`)
@@ -261,6 +268,85 @@ test.describe('Competition import', () => {
       .order('name')
 
     expect(players?.map(player => player.name)).toEqual(['Ari Andersson', 'Cia Carlsson'])
+  })
+
+  test('re-import removes classes that no longer have any players and clears empty sessions from admin view', async ({ page }) => {
+    const supabase = testClient()
+    const slug = `${TEST_PREFIX}remove-empty-class`
+    const adminPin = '4242'
+    const { competitionId } = await seedSuperadminCompetition(supabase, slug, { adminPin })
+
+    const initialSource = buildCompetitionImportText({
+      classes: [
+        {
+          className: 'Morgonklass',
+          classDate: '2025-05-03',
+          classTime: '09:00',
+          registrations: [
+            { playerName: 'Ari Andersson', clubName: 'BTK Dalen' },
+          ],
+        },
+        {
+          className: 'Sen klass',
+          classDate: '2025-05-03',
+          classTime: '15:30',
+          registrations: [
+            { playerName: 'Bea Berg', clubName: 'IFK Lund' },
+          ],
+        },
+      ],
+    })
+
+    const updatedSource = buildCompetitionImportText({
+      classes: [
+        {
+          className: 'Morgonklass',
+          classDate: '2025-05-03',
+          classTime: '09:00',
+          registrations: [
+            { playerName: 'Ari Andersson', clubName: 'BTK Dalen' },
+          ],
+        },
+      ],
+    })
+
+    await loginAsSuperadmin(page)
+    await openImportPage(page, slug)
+    await previewImport(page, initialSource)
+    await page.getByTestId('apply-import-button').click()
+    await expect(page.getByTestId('apply-success')).toBeVisible()
+
+    await previewImport(page, updatedSource)
+    await expect(page.getByTestId('summary-registrations-to-remove')).toContainText('1')
+    await expect(page.getByTestId('removals-list')).toContainText('Sen klass')
+    await expect(page.getByTestId('removals-list')).toContainText('Bea Berg')
+
+    await page.getByTestId('apply-import-button').click()
+    await expect(page.getByTestId('apply-registrations-removed')).toContainText('1')
+    await expect(page.getByTestId('apply-players-deleted')).toContainText('1')
+
+    const { data: sessions } = await supabase
+      .from('sessions')
+      .select('id, name')
+      .eq('competition_id', competitionId)
+      .order('session_order')
+
+    expect(sessions?.map(session => session.name)).toEqual(['Pass 1'])
+
+    const sessionIds = (sessions ?? []).map(session => session.id)
+    const { data: classes } = await supabase
+      .from('classes')
+      .select('name')
+      .in('session_id', sessionIds)
+      .order('name')
+
+    expect(classes?.map(classRow => classRow.name)).toEqual(['Morgonklass'])
+
+    await loginAsCompetitionAdmin(page, slug, adminPin)
+    await expect(page.locator('[data-testid^="class-row-"]')).toHaveCount(1)
+    await expect(page.locator('body')).toContainText('Morgonklass')
+    await expect(page.locator('body')).not.toContainText('Sen klass')
+    await expect(page.locator('body')).not.toContainText('Pass 3')
   })
 
   test('re-import preview shows removals that already have attendance', async ({ page }) => {
