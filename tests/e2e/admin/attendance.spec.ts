@@ -199,7 +199,9 @@ test.describe('Admin attendance flow', () => {
     await expect(page.getByTestId(`player-row-${anna.futureRegId}`)).toBeVisible()
 
     await expect(page.getByTestId(`status-badge-${anna.futureRegId}`)).toContainText('Bekräftad')
+    await expect(page.getByTestId(`status-badge-${anna.futureRegId}`)).toContainText('(spelare)')
     await expect(page.getByTestId(`status-badge-${bertil.futureRegId}`)).toContainText('Frånvaro')
+    await expect(page.getByTestId(`status-badge-${bertil.futureRegId}`)).toContainText('(spelare)')
   })
 
   // ── Attendance override ───────────────────────────────────────────────────
@@ -213,6 +215,7 @@ test.describe('Admin attendance flow', () => {
 
     // Status badge should update optimistically
     await expect(page.getByTestId(`status-badge-${carin.futureRegId}`)).toContainText('Bekräftad')
+    await expect(page.getByTestId(`status-badge-${carin.futureRegId}`)).toContainText('(admin)')
   })
 
   test('admin can override confirmed attendance to absent', async ({ page }) => {
@@ -224,6 +227,19 @@ test.describe('Admin attendance flow', () => {
     await page.getByTestId(`absent-btn-${anna.futureRegId}`).click()
 
     await expect(page.getByTestId(`status-badge-${anna.futureRegId}`)).toContainText('Frånvaro')
+    await expect(page.getByTestId(`status-badge-${anna.futureRegId}`)).toContainText('(admin)')
+  })
+
+  test('admin can reset attendance back to no response', async ({ page }) => {
+    await loginAsAdmin(page, SLUG, ADMIN_PIN)
+    await page.goto(`/${SLUG}/admin/classes/${seed.futureClassId}`)
+
+    const bertil = seed.players.find(p => p.name === 'Bertil Testsson')!
+    await page.getByTestId(`reset-btn-${bertil.futureRegId}`).click()
+
+    await expect(page.getByTestId(`status-badge-${bertil.futureRegId}`)).toContainText(
+      'Ej rapporterat'
+    )
   })
 
   test('admin can set attendance on a past-deadline class (bypasses deadline)', async ({

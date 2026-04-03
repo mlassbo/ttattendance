@@ -209,6 +209,16 @@ curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
 
 ---
 
+## When asked to commit or push
+
+Use a commit message that a stakeholder can understand without reading code.
+
+- Prefer plain language over technical jargon
+- Describe the user-visible outcome or business value
+- Avoid implementation details unless the developer explicitly asks for them
+
+---
+
 ## Project conventions
 
 - **data-testid attributes** are used for all Playwright selectors — never select by Swedish text strings, which are fragile.

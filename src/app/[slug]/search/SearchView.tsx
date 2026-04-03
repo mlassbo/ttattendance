@@ -46,6 +46,26 @@ interface Player {
 
 type SearchMode = 'player' | 'club'
 
+function getAttendanceStatusCopy(status: 'confirmed' | 'absent') {
+  if (status === 'confirmed') {
+    return {
+      badgeLabel: 'Närvaro bekräftad',
+      title: 'Närvaro bekräftad',
+      description: 'Spelaren är markerad som närvarande i klassen.',
+      containerClassName: 'border-green-200 bg-green-50 text-green-900',
+      descriptionClassName: 'text-green-800',
+    }
+  }
+
+  return {
+    badgeLabel: 'Frånvaro',
+    title: 'Frånvaro anmäld',
+    description: 'Spelaren är markerad som frånvarande i klassen.',
+    containerClassName: 'border-red-200 bg-red-50 text-red-900',
+    descriptionClassName: 'text-red-700',
+  }
+}
+
 export default function SearchView({
   competitionName,
   competitionFirstClassStart,
@@ -180,6 +200,59 @@ export default function SearchView({
           : payload?.code === 'attendance_not_open' && attendanceOpensAt
             ? getAttendanceNotOpenMessage(payload.opensAt ?? attendanceOpensAt)
           : payload?.error ?? 'Något gick fel, försök igen'
+
+      setPlayerMessages(prev => ({ ...prev, [playerId]: message }))
+    } catch {
+      setPlayerMessages(prev => ({ ...prev, [playerId]: 'Nätverksfel, försök igen' }))
+    } finally {
+      submittingRef.current = false
+      setSubmitting(null)
+    }
+  }
+
+  async function resetAttendance(playerId: string, registrationId: string) {
+    if (submittingRef.current) return
+
+    submittingRef.current = true
+    setSubmitting(registrationId)
+    setPlayerMessages(prev => ({ ...prev, [playerId]: null }))
+
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registrationId }),
+      })
+
+      const payload = res.ok ? null : await res.json().catch(() => null)
+
+      if (res.ok) {
+        setResults(prev =>
+          prev.map(player => {
+            if (player.id !== playerId) return player
+
+            return {
+              ...player,
+              registrations: player.registrations.map(registration =>
+                registration.registrationId === registrationId
+                  ? {
+                      ...registration,
+                      attendance: null,
+                    }
+                  : registration
+              ),
+            }
+          })
+        )
+        return
+      }
+
+      const message =
+        payload?.code === 'competition_schedule_missing'
+          ? competitionScheduleMissingMessage
+          : payload?.code === 'attendance_not_open' && attendanceOpensAt
+            ? getAttendanceNotOpenMessage(payload.opensAt ?? attendanceOpensAt)
+            : payload?.error ?? 'Något gick fel, försök igen'
 
       setPlayerMessages(prev => ({ ...prev, [playerId]: message }))
     } catch {
@@ -342,6 +415,7 @@ export default function SearchView({
                             : null
                           const currentStatus = registration.attendance?.status ?? null
                           const isSubmitting = submitting === registration.registrationId
+                          const statusCopy = currentStatus ? getAttendanceStatusCopy(currentStatus) : null
 
                           return (
                             <div
@@ -369,10 +443,27 @@ export default function SearchView({
                                         : 'bg-red-100 text-red-700'
                                     }`}
                                   >
-                                    {currentStatus === 'confirmed' ? 'Bekräftad' : 'Frånvaro'}
+                                    {statusCopy?.badgeLabel}
                                   </span>
                                 )}
                               </div>
+
+                              {statusCopy && (
+                                <div
+                                  data-testid={`search-status-summary-${registration.registrationId}`}
+                                  className={`mb-4 rounded-2xl border px-4 py-3 ${statusCopy.containerClassName}`}
+                                >
+                                  <p className="text-sm font-semibold">{statusCopy.title}</p>
+                                  <p className={`mt-1 text-sm ${statusCopy.descriptionClassName}`}>
+                                    {statusCopy.description}
+                                  </p>
+                                  {registration.attendance?.reportedAt && (
+                                    <p className="mt-2 text-xs font-medium opacity-80">
+                                      Rapporterad {formatSwedishTime(registration.attendance.reportedAt)}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
 
                               {!availability ? (
                                 <p
@@ -395,6 +486,17 @@ export default function SearchView({
                                 >
                                   Anmälningstiden har gått ut
                                 </p>
+                              ) : currentStatus ? (
+                                <button
+                                  data-testid={`search-reset-btn-${registration.registrationId}`}
+                                  onClick={() =>
+                                    resetAttendance(player.id, registration.registrationId)
+                                  }
+                                  disabled={isSubmitting}
+                                  className="app-button-link"
+                                >
+                                  Återställ närvaro
+                                </button>
                               ) : (
                                 <div className="grid gap-2 sm:grid-cols-2">
                                   <button
@@ -409,7 +511,7 @@ export default function SearchView({
                                         : 'border border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
                                     } disabled:opacity-60`}
                                   >
-                                    Bekräfta
+                                    Bekräfta närvaro
                                   </button>
                                   <button
                                     data-testid={`search-absent-btn-${registration.registrationId}`}

@@ -43,6 +43,26 @@ interface PlayerData {
   registrations: Registration[]
 }
 
+function getAttendanceStatusCopy(status: 'confirmed' | 'absent') {
+  if (status === 'confirmed') {
+    return {
+      badgeLabel: 'Närvaro bekräftad',
+      title: 'Närvaro bekräftad',
+      description: 'Du är markerad som närvarande i den här klassen.',
+      containerClassName: 'border-green-200 bg-green-50 text-green-900',
+      descriptionClassName: 'text-green-800',
+    }
+  }
+
+  return {
+    badgeLabel: 'Frånvaro',
+    title: 'Frånvaro anmäld',
+    description: 'Du är markerad som frånvarande i den här klassen.',
+    containerClassName: 'border-red-200 bg-red-50 text-red-900',
+    descriptionClassName: 'text-red-700',
+  }
+}
+
 export default function ClassesView({
   slug,
   playerId,
@@ -133,6 +153,58 @@ export default function ClassesView({
                   payload.opensAt ?? getCompetitionAttendanceOpensAt(competitionFirstClassStart)
                 )
             : payload?.error ?? 'Anmälningstiden har gått ut'
+
+        setActionError(message)
+
+        if (payload?.code === 'deadline_passed') {
+          await fetchData()
+        }
+      } else {
+        setActionError(payload?.error ?? 'Något gick fel, försök igen')
+      }
+    } catch {
+      setActionError('Nätverksfel, försök igen')
+    } finally {
+      submittingRef.current = false
+      setSubmitting(null)
+    }
+  }
+
+  async function resetAttendance(registrationId: string) {
+    if (submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(registrationId)
+    setActionError(null)
+
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registrationId }),
+      })
+
+      const payload = res.ok ? null : await res.json().catch(() => null)
+
+      if (res.ok) {
+        setData(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            registrations: prev.registrations.map(r =>
+              r.registrationId === registrationId ? { ...r, attendance: null } : r
+            ),
+          }
+        })
+        setUpdatedAt(new Date())
+      } else if (res.status === 409) {
+        const message =
+          payload?.code === 'competition_schedule_missing'
+            ? 'Tävlingsschemat är inte importerat än.'
+            : payload?.code === 'attendance_not_open' && competitionFirstClassStart
+              ? getAttendanceNotOpenMessage(
+                  payload.opensAt ?? getCompetitionAttendanceOpensAt(competitionFirstClassStart)
+                )
+              : payload?.error ?? 'Anmälningstiden har gått ut'
 
         setActionError(message)
 
@@ -244,6 +316,7 @@ export default function ClassesView({
                   : null
                 const isSubmitting = submitting === reg.registrationId
                 const currentStatus = reg.attendance?.status ?? null
+                const statusCopy = currentStatus ? getAttendanceStatusCopy(currentStatus) : null
 
                 return (
                   <div
@@ -270,10 +343,27 @@ export default function ClassesView({
                               : 'bg-red-100 text-red-700'
                           }`}
                         >
-                          {currentStatus === 'confirmed' ? 'Bekräftad' : 'Frånvaro'}
+                          {statusCopy?.badgeLabel}
                         </span>
                       )}
                     </div>
+
+                    {statusCopy && (
+                      <div
+                        data-testid={`status-summary-${reg.registrationId}`}
+                        className={`mb-4 rounded-2xl border px-4 py-3 ${statusCopy.containerClassName}`}
+                      >
+                        <p className="text-sm font-semibold">{statusCopy.title}</p>
+                        <p className={`mt-1 text-sm ${statusCopy.descriptionClassName}`}>
+                          {statusCopy.description}
+                        </p>
+                        {reg.attendance?.reportedAt && (
+                          <p className="mt-2 text-xs font-medium opacity-80">
+                            Rapporterad {formatSwedishTime(reg.attendance.reportedAt)}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {!availability ? (
                       <p
@@ -296,6 +386,15 @@ export default function ClassesView({
                       >
                         Anmälningstiden har gått ut
                       </p>
+                    ) : currentStatus ? (
+                      <button
+                        data-testid={`reset-btn-${reg.registrationId}`}
+                        onClick={() => resetAttendance(reg.registrationId)}
+                        disabled={isSubmitting}
+                        className="app-button-link"
+                      >
+                        Återställ närvaro
+                      </button>
                     ) : (
                       <div className="grid gap-2 sm:grid-cols-2">
                         <button

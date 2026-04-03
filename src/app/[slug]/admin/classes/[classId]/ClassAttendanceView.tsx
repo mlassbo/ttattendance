@@ -33,17 +33,25 @@ interface ClassData {
 function StatusBadge({
   status,
   registrationId,
+  reportedAt,
+  reportedBy,
 }: {
   status: 'confirmed' | 'absent' | null
   registrationId: string
+  reportedAt: string | null
+  reportedBy: 'player' | 'admin' | null
 }) {
+  const reportedByLabel = reportedBy === 'player' ? 'spelare' : reportedBy
+  const reportedSuffix =
+    reportedAt && reportedByLabel ? ` ${formatTime(reportedAt)} (${reportedByLabel})` : ''
+
   if (status === 'confirmed') {
     return (
       <span
         data-testid={`status-badge-${registrationId}`}
         className="app-pill-success whitespace-nowrap"
       >
-        Bekräftad
+        {`Bekräftad${reportedSuffix}`}
       </span>
     )
   }
@@ -53,7 +61,7 @@ function StatusBadge({
         data-testid={`status-badge-${registrationId}`}
         className="app-pill-danger whitespace-nowrap"
       >
-        Frånvaro
+        {`Frånvaro${reportedSuffix}`}
       </span>
     )
   }
@@ -160,6 +168,44 @@ export default function ClassAttendanceView({
             players: prev.players.map(p =>
               p.registrationId === registrationId
                 ? { ...p, status, reportedAt: new Date().toISOString(), reportedBy: 'admin' }
+                : p
+            ),
+          }
+        })
+        setUpdatedAt(new Date())
+        setSecondsUntilNextRefresh(REFRESH_INTERVAL_SECONDS)
+      } else {
+        setOverrideError('Något gick fel, försök igen')
+      }
+    } catch {
+      setOverrideError('Nätverksfel, försök igen')
+    } finally {
+      overridingRef.current = false
+      setOverriding(null)
+    }
+  }
+
+  async function resetAttendance(registrationId: string) {
+    if (overridingRef.current || refreshInFlightRef.current) return
+    overridingRef.current = true
+    setOverriding(registrationId)
+    setOverrideError(null)
+
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registrationId }),
+      })
+
+      if (res.ok) {
+        setData(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            players: prev.players.map(p =>
+              p.registrationId === registrationId
+                ? { ...p, status: null, reportedAt: null, reportedBy: null }
                 : p
             ),
           }
@@ -312,20 +358,17 @@ export default function ClassAttendanceView({
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-lg font-medium text-ink truncate">{player.name}</p>
-                  <p className="text-xs text-muted/80 truncate">
-                    {player.club ?? '–'}
-                    {player.reportedAt && (
-                      <span className="ml-2">
-                        · {formatTime(player.reportedAt)}
-                        {player.reportedBy === 'admin' ? ' (admin)' : ' (spelare)'}
-                      </span>
-                    )}
-                  </p>
+                  <p className="text-xs text-muted/80 truncate">{player.club ?? '–'}</p>
                 </div>
 
-                <StatusBadge status={player.status} registrationId={player.registrationId} />
+                <StatusBadge
+                  status={player.status}
+                  registrationId={player.registrationId}
+                  reportedAt={player.reportedAt}
+                  reportedBy={player.reportedBy}
+                />
 
-                <div className="grid gap-2 sm:min-w-[220px] sm:grid-cols-2">
+                <div className="grid gap-2 sm:min-w-[340px] sm:grid-cols-3">
                   <button
                     data-testid={`confirm-btn-${player.registrationId}`}
                     onClick={() => setAttendance(player.registrationId, 'confirmed')}
@@ -349,6 +392,14 @@ export default function ClassAttendanceView({
                     } disabled:opacity-60`}
                   >
                     Frånvaro
+                  </button>
+                  <button
+                    data-testid={`reset-btn-${player.registrationId}`}
+                    onClick={() => resetAttendance(player.registrationId)}
+                    disabled={isOverriding || isRefreshing || player.status === null}
+                    className="min-h-[44px] rounded-xl border border-stone-300 bg-surface px-4 py-2.5 text-sm font-semibold text-ink transition-all duration-150 hover:bg-stone-50 disabled:opacity-60"
+                  >
+                    Återställ närvaro
                   </button>
                 </div>
               </div>

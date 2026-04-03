@@ -177,11 +177,14 @@ test.describe('Player attendance flow', () => {
     await selectPlayerSearch(page)
 
     await page.getByTestId('search-input').fill('Ann')
+    await expect(
+      page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`)
+    ).toContainText('Bekräfta närvaro')
     await page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`).click()
 
     await expect(
       page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
-    ).toContainText('Bekräftad')
+    ).toContainText('Närvaro bekräftad')
   })
 
   test('can confirm attendance on a future-deadline class', async ({ page }) => {
@@ -193,7 +196,7 @@ test.describe('Player attendance flow', () => {
 
     await expect(
       page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
-    ).toContainText('Bekräftad')
+    ).toContainText('Närvaro bekräftad')
   })
 
   test('can change attendance from confirmed to absent', async ({ page }) => {
@@ -204,12 +207,55 @@ test.describe('Player attendance flow', () => {
     await page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`).click()
     await expect(
       page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
-    ).toContainText('Bekräftad')
+    ).toContainText('Närvaro bekräftad')
+    await expect(
+      page.getByTestId(`search-status-summary-${seeded.player.futureRegId}`)
+    ).toContainText('Spelaren är markerad som närvarande i klassen.')
+    await expect(
+      page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`)
+    ).toHaveCount(0)
+    await expect(
+      page.getByTestId(`search-absent-btn-${seeded.player.futureRegId}`)
+    ).toHaveCount(0)
+
+    await page.getByTestId(`search-reset-btn-${seeded.player.futureRegId}`).click()
+    await expect(
+      page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`)
+    ).toBeVisible()
 
     await page.getByTestId(`search-absent-btn-${seeded.player.futureRegId}`).click()
     await expect(
       page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
     ).toContainText('Frånvaro')
+    await expect(
+      page.getByTestId(`search-status-summary-${seeded.player.futureRegId}`)
+    ).toContainText('Frånvaro anmäld')
+  })
+
+  test('can reset attendance back to no response', async ({ page }) => {
+    await loginAsPlayer(page)
+    await selectPlayerSearch(page)
+
+    await page.getByTestId('search-input').fill('Ann')
+    await page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`).click()
+    await expect(
+      page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
+    ).toContainText('Närvaro bekräftad')
+
+    await page.getByTestId(`search-reset-btn-${seeded.player.futureRegId}`).click()
+
+    await expect(
+      page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
+    ).toHaveCount(0)
+    await expect(
+      page.getByTestId(`search-reset-btn-${seeded.player.futureRegId}`)
+    ).toHaveCount(0)
+    await expect(
+      page.getByTestId(`search-status-summary-${seeded.player.futureRegId}`)
+    ).toHaveCount(0)
+    await expect(
+      page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`)
+    ).toBeVisible()
   })
 
   test('past-deadline class shows locked message and no action buttons', async ({ page }) => {
