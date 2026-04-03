@@ -13,6 +13,49 @@ type RegistrationRow = {
   players: { competition_id: string } | null
   classes: { attendance_deadline: string } | null
 }
+type RelationValue<T> = T | T[] | null | undefined
+type RawRegistrationRow = {
+  id: unknown
+  players?: RelationValue<{ competition_id: unknown }>
+  classes?: RelationValue<{ attendance_deadline: unknown }>
+}
+
+function getSingleRelation<T>(value: RelationValue<T>): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null
+  }
+
+  return value ?? null
+}
+
+function normalizeRegistrationRow(registration: unknown): RegistrationRow | null {
+  if (!registration || typeof registration !== 'object') {
+    return null
+  }
+
+  const raw = registration as RawRegistrationRow
+  if (typeof raw.id !== 'string') {
+    return null
+  }
+
+  const player = getSingleRelation(raw.players)
+  const cls = getSingleRelation(raw.classes)
+
+  const competitionId =
+    player && typeof player === 'object' && typeof player.competition_id === 'string'
+      ? player.competition_id
+      : null
+  const attendanceDeadline =
+    cls && typeof cls === 'object' && typeof cls.attendance_deadline === 'string'
+      ? cls.attendance_deadline
+      : null
+
+  return {
+    id: raw.id,
+    players: competitionId ? { competition_id: competitionId } : null,
+    classes: attendanceDeadline ? { attendance_deadline: attendanceDeadline } : null,
+  }
+}
 
 async function getAuthorizedRegistration(
   auth: CompetitionAuth,
@@ -38,7 +81,14 @@ async function getAuthorizedRegistration(
     }
   }
 
-  const reg = registration as RegistrationRow
+  const reg = normalizeRegistrationRow(registration)
+
+  if (!reg) {
+    return {
+      errorResponse: NextResponse.json({ error: 'Anmälan hittades inte' }, { status: 404 }),
+      registration: null,
+    }
+  }
 
   if (reg.players?.competition_id !== auth.competitionId) {
     return {

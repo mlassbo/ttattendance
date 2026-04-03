@@ -216,6 +216,7 @@ Use a commit message that a stakeholder can understand without reading code.
 - Prefer plain language over technical jargon
 - Describe the user-visible outcome or business value
 - Avoid implementation details unless the developer explicitly asks for them
+- Before committing or pushing code changes, run `npm run build` and fix any failures first. This project can pass local feature tests while still failing the production build on type checks.
 
 ---
 
