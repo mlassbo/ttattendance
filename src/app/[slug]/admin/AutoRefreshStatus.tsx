@@ -22,15 +22,15 @@ export default function AutoRefreshStatus({
     <div className="shrink-0 text-right">
       <div
         data-testid="auto-refresh-status"
-        className="inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-800"
+        className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-stone-50/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm"
       >
         <span
           aria-hidden="true"
-          className={`h-2.5 w-2.5 rounded-full ${isRefreshing ? 'animate-pulse bg-emerald-600' : 'bg-emerald-500'}`}
+          className={`h-2 w-2 rounded-full ${isRefreshing ? 'animate-pulse bg-sky-500' : 'bg-slate-400'}`}
         />
         {isRefreshing
           ? 'Uppdaterar nu'
-          : `Automatisk uppdatering aktiv var ${intervalSeconds}:e sekund`}
+          : `Automatisk uppdatering var ${intervalSeconds}:e sekund`}
       </div>
       <p data-testid="auto-refresh-next" className="mt-1 text-xs text-muted">
         {isRefreshing ? 'Hämtar senaste närvarodata...' : nextRefreshLabel}

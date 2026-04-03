@@ -21,6 +21,8 @@ const emptyForm = {
 
 export default function CompetitionsView() {
   const [competitions, setCompetitions] = useState<Competition[]>([])
+  const [loadingCompetitions, setLoadingCompetitions] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [formError, setFormError] = useState('')
@@ -29,11 +31,25 @@ export default function CompetitionsView() {
   const [competitionPendingDeletion, setCompetitionPendingDeletion] = useState<Competition | null>(null)
 
   async function load() {
-    const res = await fetch('/api/super/competitions')
-    if (res.ok) setCompetitions(await res.json())
+    setLoadingCompetitions(true)
+    setLoadError('')
+
+    try {
+      const res = await fetch('/api/super/competitions')
+
+      if (res.ok) {
+        setCompetitions(await res.json())
+      } else {
+        setLoadError('Kunde inte hämta tävlingarna')
+      }
+    } catch {
+      setLoadError('Nätverksfel när tävlingarna hämtades')
+    } finally {
+      setLoadingCompetitions(false)
+    }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { void load() }, [])
 
   useEffect(() => {
     if (!competitionPendingDeletion || deletingCompetitionId) {
@@ -182,6 +198,8 @@ export default function CompetitionsView() {
           </form>
         )}
 
+        {loadError && <p data-testid="competition-load-error" className="app-banner-error">{loadError}</p>}
+
         {actionError && <p data-testid="competition-action-error" className="app-banner-error">{actionError}</p>}
 
         {competitionPendingDeletion && (
@@ -232,6 +250,26 @@ export default function CompetitionsView() {
               </div>
             </div>
           </div>
+        )}
+
+        {loadingCompetitions && competitions.length === 0 && (
+          <section
+            data-testid="competition-list-loading"
+            aria-live="polite"
+            className="app-card flex items-center justify-center gap-3 py-10 text-sm text-muted"
+          >
+            <span
+              aria-hidden="true"
+              className="h-5 w-5 animate-spin rounded-full border-2 border-line border-t-brand"
+            />
+            Laddar tävlingar...
+          </section>
+        )}
+
+        {!loadingCompetitions && competitions.length === 0 && !loadError && (
+          <section className="app-card py-8 text-sm text-muted">
+            Inga tävlingar har skapats än.
+          </section>
         )}
 
         <ul data-testid="competition-list" className="flex flex-col gap-3">

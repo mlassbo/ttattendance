@@ -183,7 +183,7 @@ export default function AdminDashboard({
                     <div
                       key={cls.id}
                       data-testid={`class-row-${cls.id}`}
-                      className={`app-card flex flex-col gap-4 sm:flex-row sm:items-center ${
+                      className={`app-card flex flex-col gap-4 sm:flex-row sm:items-stretch ${
                         needsAnnouncement
                           ? 'border-amber-300 bg-amber-50/85'
                           : isFullyAttended
@@ -213,7 +213,7 @@ export default function AdminDashboard({
                         </p>
                       </div>
 
-                      <div className="grid flex-1 grid-cols-3 gap-2 sm:max-w-sm">
+                      <div className="grid flex-1 grid-cols-3 gap-2 sm:max-w-sm sm:self-stretch">
                         <span
                           data-testid={`count-confirmed-${cls.id}`}
                           className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-700"
@@ -241,22 +241,22 @@ export default function AdminDashboard({
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between gap-3 sm:ml-auto sm:flex-col sm:items-end sm:text-right">
+                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-line/60 bg-stone-50/80 px-3 py-3 sm:ml-auto sm:min-w-[190px] sm:flex-col sm:items-stretch sm:justify-between sm:text-left">
                         {needsAnnouncement ? (
-                          <p className="text-xs font-semibold text-amber-800">
+                          <p className="text-xs font-semibold text-amber-800 sm:text-sm">
                             Ropa upp {cls.counts.noResponse}
                           </p>
                         ) : isFullyAttended ? (
                           <span
                             data-testid={`class-complete-badge-${cls.id}`}
-                            className="app-pill-success"
+                            className="app-pill-success sm:w-fit"
                           >
                             Alla har svarat
                           </span>
                         ) : cls.counts.total === 0 ? (
-                          <p className="text-xs font-medium text-muted">Inga spelare</p>
+                          <p className="text-xs font-medium text-muted sm:text-sm">Inga spelare</p>
                         ) : (
-                          <p className="text-xs font-medium text-muted">
+                          <p className="text-xs font-medium text-muted sm:text-sm">
                             {answeredCount}/{cls.counts.total} svar
                           </p>
                         )}
@@ -264,7 +264,7 @@ export default function AdminDashboard({
                         <Link
                           data-testid={`class-detail-link-${cls.id}`}
                           href={`/${slug}/admin/classes/${cls.id}`}
-                          className="app-button-secondary min-h-10 shrink-0 px-4 py-2"
+                          className="app-button-secondary min-h-10 w-auto shrink-0 px-4 py-2 sm:w-full"
                         >
                           Visa detaljer
                         </Link>
