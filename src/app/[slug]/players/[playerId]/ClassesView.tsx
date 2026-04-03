@@ -5,9 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   formatSwedishTime,
   getAttendanceNotOpenMessage,
-  getCompetitionAttendanceOpensAt,
   getPlayerAttendanceAvailability,
-  isCompetitionAttendanceOpen,
 } from '@/lib/attendance-window'
 import { formatPlayerSessionLabel } from '@/lib/session-format'
 
@@ -148,10 +146,8 @@ export default function ClassesView({
         const message =
           payload?.code === 'competition_schedule_missing'
             ? 'Tävlingsschemat är inte importerat än.'
-            : payload?.code === 'attendance_not_open' && competitionFirstClassStart
-              ? getAttendanceNotOpenMessage(
-                  payload.opensAt ?? getCompetitionAttendanceOpensAt(competitionFirstClassStart)
-                )
+            : payload?.code === 'attendance_not_open' && payload?.opensAt
+              ? getAttendanceNotOpenMessage(payload.opensAt)
             : payload?.error ?? 'Anmälningstiden har gått ut'
 
         setActionError(message)
@@ -200,10 +196,8 @@ export default function ClassesView({
         const message =
           payload?.code === 'competition_schedule_missing'
             ? 'Tävlingsschemat är inte importerat än.'
-            : payload?.code === 'attendance_not_open' && competitionFirstClassStart
-              ? getAttendanceNotOpenMessage(
-                  payload.opensAt ?? getCompetitionAttendanceOpensAt(competitionFirstClassStart)
-                )
+            : payload?.code === 'attendance_not_open' && payload?.opensAt
+              ? getAttendanceNotOpenMessage(payload.opensAt)
               : payload?.error ?? 'Anmälningstiden har gått ut'
 
         setActionError(message)
@@ -239,12 +233,6 @@ export default function ClassesView({
   }
 
   const competitionScheduleMissingMessage = 'Tävlingsschemat är inte importerat än.'
-  const attendanceOpensAt = competitionFirstClassStart
-    ? getCompetitionAttendanceOpensAt(competitionFirstClassStart)
-    : null
-  const attendanceIsOpen = competitionFirstClassStart
-    ? isCompetitionAttendanceOpen(competitionFirstClassStart, now)
-    : false
 
   // Group registrations by session.
   const sessionGroups = new Map<string, { session: Session; registrations: Registration[] }>()
@@ -283,10 +271,6 @@ export default function ClassesView({
           <p data-testid="attendance-not-open-banner" className="app-banner-warning">
             {competitionScheduleMissingMessage}
           </p>
-        ) : !attendanceIsOpen && attendanceOpensAt ? (
-          <p data-testid="attendance-not-open-banner" className="app-banner-warning">
-            {getAttendanceNotOpenMessage(attendanceOpensAt)}
-          </p>
         ) : null}
 
         {actionError && (
@@ -309,7 +293,7 @@ export default function ClassesView({
               {registrations.map(reg => {
                 const availability = competitionFirstClassStart
                   ? getPlayerAttendanceAvailability(
-                      competitionFirstClassStart,
+                      reg.class.startTime,
                       reg.class.attendanceDeadline,
                       now,
                     )

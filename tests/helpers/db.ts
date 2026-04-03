@@ -42,6 +42,16 @@ export interface SeededCompetition {
   players: SeededPlayer[]
 }
 
+export interface SeededPlayerWindowCompetition {
+  competitionId: string
+  player: {
+    id: string
+    name: string
+    openRegId: string
+    lockedRegId: string
+  }
+}
+
 export async function seedSuperadminCompetition(
   supabase: SupabaseClient,
   slug: string,
@@ -336,5 +346,104 @@ export async function seedPlayerTestCompetition(
     competitionId,
     player: primaryPlayerWithRegistrations,
     players: playersWithRegistrations,
+  }
+}
+
+export async function seedPlayerWindowTestCompetition(
+  supabase: SupabaseClient,
+  slug: string,
+  playerPin: string,
+  options?: {
+    competitionName?: string
+    openClassDate?: string
+    lockedClassDate?: string
+  }
+): Promise<SeededPlayerWindowCompetition> {
+  const competitionName = options?.competitionName ?? 'Fönster Test Tävling'
+  const openClassDate = options?.openClassDate ?? '2020-09-13'
+  const lockedClassDate = options?.lockedClassDate ?? '2099-09-15'
+
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash(playerPin, 4),
+    bcrypt.hash('0000', 4),
+  ])
+
+  const { data: comp } = await supabase
+    .from('competitions')
+    .insert({
+      name: competitionName,
+      slug,
+      player_pin_hash: playerPinHash,
+      admin_pin_hash: adminPinHash,
+    })
+    .select('id')
+    .single()
+
+  const competitionId = comp!.id
+
+  const { data: sessions } = await supabase
+    .from('sessions')
+    .insert([
+      {
+        competition_id: competitionId,
+        name: 'Öppet pass',
+        date: openClassDate,
+        session_order: 1,
+      },
+      {
+        competition_id: competitionId,
+        name: 'Låst pass',
+        date: lockedClassDate,
+        session_order: 2,
+      },
+    ])
+    .select('id, name')
+
+  const openSessionId = sessions!.find(session => session.name === 'Öppet pass')!.id
+  const lockedSessionId = sessions!.find(session => session.name === 'Låst pass')!.id
+
+  const { data: classes } = await supabase
+    .from('classes')
+    .insert([
+      {
+        session_id: openSessionId,
+        name: 'Öppen klass',
+        start_time: `${openClassDate}T09:00:00+02:00`,
+        attendance_deadline: '2099-09-13T08:15:00+02:00',
+      },
+      {
+        session_id: lockedSessionId,
+        name: 'Låst klass',
+        start_time: `${lockedClassDate}T09:00:00+02:00`,
+        attendance_deadline: `${lockedClassDate}T08:15:00+02:00`,
+      },
+    ])
+    .select('id, name')
+
+  const openClassId = classes!.find(cls => cls.name === 'Öppen klass')!.id
+  const lockedClassId = classes!.find(cls => cls.name === 'Låst klass')!.id
+
+  const { data: player } = await supabase
+    .from('players')
+    .insert({ competition_id: competitionId, name: 'Anna Testsson', club: 'Test BTK' })
+    .select('id, name')
+    .single()
+
+  const { data: registrations } = await supabase
+    .from('registrations')
+    .insert([
+      { player_id: player!.id, class_id: openClassId },
+      { player_id: player!.id, class_id: lockedClassId },
+    ])
+    .select('id, class_id')
+
+  return {
+    competitionId,
+    player: {
+      id: player!.id,
+      name: player!.name,
+      openRegId: registrations!.find(registration => registration.class_id === openClassId)!.id,
+      lockedRegId: registrations!.find(registration => registration.class_id === lockedClassId)!.id,
+    },
   }
 }

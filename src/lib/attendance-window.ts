@@ -79,12 +79,16 @@ export function isCompetitionAttendanceOpen(startDate: string | Date, now: Date 
   return now.getTime() >= getCompetitionAttendanceOpensAt(startDate).getTime()
 }
 
+export const getClassAttendanceOpensAt = getCompetitionAttendanceOpensAt
+
+export const isClassAttendanceOpen = isCompetitionAttendanceOpen
+
 export function getPlayerAttendanceAvailability(
-  competitionStartDate: string | Date,
+  classStartDate: string | Date,
   attendanceDeadline: string | Date,
   now: Date = new Date(),
 ) {
-  const attendanceOpensAt = getCompetitionAttendanceOpensAt(competitionStartDate)
+  const attendanceOpensAt = getClassAttendanceOpensAt(classStartDate)
 
   if (now.getTime() < attendanceOpensAt.getTime()) {
     return { state: 'not_open' as const, attendanceOpensAt }
@@ -117,5 +121,5 @@ export function formatSwedishTime(date: string | Date) {
 }
 
 export function getAttendanceNotOpenMessage(opensAt: string | Date) {
-  return `Närvarorapporteringen öppnar ${formatSwedishDateTime(opensAt)} svensk tid.`
+  return `Närvarorapporteringen öppnar ${formatSwedishDateTime(opensAt)}.`
 }

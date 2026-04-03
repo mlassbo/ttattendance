@@ -1,23 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getCompetitionAuth } from '@/lib/auth'
-import { getCompetitionDateRange } from '@/lib/competition-dates'
 import {
   getAttendanceNotOpenMessage,
-  getCompetitionAttendanceOpensAt,
+  getClassAttendanceOpensAt,
 } from '@/lib/attendance-window'
 
 type CompetitionAuth = NonNullable<Awaited<ReturnType<typeof getCompetitionAuth>>>
 type RegistrationRow = {
   id: string
   players: { competition_id: string } | null
-  classes: { attendance_deadline: string } | null
+  classes: { start_time: string; attendance_deadline: string } | null
 }
 type RelationValue<T> = T | T[] | null | undefined
 type RawRegistrationRow = {
   id: unknown
   players?: RelationValue<{ competition_id: unknown }>
-  classes?: RelationValue<{ attendance_deadline: unknown }>
+  classes?: RelationValue<{ start_time: unknown; attendance_deadline: unknown }>
 }
 
 function getSingleRelation<T>(value: RelationValue<T>): T | null {
@@ -45,6 +44,8 @@ function normalizeRegistrationRow(registration: unknown): RegistrationRow | null
     player && typeof player === 'object' && typeof player.competition_id === 'string'
       ? player.competition_id
       : null
+  const classStartTime =
+    cls && typeof cls === 'object' && typeof cls.start_time === 'string' ? cls.start_time : null
   const attendanceDeadline =
     cls && typeof cls === 'object' && typeof cls.attendance_deadline === 'string'
       ? cls.attendance_deadline
@@ -53,7 +54,10 @@ function normalizeRegistrationRow(registration: unknown): RegistrationRow | null
   return {
     id: raw.id,
     players: competitionId ? { competition_id: competitionId } : null,
-    classes: attendanceDeadline ? { attendance_deadline: attendanceDeadline } : null,
+    classes:
+      classStartTime && attendanceDeadline
+        ? { start_time: classStartTime, attendance_deadline: attendanceDeadline }
+        : null,
   }
 }
 
@@ -69,7 +73,7 @@ async function getAuthorizedRegistration(
     .select(`
       id,
       players ( competition_id ),
-      classes ( attendance_deadline )
+      classes ( start_time, attendance_deadline )
     `)
     .eq('id', registrationId)
     .single()
@@ -103,25 +107,12 @@ async function getAuthorizedRegistration(
 async function enforcePlayerAttendanceWindow(
   auth: CompetitionAuth,
   registration: RegistrationRow,
-  supabase: ReturnType<typeof createServerClient>
 ) {
   if (auth.role !== 'player') {
     return null
   }
 
-  const { data: competition, error: competitionError } = await supabase
-    .from('competitions')
-    .select('id')
-    .eq('id', auth.competitionId)
-    .is('deleted_at', null)
-    .single()
-
-  if (competitionError || !competition) {
-    return NextResponse.json({ error: 'Tävlingen hittades inte' }, { status: 404 })
-  }
-
-  const competitionDateRange = await getCompetitionDateRange(supabase, competition.id)
-  if (!competitionDateRange.firstClassStart) {
+  if (!registration.classes?.start_time || !registration.classes.attendance_deadline) {
     return NextResponse.json(
       {
         error: 'Tävlingsschemat är inte importerat än',
@@ -132,7 +123,7 @@ async function enforcePlayerAttendanceWindow(
   }
 
   const now = new Date()
-  const attendanceOpensAt = getCompetitionAttendanceOpensAt(competitionDateRange.firstClassStart)
+  const attendanceOpensAt = getClassAttendanceOpensAt(registration.classes.start_time)
   if (now.getTime() < attendanceOpensAt.getTime()) {
     return NextResponse.json(
       {
@@ -144,7 +135,7 @@ async function enforcePlayerAttendanceWindow(
     )
   }
 
-  const deadline = new Date(registration.classes?.attendance_deadline ?? 0)
+  const deadline = new Date(registration.classes.attendance_deadline)
   if (now.getTime() > deadline.getTime()) {
     return NextResponse.json(
       { error: 'Anmälningstiden har gått ut', code: 'deadline_passed' },
@@ -182,7 +173,7 @@ export async function POST(req: NextRequest) {
     return errorResponse
   }
 
-  const attendanceWindowError = await enforcePlayerAttendanceWindow(auth, registration, supabase)
+  const attendanceWindowError = await enforcePlayerAttendanceWindow(auth, registration)
   if (attendanceWindowError) {
     return attendanceWindowError
   }
@@ -232,7 +223,7 @@ export async function DELETE(req: NextRequest) {
     return errorResponse
   }
 
-  const attendanceWindowError = await enforcePlayerAttendanceWindow(auth, registration, supabase)
+  const attendanceWindowError = await enforcePlayerAttendanceWindow(auth, registration)
   if (attendanceWindowError) {
     return attendanceWindowError
   }

@@ -4,9 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   formatSwedishTime,
   getAttendanceNotOpenMessage,
-  getCompetitionAttendanceOpensAt,
   getPlayerAttendanceAvailability,
-  isCompetitionAttendanceOpen,
 } from '@/lib/attendance-window'
 import { formatPlayerSessionLabel } from '@/lib/session-format'
 
@@ -92,12 +90,6 @@ export default function SearchView({
   }, [])
 
   const competitionScheduleMissingMessage = 'Tävlingsschemat är inte importerat än.'
-  const attendanceOpensAt = competitionFirstClassStart
-    ? getCompetitionAttendanceOpensAt(competitionFirstClassStart)
-    : null
-  const attendanceIsOpen = competitionFirstClassStart
-    ? isCompetitionAttendanceOpen(competitionFirstClassStart, now)
-    : false
 
   useEffect(() => {
     if (query.length < 2) {
@@ -197,8 +189,8 @@ export default function SearchView({
       const message =
         payload?.code === 'competition_schedule_missing'
           ? competitionScheduleMissingMessage
-          : payload?.code === 'attendance_not_open' && attendanceOpensAt
-            ? getAttendanceNotOpenMessage(payload.opensAt ?? attendanceOpensAt)
+          : payload?.code === 'attendance_not_open' && payload?.opensAt
+            ? getAttendanceNotOpenMessage(payload.opensAt)
           : payload?.error ?? 'Något gick fel, försök igen'
 
       setPlayerMessages(prev => ({ ...prev, [playerId]: message }))
@@ -250,8 +242,8 @@ export default function SearchView({
       const message =
         payload?.code === 'competition_schedule_missing'
           ? competitionScheduleMissingMessage
-          : payload?.code === 'attendance_not_open' && attendanceOpensAt
-            ? getAttendanceNotOpenMessage(payload.opensAt ?? attendanceOpensAt)
+          : payload?.code === 'attendance_not_open' && payload?.opensAt
+            ? getAttendanceNotOpenMessage(payload.opensAt)
             : payload?.error ?? 'Något gick fel, försök igen'
 
       setPlayerMessages(prev => ({ ...prev, [playerId]: message }))
@@ -332,13 +324,6 @@ export default function SearchView({
           >
             {competitionScheduleMissingMessage}
           </p>
-        ) : !attendanceIsOpen && attendanceOpensAt ? (
-          <p
-            data-testid="attendance-not-open-banner"
-            className="app-banner-warning"
-          >
-            {getAttendanceNotOpenMessage(attendanceOpensAt)}
-          </p>
         ) : null}
 
         {loading && <p className="px-1 text-sm text-muted">Söker...</p>}
@@ -408,7 +393,7 @@ export default function SearchView({
                         {group.registrations.map(registration => {
                           const availability = competitionFirstClassStart
                             ? getPlayerAttendanceAvailability(
-                                competitionFirstClassStart,
+                                registration.class.startTime,
                                 registration.class.attendanceDeadline,
                                 now,
                               )

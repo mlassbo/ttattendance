@@ -5,6 +5,7 @@ import {
   cleanTestCompetitions,
   seedPlayerTestCompetition,
   SeededCompetition,
+  seedPlayerWindowTestCompetition,
 } from '../../helpers/db'
 
 config({ path: '.env.test.local' })
@@ -12,11 +13,11 @@ config({ path: '.env.test.local' })
 const SLUG = 'test-player-2025'
 const PLAYER_PIN = '9999'
 
-async function loginAsPlayer(page: Page) {
-  await page.goto(`/${SLUG}/player`)
+async function loginAsPlayer(page: Page, slug: string = SLUG) {
+  await page.goto(`/${slug}/player`)
   await page.getByTestId('pin-input').fill(PLAYER_PIN)
   await page.getByTestId('login-button').click()
-  await page.waitForURL(`/${SLUG}/search`)
+  await page.waitForURL(`/${slug}/search`)
 }
 
 async function selectPlayerSearch(page: Page) {
@@ -278,30 +279,35 @@ test.describe('Player attendance flow', () => {
     ).toContainText('Anmälningstiden har gått ut')
   })
 
-  test('attendance stays locked until 20:00 the night before the competition', async ({ page }) => {
+  test('attendance opens per class at 20:00 the night before in Swedish time', async ({ page }) => {
     const supabase = testClient()
-    const lockedSlug = 'test-player-locked'
+    const windowSlug = 'test-player-window'
 
     await cleanTestCompetitions(supabase, 'test-player-%')
-    const lockedSeeded = await seedPlayerTestCompetition(supabase, lockedSlug, PLAYER_PIN, {
-      competitionName: 'Låst Test Tävling',
-      scheduleDate: '2099-09-13',
-      futureDeadlineDate: '2099-09-13',
+    const windowSeeded = await seedPlayerWindowTestCompetition(supabase, windowSlug, PLAYER_PIN, {
+      competitionName: 'Fönster Test Tävling',
     })
 
-    await page.goto(`/${lockedSlug}/player`)
-    await page.getByTestId('pin-input').fill(PLAYER_PIN)
-    await page.getByTestId('login-button').click()
-    await page.waitForURL(`/${lockedSlug}/search`)
-
-    await expect(page.getByTestId('attendance-not-open-banner')).toBeVisible()
+    await loginAsPlayer(page, windowSlug)
+    await expect(page.getByTestId('attendance-not-open-banner')).toHaveCount(0)
 
     await page.getByTestId('search-input').fill('Ann')
     await expect(
-      page.getByTestId(`attendance-not-open-${lockedSeeded.player.futureRegId}`)
+      page.getByTestId(`search-confirm-btn-${windowSeeded.player.openRegId}`)
     ).toBeVisible()
     await expect(
-      page.getByTestId(`search-confirm-btn-${lockedSeeded.player.futureRegId}`)
+      page.getByTestId(`attendance-not-open-${windowSeeded.player.lockedRegId}`)
+    ).toContainText('20:00')
+    await expect(
+      page.getByTestId(`search-confirm-btn-${windowSeeded.player.lockedRegId}`)
     ).toHaveCount(0)
+
+    await page.goto(`/${windowSlug}/players/${windowSeeded.player.id}`)
+    await expect(page.getByTestId('attendance-not-open-banner')).toHaveCount(0)
+    await expect(page.getByTestId(`confirm-btn-${windowSeeded.player.openRegId}`)).toBeVisible()
+    await expect(
+      page.getByTestId(`attendance-not-open-${windowSeeded.player.lockedRegId}`)
+    ).toContainText('20:00')
+    await expect(page.getByTestId(`confirm-btn-${windowSeeded.player.lockedRegId}`)).toHaveCount(0)
   })
 })
