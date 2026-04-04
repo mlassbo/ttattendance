@@ -67,7 +67,7 @@ function getAttendanceStatusCopy(status: 'confirmed' | 'absent') {
 function getDeadlinePassedWithoutAttendanceCopy() {
   return {
     title: 'Ingen närvaro registrerad',
-    description: 'Ingen närvaro är registrerad för klassen. Kontakta sekretariatet.',
+    description: 'Anmälningstiden har gått ut och ingen närvaro är registrerad för klassen. Kontakta sekretariatet.',
     containerClassName: 'border-amber-200 bg-amber-50 text-amber-950',
     descriptionClassName: 'text-amber-900',
   }
