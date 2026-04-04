@@ -112,6 +112,17 @@ export function formatSwedishDateTime(date: string | Date) {
   })
 }
 
+export function formatSwedishWeekdayTime(date: string | Date) {
+  const formatted = new Date(date).toLocaleString('sv-SE', {
+    timeZone: SWEDISH_TIME_ZONE,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  return formatted.replace(/^./, char => char.toUpperCase()).replace('.', '')
+}
+
 export function formatSwedishTime(date: string | Date) {
   return new Date(date).toLocaleTimeString('sv-SE', {
     timeZone: SWEDISH_TIME_ZONE,

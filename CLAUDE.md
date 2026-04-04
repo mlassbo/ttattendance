@@ -229,6 +229,8 @@ Use a commit message that a stakeholder can understand without reading code.
 - **The Supabase client** (`src/lib/supabase.ts`) uses the service role key and must only be called from server-side API routes, never from client components.
 - **All UI text is in Swedish.**
 - **Migrations** live in `supabase/migrations/` as plain SQL files. Create new ones with a timestamp prefix, e.g. `20240201000000_add_sessions.sql`.
+- **When API calls fail in the UI**, prefer showing a clear inline error state instead of silently hiding the failure. Only show a not-found or redirect state when the resource is genuinely missing or the user is genuinely unauthorized.
+- **UI should stay clean and simple.** Prefer fewer text blocks, badges, panels, and decorative elements. Add explanatory copy or extra visual status elements only when they materially help the primary task.
 
 ### Reliability Strategy (Critical)
 This system must work during live events.

@@ -151,7 +151,7 @@ Quick manual seed:
 npm run db:seed:manual
 ```
 
-This creates `manual-2026` with player PIN `1111` and admin PIN `2222`.
+This ensures `manual-2026` exists, then imports classes and registrations from `competition_registrations.txt` with player PIN `1111` and admin PIN `2222`.
 
 Custom manual seed:
 
@@ -171,6 +171,8 @@ npm run dev
 ```
 
 The app is available at [http://localhost:3000](http://localhost:3000).
+
+Before Next.js starts, `npm run dev` now tries to make sure `manual-2026` exists and is synced from [competition_registrations.txt](competition_registrations.txt). If `.env.local`, Supabase, or the import source is not ready yet, Next.js still starts and the prepare step prints a warning instead of blocking local development. To run the sync as a required step, use `npm run dev:prepare`.
 
 The Supabase Studio (database admin UI) is available at [http://localhost:54323](http://localhost:54323).
 

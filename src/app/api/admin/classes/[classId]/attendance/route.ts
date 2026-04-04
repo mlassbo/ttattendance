@@ -1,34 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCompetitionAuth } from '@/lib/auth'
+import { getScopedCompetitionAuth } from '@/lib/scoped-competition-auth'
+import { getAuthorizedAdminClass } from '@/lib/class-workflow-server'
 import { createServerClient } from '@/lib/supabase'
 import { getAttendanceField } from '../../../lib'
+
+async function getAuthorizedClass(req: NextRequest, classId: string) {
+  const auth = await getScopedCompetitionAuth(req)
+  if (!auth || auth.role !== 'admin') {
+    return {
+      auth: null,
+      supabase: null,
+      cls: null,
+      errorResponse: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    }
+  }
+
+  const supabase = createServerClient()
+  const cls = await getAuthorizedAdminClass(supabase, auth.competitionId, classId)
+
+  if (!cls) {
+    return {
+      auth,
+      supabase,
+      cls: null,
+      errorResponse: NextResponse.json({ error: 'Klassen hittades inte' }, { status: 404 }),
+    }
+  }
+
+  return {
+    auth,
+    supabase,
+    cls,
+    errorResponse: null,
+  }
+}
+
+async function getAuthorizedRegistration(
+  supabase: ReturnType<typeof createServerClient>,
+  classId: string,
+  registrationId: string
+) {
+  const { data: registration, error } = await supabase
+    .from('registrations')
+    .select('id')
+    .eq('id', registrationId)
+    .eq('class_id', classId)
+    .maybeSingle()
+
+  if (error || !registration) {
+    return {
+      errorResponse: NextResponse.json({ error: 'Anmälan hittades inte' }, { status: 404 }),
+      registration: null,
+    }
+  }
+
+  return {
+    errorResponse: null,
+    registration,
+  }
+}
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { classId: string } }
 ) {
-  const auth = await getCompetitionAuth(req.cookies)
-  if (!auth || auth.role !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { supabase, cls, errorResponse } = await getAuthorizedClass(req, params.classId)
+  if (errorResponse) {
+    return errorResponse
   }
-
-  const supabase = createServerClient()
-
-  // Single JOIN query: fetch class and verify competition ownership via the session.
-  const { data: cls, error: clsError } = await supabase
-    .from('classes')
-    .select('id, name, start_time, attendance_deadline, sessions!inner(competition_id)')
-    .eq('id', params.classId)
-    .single()
-
-  if (clsError || !cls) {
-    return NextResponse.json({ error: 'Klassen hittades inte' }, { status: 404 })
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sess = cls.sessions as any
-  const ownerCompId: string | undefined = Array.isArray(sess) ? sess[0]?.competition_id : sess?.competition_id
-  if (ownerCompId !== auth.competitionId) {
+  if (!supabase || !cls) {
     return NextResponse.json({ error: 'Klassen hittades inte' }, { status: 404 })
   }
 
@@ -63,9 +103,103 @@ export async function GET(
     class: {
       id: cls.id,
       name: cls.name,
-      startTime: cls.start_time,
-      attendanceDeadline: cls.attendance_deadline,
+      startTime: cls.startTime,
+      attendanceDeadline: cls.attendanceDeadline,
     },
     players,
   })
+}
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { classId: string } }
+) {
+  const { supabase, errorResponse } = await getAuthorizedClass(req, params.classId)
+  if (errorResponse) {
+    return errorResponse
+  }
+  if (!supabase) {
+    return NextResponse.json({ error: 'Klassen hittades inte' }, { status: 404 })
+  }
+
+  const body = await req.json().catch(() => null)
+  const registrationId = body?.registrationId
+  const status = body?.status
+  const idempotencyKey = body?.idempotencyKey
+
+  if (
+    typeof registrationId !== 'string' ||
+    (status !== 'confirmed' && status !== 'absent') ||
+    typeof idempotencyKey !== 'string'
+  ) {
+    return NextResponse.json({ error: 'Ogiltiga uppgifter' }, { status: 400 })
+  }
+
+  const { errorResponse: registrationError } = await getAuthorizedRegistration(
+    supabase,
+    params.classId,
+    registrationId
+  )
+  if (registrationError) {
+    return registrationError
+  }
+
+  const { error: upsertError } = await supabase
+    .from('attendance')
+    .upsert(
+      {
+        registration_id: registrationId,
+        status,
+        reported_at: new Date().toISOString(),
+        reported_by: 'admin',
+        idempotency_key: idempotencyKey,
+      },
+      { onConflict: 'registration_id' }
+    )
+
+  if (upsertError) {
+    return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true })
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { classId: string } }
+) {
+  const { supabase, errorResponse } = await getAuthorizedClass(req, params.classId)
+  if (errorResponse) {
+    return errorResponse
+  }
+  if (!supabase) {
+    return NextResponse.json({ error: 'Klassen hittades inte' }, { status: 404 })
+  }
+
+  const body = await req.json().catch(() => null)
+  const registrationId = body?.registrationId
+
+  if (typeof registrationId !== 'string') {
+    return NextResponse.json({ error: 'Ogiltiga uppgifter' }, { status: 400 })
+  }
+
+  const { errorResponse: registrationError } = await getAuthorizedRegistration(
+    supabase,
+    params.classId,
+    registrationId
+  )
+  if (registrationError) {
+    return registrationError
+  }
+
+  const { error: deleteError } = await supabase
+    .from('attendance')
+    .delete()
+    .eq('registration_id', registrationId)
+
+  if (deleteError) {
+    return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true })
 }

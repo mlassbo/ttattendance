@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCompetitionAuth } from '@/lib/auth'
+import { getScopedCompetitionAuth } from '@/lib/scoped-competition-auth'
 import { createServerClient } from '@/lib/supabase'
 import { getAttendanceField } from '../../../lib'
 
@@ -7,7 +7,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { classId: string } }
 ) {
-  const auth = await getCompetitionAuth(req.cookies)
+  const auth = await getScopedCompetitionAuth(req)
   if (!auth || auth.role !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

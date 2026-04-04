@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { formatSwedishDateTime, formatSwedishWeekdayTime } from '@/lib/attendance-window'
 import AutoRefreshStatus from '../../AutoRefreshStatus'
 import { formatTime } from '../../format'
 
@@ -28,6 +29,104 @@ interface ClassInfo {
 interface ClassData {
   class: ClassInfo
   players: PlayerAttendance[]
+}
+
+interface WorkflowAttendance {
+  confirmed: number
+  absent: number
+  noResponse: number
+  total: number
+  state: 'awaiting_attendance' | 'callout_needed' | 'attendance_complete'
+  lastCalloutAt: string | null
+}
+
+interface WorkflowNextAction {
+  key: string
+  label: string
+}
+
+interface WorkflowStep {
+  key: string
+  order: number
+  label: string
+  helper: string
+  canSkip: boolean
+  dependsOn: string[]
+  requiresAttendanceComplete: boolean
+  status: 'not_started' | 'active' | 'done' | 'skipped'
+  derivedState: 'blocked' | 'ready' | 'active' | 'done' | 'skipped'
+  note: string | null
+  updatedAt: string | null
+  canStart: boolean
+  canMarkDone: boolean
+  canSkipAction: boolean
+  canReopen: boolean
+}
+
+interface WorkflowData {
+  class: ClassInfo
+  attendance: WorkflowAttendance
+  workflow: {
+    currentPhaseKey: string
+    currentPhaseLabel: string
+    nextAction: WorkflowNextAction | null
+    canLogCallout: boolean
+    steps: WorkflowStep[]
+  }
+}
+
+class FetchError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+function normalizeWorkflowData(payload: WorkflowData): WorkflowData {
+  return {
+    ...payload,
+    workflow: {
+      ...payload.workflow,
+      steps: payload.workflow.steps.map(step => ({
+        ...step,
+        canSkipAction: step.canSkip,
+      })),
+    },
+  }
+}
+
+function getWorkflowStateLabel(state: WorkflowStep['derivedState']) {
+  if (state === 'blocked') return 'Blockerad'
+  if (state === 'ready') return 'Kan påbörjas'
+  if (state === 'active') return 'Pågår'
+  if (state === 'done') return 'Klar'
+  return 'Skippad'
+}
+
+function getWorkflowStateClassName(state: WorkflowStep['derivedState']) {
+  if (state === 'blocked') return 'app-pill-muted'
+  if (state === 'ready') return 'app-pill-warning'
+  if (state === 'active') return 'rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white'
+  if (state === 'done') return 'app-pill-success'
+  return 'rounded-full bg-stone-200 px-3 py-1 text-xs font-semibold text-stone-700'
+}
+
+function getWorkflowHeadlineClassName(currentPhaseKey: string) {
+  if (currentPhaseKey === 'callout_needed') return 'app-pill-warning'
+  if (
+    currentPhaseKey === 'finished'
+    || currentPhaseKey === 'pool_play_complete'
+    || currentPhaseKey === 'playoffs_complete'
+  ) {
+    return 'app-pill-success'
+  }
+  if (currentPhaseKey.endsWith('_in_progress')) {
+    return 'rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white'
+  }
+
+  return null
 }
 
 function StatusBadge({
@@ -86,41 +185,123 @@ export default function ClassAttendanceView({
 }) {
   const router = useRouter()
   const [data, setData] = useState<ClassData | null>(null)
+  const [workflowData, setWorkflowData] = useState<WorkflowData | null>(null)
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [secondsUntilNextRefresh, setSecondsUntilNextRefresh] = useState<number | null>(null)
   const [overriding, setOverriding] = useState<string | null>(null)
   const [overrideError, setOverrideError] = useState<string | null>(null)
+  const [workflowMutation, setWorkflowMutation] = useState<string | null>(null)
+  const [workflowError, setWorkflowError] = useState<string | null>(null)
+  const [pageError, setPageError] = useState<string | null>(null)
+  const [notFound, setNotFound] = useState(false)
   const overridingRef = useRef(false)
+  const workflowMutatingRef = useRef(false)
   const refreshInFlightRef = useRef(false)
+
+  const fetchAttendanceData = useCallback(async () => {
+    const res = await fetch(`/api/admin/classes/${classId}/attendance`, {
+      cache: 'no-store',
+      headers: {
+        'x-competition-slug': slug,
+      },
+    })
+    if (res.status === 401) {
+      router.push(`/${slug}/admin`)
+      return null
+    }
+    if (!res.ok) {
+      throw new FetchError(res.status, 'attendance_fetch_failed')
+    }
+
+    return res.json() as Promise<ClassData>
+  }, [classId, slug, router])
+
+  const fetchWorkflowData = useCallback(async () => {
+    const res = await fetch(`/api/admin/classes/${classId}/workflow`, {
+      cache: 'no-store',
+      headers: {
+        'x-competition-slug': slug,
+      },
+    })
+    if (res.status === 401) {
+      router.push(`/${slug}/admin`)
+      return null
+    }
+    if (!res.ok) {
+      throw new FetchError(res.status, 'workflow_fetch_failed')
+    }
+
+    const payload = await res.json() as WorkflowData
+    return normalizeWorkflowData(payload)
+  }, [classId, slug, router])
 
   const fetchData = useCallback(async () => {
     // Skip poll if an override is in flight to avoid overwriting optimistic state.
-    if (overridingRef.current || refreshInFlightRef.current) return
+    if (overridingRef.current || workflowMutatingRef.current || refreshInFlightRef.current) return
 
+    const hadDataBeforeRequest = data !== null
     refreshInFlightRef.current = true
     setIsRefreshing(true)
 
     try {
-      const res = await fetch(`/api/admin/classes/${classId}/attendance`, { cache: 'no-store' })
-      if (res.status === 401) {
-        router.push(`/${slug}/admin`)
-        return
+      const [attendanceResult, workflowResult] = await Promise.allSettled([
+        fetchAttendanceData(),
+        fetchWorkflowData(),
+      ])
+
+      let receivedFreshData = false
+      let attendanceWasNotFound = false
+
+      if (attendanceResult.status === 'fulfilled') {
+        if (attendanceResult.value) {
+          setData(attendanceResult.value)
+          setPageError(null)
+          receivedFreshData = true
+        }
+      } else if (attendanceResult.reason instanceof FetchError) {
+        if (attendanceResult.reason.status === 404) {
+          attendanceWasNotFound = true
+        } else {
+          setPageError('Kunde inte hämta klassen')
+        }
+      } else {
+        setPageError('Kunde inte hämta klassen')
       }
-      if (res.ok) {
-        setData(await res.json())
+
+      if (workflowResult.status === 'fulfilled') {
+        if (workflowResult.value) {
+          setWorkflowData(workflowResult.value)
+          setWorkflowError(null)
+          receivedFreshData = true
+        }
+      } else if (workflowResult.reason instanceof FetchError) {
+        setWorkflowError(
+          workflowResult.reason.status === 404
+            ? 'Checklistan kunde inte hämtas'
+            : 'Kunde inte hämta checklistan'
+        )
+      } else {
+        setWorkflowError('Kunde inte hämta checklistan')
+      }
+
+      if (attendanceWasNotFound) {
+        setNotFound(true)
+      } else if (receivedFreshData || hadDataBeforeRequest) {
+        setNotFound(false)
+      }
+
+      if (receivedFreshData) {
         setUpdatedAt(new Date())
         setSecondsUntilNextRefresh(REFRESH_INTERVAL_SECONDS)
       }
-    } catch {
-      // network error — keep existing data
     } finally {
       setLoading(false)
       setIsRefreshing(false)
       refreshInFlightRef.current = false
     }
-  }, [classId, slug, router])
+  }, [fetchAttendanceData, fetchWorkflowData])
 
   useEffect(() => {
     void fetchData()
@@ -150,9 +331,12 @@ export default function ClassAttendanceView({
     setOverrideError(null)
 
     try {
-      const res = await fetch('/api/attendance', {
+      const res = await fetch(`/api/admin/classes/${classId}/attendance`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-competition-slug': slug,
+        },
         body: JSON.stringify({
           registrationId,
           status,
@@ -172,6 +356,14 @@ export default function ClassAttendanceView({
             ),
           }
         })
+        try {
+          const workflowPayload = await fetchWorkflowData()
+          if (workflowPayload) {
+            setWorkflowData(workflowPayload)
+          }
+        } catch {
+          setWorkflowError('Kunde inte uppdatera checklistan')
+        }
         setUpdatedAt(new Date())
         setSecondsUntilNextRefresh(REFRESH_INTERVAL_SECONDS)
       } else {
@@ -192,9 +384,12 @@ export default function ClassAttendanceView({
     setOverrideError(null)
 
     try {
-      const res = await fetch('/api/attendance', {
+      const res = await fetch(`/api/admin/classes/${classId}/attendance`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-competition-slug': slug,
+        },
         body: JSON.stringify({ registrationId }),
       })
 
@@ -210,6 +405,14 @@ export default function ClassAttendanceView({
             ),
           }
         })
+        try {
+          const workflowPayload = await fetchWorkflowData()
+          if (workflowPayload) {
+            setWorkflowData(workflowPayload)
+          }
+        } catch {
+          setWorkflowError('Kunde inte uppdatera checklistan')
+        }
         setUpdatedAt(new Date())
         setSecondsUntilNextRefresh(REFRESH_INTERVAL_SECONDS)
       } else {
@@ -223,13 +426,81 @@ export default function ClassAttendanceView({
     }
   }
 
+  async function mutateWorkflowStep(stepKey: string, status: 'active' | 'done' | 'skipped' | 'not_started') {
+    if (workflowMutatingRef.current || refreshInFlightRef.current) return
+
+    workflowMutatingRef.current = true
+    setWorkflowMutation(`${stepKey}:${status}`)
+    setWorkflowError(null)
+
+    try {
+      const res = await fetch(`/api/admin/classes/${classId}/workflow/steps/${stepKey}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-competition-slug': slug,
+        },
+        body: JSON.stringify({ status }),
+      })
+
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        setWorkflowError(payload?.error ?? 'Något gick fel, försök igen')
+        return
+      }
+
+      setWorkflowData(normalizeWorkflowData(payload as WorkflowData))
+      setUpdatedAt(new Date())
+      setSecondsUntilNextRefresh(REFRESH_INTERVAL_SECONDS)
+    } catch {
+      setWorkflowError('Nätverksfel, försök igen')
+    } finally {
+      workflowMutatingRef.current = false
+      setWorkflowMutation(null)
+    }
+  }
+
+  async function logCallout() {
+    if (workflowMutatingRef.current || refreshInFlightRef.current) return
+
+    workflowMutatingRef.current = true
+    setWorkflowMutation('missing_players_callout')
+    setWorkflowError(null)
+
+    try {
+      const res = await fetch(`/api/admin/classes/${classId}/workflow/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-competition-slug': slug,
+        },
+        body: JSON.stringify({ eventKey: 'missing_players_callout' }),
+      })
+
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        setWorkflowError(payload?.error ?? 'Något gick fel, försök igen')
+        return
+      }
+
+      setWorkflowData(normalizeWorkflowData(payload as WorkflowData))
+      setUpdatedAt(new Date())
+      setSecondsUntilNextRefresh(REFRESH_INTERVAL_SECONDS)
+    } catch {
+      setWorkflowError('Nätverksfel, försök igen')
+    } finally {
+      workflowMutatingRef.current = false
+      setWorkflowMutation(null)
+    }
+  }
+
   function downloadCsv() {
     const a = document.createElement('a')
-    a.href = `/api/admin/classes/${classId}/export`
+    a.href = `/api/admin/classes/${classId}/export?slug=${encodeURIComponent(slug)}`
     a.click()
   }
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="app-shell flex items-center justify-center">
         <p className="text-muted">Laddar...</p>
@@ -237,10 +508,18 @@ export default function ClassAttendanceView({
     )
   }
 
-  if (!data) {
+  if (notFound) {
     return (
       <div className="app-shell flex items-center justify-center">
         <p className="text-muted">Klassen hittades inte.</p>
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="app-shell flex items-center justify-center">
+        <p className="text-muted">{pageError ?? 'Kunde inte hämta klassen.'}</p>
       </div>
     )
   }
@@ -251,8 +530,14 @@ export default function ClassAttendanceView({
   const absent = data.players.filter(p => p.status === 'absent')
   const noResponse = data.players.filter(p => p.status === null)
   const missingPlayersText = noResponse.map(player => `${player.name}${player.club ? ` (${player.club})` : ''}`)
-  const answeredCount = confirmed.length + absent.length
-  const isFullyAttended = data.players.length > 0 && noResponse.length === 0
+  const currentPhase = workflowData?.workflow.currentPhaseLabel ?? null
+  const currentPhaseClassName = workflowData
+    ? getWorkflowHeadlineClassName(workflowData.workflow.currentPhaseKey)
+    : null
+  const nextAction = workflowData?.workflow.nextAction?.label ?? null
+  const attendanceStepState = workflowData?.attendance.state === 'attendance_complete'
+    ? 'done'
+    : 'active'
 
   return (
     <main className="app-shell">
@@ -287,67 +572,244 @@ export default function ClassAttendanceView({
                 updatedAt={updatedAt}
                 secondsUntilNextRefresh={secondsUntilNextRefresh}
               />
-              <button
-                data-testid="export-csv-button"
-                onClick={downloadCsv}
-                className="app-button-secondary mt-3 min-h-10 px-4 py-2 text-xs"
-              >
-                Exportera CSV
-              </button>
             </div>
           </div>
         </section>
 
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="app-card-soft text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Bekräftade</p>
-            <p className="mt-2 text-2xl font-semibold text-green-700">{confirmed.length}</p>
-          </div>
-          <div className="app-card-soft text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Frånvaro</p>
-            <p className="mt-2 text-2xl font-semibold text-red-700">{absent.length}</p>
-          </div>
-          <div className="app-card-soft text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Ej rapporterat</p>
-            <p className={`mt-2 text-2xl font-semibold ${noResponse.length > 0 && isPastDeadline ? 'text-orange-700' : 'text-muted'}`}>
-              {noResponse.length}
+        <section className="app-card space-y-4">
+          {workflowData ? (
+            <>
+              <div className="flex justify-center">
+                <div className="space-y-2 text-center">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                    Checklista
+                  </p>
+                  {currentPhaseClassName && currentPhase && (
+                    <span
+                      data-testid="workflow-current-phase"
+                      className={currentPhaseClassName}
+                    >
+                      {currentPhase}
+                    </span>
+                  )}
+                  {nextAction && (
+                    <p data-testid="workflow-next-action" className="text-sm text-muted">
+                      Nästa: <span className="font-semibold text-ink">{nextAction}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {workflowError && (
+                <p data-testid="workflow-error" className="app-banner-error">
+                  {workflowError}
+                </p>
+              )}
+
+              <div className="space-y-3">
+            <div
+              data-testid="workflow-step-attendance"
+              className="rounded-2xl border border-line bg-surface px-4 py-4"
+            >
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-base font-semibold text-ink">Kolla närvaro</p>
+                      <span
+                        data-testid="workflow-step-state-attendance"
+                        className={getWorkflowStateClassName(attendanceStepState)}
+                      >
+                        {attendanceStepState === 'done' ? 'Klar' : 'Pågår'}
+                      </span>
+                    </div>
+                    <p data-testid="workflow-attendance-state" className="text-sm text-muted">
+                      {workflowData.attendance.state === 'awaiting_attendance'
+                        ? 'Inväntar fler svar före deadline.'
+                        : workflowData.attendance.state === 'callout_needed'
+                          ? 'Deadline passerad och spelare saknas.'
+                          : 'Närvaron är klar för klassen.'}
+                    </p>
+                    {workflowData.attendance.lastCalloutAt && (
+                      <p data-testid="workflow-last-callout" className="text-xs text-muted/80">
+                        Senaste upprop {formatSwedishWeekdayTime(workflowData.attendance.lastCalloutAt)}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {data.players.length > 0 && (
+                      <a
+                        data-testid="attendance-list-jump-link"
+                        href="#attendance-list"
+                        className="app-button-secondary min-h-10 px-4 py-2"
+                      >
+                        Gå till närvarolistan
+                      </a>
+                    )}
+                    {workflowData.workflow.canLogCallout && (
+                      <button
+                        data-testid="workflow-callout-button"
+                        onClick={logCallout}
+                        disabled={workflowMutation === 'missing_players_callout' || isRefreshing}
+                        className="app-button-secondary min-h-10 px-4 py-2"
+                      >
+                        Markera upprop gjort
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <span
+                    data-testid="attendance-count-confirmed"
+                    className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-700"
+                    title="Bekräftade"
+                  >
+                    <span>✓</span> {workflowData.attendance.confirmed}
+                  </span>
+                  <span
+                    data-testid="attendance-count-absent"
+                    className="inline-flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"
+                    title="Frånvaro"
+                  >
+                    <span>✗</span> {workflowData.attendance.absent}
+                  </span>
+                  <span
+                    data-testid="attendance-count-no-response"
+                    className={`inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold ${
+                      workflowData.attendance.noResponse > 0 && isPastDeadline
+                        ? 'bg-orange-50 text-orange-700'
+                        : 'bg-stone-100 text-muted'
+                    }`}
+                    title="Ej rapporterat"
+                  >
+                    <span>?</span> {workflowData.attendance.noResponse}
+                  </span>
+                </div>
+
+                <div className="rounded-2xl border border-line/70 bg-stone-50/80 px-4 py-3 text-sm text-muted">
+                  <p data-testid="attendance-response-summary">
+                    Svar inkomna {workflowData.attendance.confirmed + workflowData.attendance.absent}/{workflowData.attendance.total}
+                  </p>
+                  {workflowData.attendance.state === 'attendance_complete' && workflowData.attendance.total > 0 && (
+                    <p data-testid="workflow-attendance-complete" className="mt-1 font-medium text-green-700">
+                      Alla {workflowData.attendance.total} spelare har svarat i klassen.
+                    </p>
+                  )}
+                </div>
+
+                {noResponse.length > 0 && (
+                  <div
+                    data-testid="workflow-missing-players"
+                    className="rounded-2xl border border-amber-200 bg-amber-50/75 px-4 py-3"
+                  >
+                    <p className="text-sm font-semibold text-amber-950">
+                      {isPastDeadline ? 'Dessa spelare bör ropas upp i sekretariatet:' : 'Dessa spelare saknar fortfarande svar:'}
+                    </p>
+                    <div className="mt-2 space-y-1 text-sm text-amber-900">
+                      {missingPlayersText.map(playerName => (
+                        <p key={playerName}>{playerName}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {workflowData.workflow.steps.map(step => {
+              const isMutatingStep = workflowMutation?.startsWith(`${step.key}:`) ?? false
+
+              return (
+                <div
+                  key={step.key}
+                  data-testid={`workflow-step-${step.key}`}
+                  className="rounded-2xl border border-line bg-surface px-4 py-4"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-semibold text-ink">{step.label}</p>
+                        <span
+                          data-testid={`workflow-step-state-${step.key}`}
+                          className={getWorkflowStateClassName(step.derivedState)}
+                        >
+                          {getWorkflowStateLabel(step.derivedState)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted">{step.helper}</p>
+                      {step.updatedAt && (
+                        <p className="text-xs text-muted/80">
+                          Senast uppdaterad {formatSwedishDateTime(step.updatedAt)}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-2 lg:min-w-[260px] lg:self-center">
+                      {step.canMarkDone && (
+                        <button
+                          data-testid={`workflow-done-btn-${step.key}`}
+                          onClick={() => mutateWorkflowStep(step.key, 'done')}
+                          disabled={isMutatingStep || isRefreshing}
+                          className="min-h-10 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-green-700 disabled:opacity-60"
+                        >
+                          Klar
+                        </button>
+                      )}
+                      {step.canSkipAction && (
+                        <button
+                          data-testid={`workflow-skip-btn-${step.key}`}
+                          onClick={() => mutateWorkflowStep(step.key, 'skipped')}
+                          disabled={isMutatingStep || isRefreshing}
+                          className="min-h-10 rounded-xl border border-stone-300 bg-surface px-4 py-2 text-sm font-semibold text-ink transition-colors duration-150 hover:bg-stone-50 disabled:opacity-60"
+                        >
+                          Skippa
+                        </button>
+                      )}
+                      {step.canReopen && (
+                        <button
+                          data-testid={`workflow-reset-btn-${step.key}`}
+                          onClick={() => mutateWorkflowStep(step.key, 'not_started')}
+                          disabled={isMutatingStep || isRefreshing}
+                          className="min-h-10 rounded-xl border border-stone-300 bg-surface px-4 py-2 text-sm font-semibold text-ink transition-colors duration-150 hover:bg-stone-50 disabled:opacity-60"
+                        >
+                          Nollställ
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+              </div>
+            </>
+          ) : (
+            <p data-testid="workflow-error" className="app-banner-error">
+              {workflowError ?? 'Checklistan kunde inte laddas just nu.'}
             </p>
-          </div>
-          <div className="app-card-soft text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Totalt</p>
-            <p className="mt-2 text-2xl font-semibold text-ink">{data.players.length}</p>
-          </div>
-          <div className="app-card-soft text-center sm:col-span-2 lg:col-span-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Svar inkomna</p>
-            <p className="mt-2 text-2xl font-semibold text-ink">{answeredCount}/{data.players.length}</p>
-          </div>
+          )}
         </section>
 
-        {isPastDeadline && noResponse.length > 0 && (
-          <div data-testid="past-deadline-warning" className="app-banner-warning">
-            <p className="text-sm font-semibold text-amber-950">
-              Deadline har passerat. {noResponse.length} spelare saknas fortfarande.
-            </p>
-            <p className="mt-1 text-sm text-amber-800">
-              Dessa spelare bör ropas upp i sekretariatet: {missingPlayersText.join(', ')}.
-            </p>
-          </div>
-        )}
-
-        {isFullyAttended && (
-          <div data-testid="attendance-complete-banner" className="app-banner-success">
-            <p className="text-sm font-semibold text-green-900">
-              Alla {data.players.length} spelare har svarat i klassen.
-            </p>
-            <p className="text-sm text-green-700">
-              Listan är komplett och uppdateras fortfarande automatiskt.
-            </p>
-          </div>
-        )}
-
+        {pageError && <p data-testid="class-load-error" className="app-banner-error">{pageError}</p>}
         {overrideError && <p data-testid="override-error" className="app-banner-error">{overrideError}</p>}
 
-        <section className="space-y-3">
+        <section id="attendance-list" data-testid="attendance-list" className="scroll-mt-6 space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-ink">Närvarolista</h2>
+              <p className="text-sm text-muted">
+                Bekräfta, markera frånvaro eller återställ närvaro per spelare.
+              </p>
+            </div>
+            <button
+              data-testid="export-csv-button"
+              onClick={downloadCsv}
+              className="app-button-secondary min-h-10 px-4 py-2 text-xs"
+            >
+              Exportera CSV
+            </button>
+          </div>
+
           {data.players.map(player => {
             const isOverriding = overriding === player.registrationId
             return (

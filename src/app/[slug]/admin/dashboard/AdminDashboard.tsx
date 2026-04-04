@@ -22,6 +22,16 @@ interface ClassSummary {
   startTime: string
   attendanceDeadline: string
   counts: ClassCounts
+  workflow: {
+    currentPhaseKey: string | null
+    currentPhaseLabel: string | null
+    nextActionKey: string | null
+    nextActionLabel: string | null
+    nextActionHelper: string | null
+    followUpActionLabel: string | null
+    lastCalloutAt: string | null
+    missingPlayers: string[]
+  }
 }
 
 interface Session {
@@ -30,6 +40,22 @@ interface Session {
   date: string
   sessionOrder: number
   classes: ClassSummary[]
+}
+
+function getWorkflowBadgeClassName(currentPhaseKey: string | null) {
+  if (currentPhaseKey === 'callout_needed') return 'app-pill-warning'
+  if (
+    currentPhaseKey === 'finished'
+    || currentPhaseKey === 'pool_play_complete'
+    || currentPhaseKey === 'playoffs_complete'
+  ) {
+    return 'app-pill-success'
+  }
+  if (currentPhaseKey?.endsWith('_in_progress')) {
+    return 'rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white'
+  }
+
+  return null
 }
 
 function formatDate(dateStr: string) {
@@ -48,6 +74,13 @@ function formatPlayerCount(count: number) {
   return `${count} spelare`
 }
 
+function canSkipDashboardAction(actionKey: string | null) {
+  return actionKey === 'seed_class'
+    || actionKey === 'a_playoff'
+    || actionKey === 'b_playoff'
+    || actionKey === 'register_playoff_match_results'
+}
+
 export default function AdminDashboard({
   slug,
   competitionName,
@@ -62,6 +95,7 @@ export default function AdminDashboard({
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [secondsUntilNextRefresh, setSecondsUntilNextRefresh] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [dashboardMutation, setDashboardMutation] = useState<string | null>(null)
   const refreshInFlightRef = useRef(false)
 
   const fetchData = useCallback(async () => {
@@ -71,7 +105,12 @@ export default function AdminDashboard({
     setIsRefreshing(true)
 
     try {
-      const res = await fetch('/api/admin/sessions', { cache: 'no-store' })
+      const res = await fetch('/api/admin/sessions', {
+        cache: 'no-store',
+        headers: {
+          'x-competition-slug': slug,
+        },
+      })
       if (res.status === 401) {
         router.push(`/${slug}/admin`)
         return
@@ -115,6 +154,76 @@ export default function AdminDashboard({
     return () => clearInterval(countdown)
   }, [isRefreshing, secondsUntilNextRefresh])
 
+  async function mutateDashboardStep(classId: string, stepKey: string, status: 'done' | 'skipped') {
+    if (refreshInFlightRef.current || dashboardMutation) return
+
+    setDashboardMutation(`${classId}:${stepKey}:${status}`)
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/admin/classes/${classId}/workflow/steps/${stepKey}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-competition-slug': slug,
+        },
+        body: JSON.stringify({ status }),
+      })
+
+      if (res.status === 401) {
+        router.push(`/${slug}/admin`)
+        return
+      }
+
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        setError(payload?.error ?? 'Kunde inte uppdatera checklistan')
+        return
+      }
+
+      await fetchData()
+    } catch {
+      setError('Nätverksfel')
+    } finally {
+      setDashboardMutation(null)
+    }
+  }
+
+  async function logDashboardCallout(classId: string) {
+    if (refreshInFlightRef.current || dashboardMutation) return
+
+    setDashboardMutation(`${classId}:missing_players_callout`)
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/admin/classes/${classId}/workflow/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-competition-slug': slug,
+        },
+        body: JSON.stringify({ eventKey: 'missing_players_callout' }),
+      })
+
+      if (res.status === 401) {
+        router.push(`/${slug}/admin`)
+        return
+      }
+
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        setError(payload?.error ?? 'Kunde inte uppdatera checklistan')
+        return
+      }
+
+      await fetchData()
+    } catch {
+      setError('Nätverksfel')
+    } finally {
+      setDashboardMutation(null)
+    }
+  }
+
   const now = Date.now()
   const overdueClasses = sessions.flatMap(session =>
     session.classes
@@ -132,9 +241,9 @@ export default function AdminDashboard({
             <p data-testid="dashboard-competition-name" className="text-sm text-muted">
               {competitionName}
             </p>
-            <h1 className="text-3xl font-semibold tracking-tight text-ink">Närvaro</h1>
+            <h1 className="text-3xl font-semibold tracking-tight text-ink">Översikt</h1>
             <p className="text-sm leading-6 text-muted">
-              Håll koll på svaren i varje pass och fånga upp spelare som fortfarande saknas.
+              Ha koll på alla klasser, deras status och vad som behöver göras i sekretariatet.
             </p>
           </div>
           <AutoRefreshStatus
@@ -178,96 +287,183 @@ export default function AdminDashboard({
                   const isPastDeadline = new Date() > new Date(cls.attendanceDeadline)
                   const needsAnnouncement = isPastDeadline && cls.counts.noResponse > 0
                   const answeredCount = cls.counts.confirmed + cls.counts.absent
-                  const isFullyAttended = cls.counts.total > 0 && cls.counts.noResponse === 0
+                  const workflowBadgeClassName = getWorkflowBadgeClassName(cls.workflow.currentPhaseKey)
+                  const showAttendanceCounts =
+                    cls.workflow.currentPhaseKey === 'awaiting_attendance'
+                    || cls.workflow.currentPhaseKey === 'callout_needed'
+                  const showCurrentActionStep =
+                    !!cls.workflow.nextActionLabel
+                    && cls.workflow.nextActionLabel !== cls.workflow.currentPhaseLabel
+                  const canQuickComplete =
+                    !!cls.workflow.nextActionKey
+                    && cls.workflow.nextActionKey !== 'missing_players_callout'
+                  const canQuickSkip = canSkipDashboardAction(cls.workflow.nextActionKey)
+                  const canQuickCallout = cls.workflow.nextActionKey === 'missing_players_callout'
+                  const isMutatingDone = dashboardMutation === `${cls.id}:${cls.workflow.nextActionKey}:done`
+                  const isMutatingSkip = dashboardMutation === `${cls.id}:${cls.workflow.nextActionKey}:skipped`
+                  const isMutatingCallout = dashboardMutation === `${cls.id}:missing_players_callout`
+                  const showWorkflowPanel = cls.workflow.currentPhaseKey !== 'finished'
+                  const cardTone = needsAnnouncement
+                    ? 'border-amber-300 bg-amber-50/85'
+                    : cls.workflow.currentPhaseKey === 'finished'
+                      ? 'border-green-200 bg-green-50/80'
+                      : ''
+
                   return (
                     <div
                       key={cls.id}
                       data-testid={`class-row-${cls.id}`}
-                      className={`app-card flex flex-col gap-4 sm:flex-row sm:items-stretch ${
-                        needsAnnouncement
-                          ? 'border-amber-300 bg-amber-50/85'
-                          : isFullyAttended
-                            ? 'border-green-200 bg-green-50/80'
-                            : ''
-                      }`}
+                      className={`app-card space-y-4 ${cardTone}`}
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-semibold text-ink truncate">{cls.name}</p>
-                          {needsAnnouncement && (
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-2">
+                          {cls.workflow.currentPhaseLabel && workflowBadgeClassName && (
                             <span
-                              data-testid={`class-overdue-badge-${cls.id}`}
-                              className="app-pill-warning"
+                              data-testid={`dashboard-workflow-badge-${cls.id}`}
+                              className={`inline-flex whitespace-nowrap ${workflowBadgeClassName}`}
                             >
-                              Deadline passerad · {cls.counts.noResponse} saknas
+                              {cls.workflow.currentPhaseLabel}
                             </span>
                           )}
+
+                          <p className="text-lg font-semibold text-ink truncate">{cls.name}</p>
+
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+                            <p>Start {formatTime(cls.startTime)}</p>
+                            {showAttendanceCounts && (
+                              <p className={needsAnnouncement ? 'font-semibold text-amber-800' : ''}>
+                                Deadline {formatTime(cls.attendanceDeadline)}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-sm text-muted">
-                          Start {formatTime(cls.startTime)}
-                          {' · '}
-                          <span className={needsAnnouncement ? 'font-semibold text-amber-800' : ''}>
-                            Deadline {formatTime(cls.attendanceDeadline)}
-                            {needsAnnouncement ? ' - ropa upp saknade spelare' : ''}
-                          </span>
-                        </p>
-                      </div>
-
-                      <div className="grid flex-1 grid-cols-3 gap-2 sm:max-w-sm sm:self-stretch">
-                        <span
-                          data-testid={`count-confirmed-${cls.id}`}
-                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-700"
-                          title="Bekräftade"
-                        >
-                          <span>✓</span> {cls.counts.confirmed}
-                        </span>
-                        <span
-                          data-testid={`count-absent-${cls.id}`}
-                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"
-                          title="Frånvaro"
-                        >
-                          <span>✗</span> {cls.counts.absent}
-                        </span>
-                        <span
-                          data-testid={`count-no-response-${cls.id}`}
-                          className={`inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold ${
-                            cls.counts.noResponse > 0 && isPastDeadline
-                              ? 'bg-orange-50 text-orange-700'
-                              : 'bg-stone-100 text-muted'
-                          }`}
-                          title="Ej rapporterat"
-                        >
-                          <span>?</span> {cls.counts.noResponse}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-line/60 bg-stone-50/80 px-3 py-3 sm:ml-auto sm:min-w-[190px] sm:flex-col sm:items-stretch sm:justify-between sm:text-left">
-                        {needsAnnouncement ? (
-                          <p className="text-xs font-semibold text-amber-800 sm:text-sm">
-                            Ropa upp {cls.counts.noResponse}
-                          </p>
-                        ) : isFullyAttended ? (
-                          <span
-                            data-testid={`class-complete-badge-${cls.id}`}
-                            className="app-pill-success sm:w-fit"
-                          >
-                            Alla har svarat
-                          </span>
-                        ) : cls.counts.total === 0 ? (
-                          <p className="text-xs font-medium text-muted sm:text-sm">Inga spelare</p>
-                        ) : (
-                          <p className="text-xs font-medium text-muted sm:text-sm">
-                            {answeredCount}/{cls.counts.total} svar
-                          </p>
-                        )}
 
                         <Link
                           data-testid={`class-detail-link-${cls.id}`}
                           href={`/${slug}/admin/classes/${cls.id}`}
-                          className="app-button-secondary min-h-10 w-auto shrink-0 px-4 py-2 sm:w-full"
+                          className="app-button-secondary min-h-9 shrink-0 px-3 py-1.5 text-xs text-center"
                         >
                           Visa detaljer
                         </Link>
+                      </div>
+
+                      <div className="space-y-3">
+                        {showAttendanceCounts && (
+                          <div className="flex flex-wrap gap-2">
+                            <span
+                              data-testid={`count-confirmed-${cls.id}`}
+                              className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-700"
+                              title="Bekräftade"
+                            >
+                              <span>✓</span> {cls.counts.confirmed}
+                            </span>
+                            <span
+                              data-testid={`count-absent-${cls.id}`}
+                              className="inline-flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"
+                              title="Frånvaro"
+                            >
+                              <span>✗</span> {cls.counts.absent}
+                            </span>
+                            <span
+                              data-testid={`count-no-response-${cls.id}`}
+                              className={`inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold ${
+                                cls.counts.noResponse > 0 && isPastDeadline
+                                  ? 'bg-orange-50 text-orange-700'
+                                  : 'bg-stone-100 text-muted'
+                              }`}
+                              title="Ej rapporterat"
+                            >
+                              <span>?</span> {cls.counts.noResponse}
+                            </span>
+                            <span
+                              data-testid={`dashboard-attendance-summary-${cls.id}`}
+                              className="inline-flex items-center rounded-xl border border-line/70 bg-stone-50 px-3 py-2 text-sm text-muted"
+                            >
+                              {answeredCount}/{cls.counts.total} svar
+                            </span>
+                          </div>
+                        )}
+
+                        {showWorkflowPanel && (
+                          <div className="w-full max-w-xl rounded-2xl border border-line/70 bg-stone-50/80 px-4 py-3">
+                            <div className="space-y-3">
+                              <div className="min-w-0 space-y-2">
+                                {cls.workflow.currentPhaseKey === 'callout_needed' && cls.workflow.missingPlayers.length > 0 ? (
+                                  <div
+                                    data-testid={`dashboard-callout-list-${cls.id}`}
+                                    className="space-y-1 text-sm text-amber-900"
+                                  >
+                                    <p className="font-semibold text-amber-950">Ropa upp nu:</p>
+                                    {cls.workflow.missingPlayers.map(playerName => (
+                                      <p key={playerName}>{playerName}</p>
+                                    ))}
+                                  </div>
+                                ) : showCurrentActionStep ? (
+                                  <div className="space-y-1">
+                                    <p
+                                      data-testid={`dashboard-next-action-${cls.id}`}
+                                      className="text-sm font-semibold text-ink"
+                                    >
+                                      {cls.workflow.nextActionLabel}
+                                    </p>
+                                    {cls.workflow.nextActionHelper && (
+                                      <p
+                                        data-testid={`dashboard-next-action-helper-${cls.id}`}
+                                        className="text-sm text-muted"
+                                      >
+                                        {cls.workflow.nextActionHelper}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted">Inget arbetssteg att uppdatera just nu.</p>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                {canQuickComplete && cls.workflow.nextActionKey && (
+                                  <button
+                                    data-testid={`dashboard-done-btn-${cls.id}`}
+                                    onClick={() => mutateDashboardStep(cls.id, cls.workflow.nextActionKey as string, 'done')}
+                                    disabled={isMutatingDone || !!dashboardMutation || isRefreshing}
+                                    className="min-h-10 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-green-700 disabled:opacity-60"
+                                  >
+                                    Klar
+                                  </button>
+                                )}
+                                {canQuickSkip && cls.workflow.nextActionKey && (
+                                  <button
+                                    data-testid={`dashboard-skip-btn-${cls.id}`}
+                                    onClick={() => mutateDashboardStep(cls.id, cls.workflow.nextActionKey as string, 'skipped')}
+                                    disabled={isMutatingSkip || !!dashboardMutation || isRefreshing}
+                                    className="min-h-10 rounded-xl border border-stone-300 bg-surface px-4 py-2 text-sm font-semibold text-ink transition-colors duration-150 hover:bg-stone-50 disabled:opacity-60"
+                                  >
+                                    Skippa
+                                  </button>
+                                )}
+                                {canQuickCallout && (
+                                  <button
+                                    data-testid={`dashboard-callout-btn-${cls.id}`}
+                                    onClick={() => logDashboardCallout(cls.id)}
+                                    disabled={isMutatingCallout || !!dashboardMutation || isRefreshing}
+                                    className="app-button-secondary min-h-10 px-4 py-2"
+                                  >
+                                    Upprop gjort
+                                  </button>
+                                )}
+                              </div>
+
+                              {showCurrentActionStep && cls.workflow.followUpActionLabel && (
+                                <p
+                                  data-testid={`dashboard-followup-action-${cls.id}`}
+                                  className="text-xs text-muted"
+                                >
+                                  Nästa: {cls.workflow.followUpActionLabel}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
