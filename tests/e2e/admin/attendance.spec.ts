@@ -98,6 +98,20 @@ test.describe('Admin attendance flow', () => {
     await expect(page.locator('body')).toContainText('Utgången klass')
   })
 
+  test('dashboard places simultaneous class cards next to each other', async ({ page }) => {
+    await loginAsAdmin(page, SLUG, ADMIN_PIN)
+
+    const futureCard = page.getByTestId(`class-row-${seed.futureClassId}`)
+    const pastCard = page.getByTestId(`class-row-${seed.pastClassId}`)
+
+    const futureBox = await futureCard.boundingBox()
+    const pastBox = await pastCard.boundingBox()
+
+    expect(futureBox).not.toBeNull()
+    expect(pastBox).not.toBeNull()
+    expect(Math.abs((futureBox?.y ?? 0) - (pastBox?.y ?? 0))).toBeLessThan(10)
+  })
+
   test('dashboard shows correct attendance counts for future class', async ({ page }) => {
     await loginAsAdmin(page, SLUG, ADMIN_PIN)
 

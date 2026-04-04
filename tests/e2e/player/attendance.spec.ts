@@ -275,8 +275,55 @@ test.describe('Player attendance flow', () => {
 
     await page.getByTestId('search-input').fill('Ann')
     await expect(
-      page.getByTestId(`search-deadline-passed-${seeded.player.pastRegId}`)
-    ).toContainText('Anmälningstiden har gått ut')
+      page.getByTestId(`search-missing-attendance-${seeded.player.pastRegId}`)
+    ).toContainText('Ingen närvaro är registrerad')
+    await expect(
+      page.getByTestId(`search-missing-attendance-${seeded.player.pastRegId}`)
+    ).toContainText('Kontakta sekretariatet')
+    await expect(
+      page.getByTestId(`search-confirm-btn-${seeded.player.pastRegId}`)
+    ).toHaveCount(0)
+    await expect(
+      page.getByTestId(`search-absent-btn-${seeded.player.pastRegId}`)
+    ).toHaveCount(0)
+  })
+
+  test('past-deadline class with registered attendance does not show missing-attendance warning', async ({ page }) => {
+    const supabase = testClient()
+    await supabase.from('attendance').insert({
+      registration_id: seeded.player.pastRegId,
+      status: 'confirmed',
+      reported_at: new Date().toISOString(),
+      reported_by: 'player',
+      idempotency_key: `past-confirmed-${seeded.player.pastRegId}`,
+    })
+
+    await loginAsPlayer(page)
+    await selectPlayerSearch(page)
+
+    await page.getByTestId('search-input').fill('Ann')
+    await expect(
+      page.getByTestId(`search-status-badge-${seeded.player.pastRegId}`)
+    ).toContainText('Närvaro bekräftad')
+    await expect(
+      page.getByTestId(`search-missing-attendance-${seeded.player.pastRegId}`)
+    ).toHaveCount(0)
+
+    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
+    await expect(page.getByTestId(`status-badge-${seeded.player.pastRegId}`)).toContainText('Närvaro bekräftad')
+    await expect(page.getByTestId(`missing-attendance-${seeded.player.pastRegId}`)).toHaveCount(0)
+  })
+
+  test('player detail view shows secretariat warning when deadline has passed without attendance', async ({ page }) => {
+    await loginAsPlayer(page)
+    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
+
+    await expect(page.getByTestId(`missing-attendance-${seeded.player.pastRegId}`)).toContainText(
+      'Ingen närvaro är registrerad',
+    )
+    await expect(page.getByTestId(`missing-attendance-${seeded.player.pastRegId}`)).toContainText(
+      'Kontakta sekretariatet',
+    )
   })
 
   test('attendance opens per class at 20:00 the night before in Swedish time', async ({ page }) => {

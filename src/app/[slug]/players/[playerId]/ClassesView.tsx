@@ -61,6 +61,15 @@ function getAttendanceStatusCopy(status: 'confirmed' | 'absent') {
   }
 }
 
+function getDeadlinePassedWithoutAttendanceCopy() {
+  return {
+    title: 'Ingen närvaro registrerad',
+    description: 'Ingen närvaro är registrerad för den här klassen. Kontakta sekretariatet.',
+    containerClassName: 'border-amber-200 bg-amber-50 text-amber-950',
+    descriptionClassName: 'text-amber-900',
+  }
+}
+
 export default function ClassesView({
   slug,
   playerId,
@@ -301,6 +310,11 @@ export default function ClassesView({
                 const isSubmitting = submitting === reg.registrationId
                 const currentStatus = reg.attendance?.status ?? null
                 const statusCopy = currentStatus ? getAttendanceStatusCopy(currentStatus) : null
+                const showMissingAttendanceWarning =
+                  availability?.state === 'deadline_passed' && !currentStatus
+                const missingAttendanceCopy = showMissingAttendanceWarning
+                  ? getDeadlinePassedWithoutAttendanceCopy()
+                  : null
 
                 return (
                   <div
@@ -349,6 +363,18 @@ export default function ClassesView({
                       </div>
                     )}
 
+                    {missingAttendanceCopy && (
+                      <div
+                        data-testid={`missing-attendance-${reg.registrationId}`}
+                        className={`mb-4 rounded-2xl border px-4 py-3 ${missingAttendanceCopy.containerClassName}`}
+                      >
+                        <p className="text-sm font-semibold">{missingAttendanceCopy.title}</p>
+                        <p className={`mt-1 text-sm ${missingAttendanceCopy.descriptionClassName}`}>
+                          {missingAttendanceCopy.description}
+                        </p>
+                      </div>
+                    )}
+
                     {!availability ? (
                       <p
                         data-testid={`attendance-not-open-${reg.registrationId}`}
@@ -363,14 +389,7 @@ export default function ClassesView({
                       >
                         {getAttendanceNotOpenMessage(availability.attendanceOpensAt)}
                       </p>
-                    ) : availability.state === 'deadline_passed' ? (
-                      <p
-                        data-testid={`deadline-passed-${reg.registrationId}`}
-                        className="text-xs font-medium text-muted"
-                      >
-                        Anmälningstiden har gått ut
-                      </p>
-                    ) : currentStatus ? (
+                    ) : availability.state === 'deadline_passed' ? null : currentStatus ? (
                       <button
                         data-testid={`reset-btn-${reg.registrationId}`}
                         onClick={() => resetAttendance(reg.registrationId)}

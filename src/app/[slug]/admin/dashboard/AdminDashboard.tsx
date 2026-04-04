@@ -282,7 +282,10 @@ export default function AdminDashboard({
                   {formatDate(session.date)}
                 </span>
               </h2>
-              <div className="space-y-3">
+              <div
+                data-testid={`dashboard-session-grid-${session.id}`}
+                className="grid gap-3 lg:grid-cols-2"
+              >
                 {session.classes.map(cls => {
                   const isPastDeadline = new Date() > new Date(cls.attendanceDeadline)
                   const needsAnnouncement = isPastDeadline && cls.counts.noResponse > 0
@@ -313,7 +316,7 @@ export default function AdminDashboard({
                     <div
                       key={cls.id}
                       data-testid={`class-row-${cls.id}`}
-                      className={`app-card space-y-4 ${cardTone}`}
+                      className={`app-card h-full space-y-4 ${cardTone}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 space-y-2">

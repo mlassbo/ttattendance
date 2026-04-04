@@ -64,6 +64,15 @@ function getAttendanceStatusCopy(status: 'confirmed' | 'absent') {
   }
 }
 
+function getDeadlinePassedWithoutAttendanceCopy() {
+  return {
+    title: 'Ingen närvaro registrerad',
+    description: 'Ingen närvaro är registrerad för klassen. Kontakta sekretariatet.',
+    containerClassName: 'border-amber-200 bg-amber-50 text-amber-950',
+    descriptionClassName: 'text-amber-900',
+  }
+}
+
 export default function SearchView({
   competitionName,
   competitionFirstClassStart,
@@ -401,6 +410,11 @@ export default function SearchView({
                           const currentStatus = registration.attendance?.status ?? null
                           const isSubmitting = submitting === registration.registrationId
                           const statusCopy = currentStatus ? getAttendanceStatusCopy(currentStatus) : null
+                          const showMissingAttendanceWarning =
+                            availability?.state === 'deadline_passed' && !currentStatus
+                          const missingAttendanceCopy = showMissingAttendanceWarning
+                            ? getDeadlinePassedWithoutAttendanceCopy()
+                            : null
 
                           return (
                             <div
@@ -450,6 +464,18 @@ export default function SearchView({
                                 </div>
                               )}
 
+                              {missingAttendanceCopy && (
+                                <div
+                                  data-testid={`search-missing-attendance-${registration.registrationId}`}
+                                  className={`mb-4 rounded-2xl border px-4 py-3 ${missingAttendanceCopy.containerClassName}`}
+                                >
+                                  <p className="text-sm font-semibold">{missingAttendanceCopy.title}</p>
+                                  <p className={`mt-1 text-sm ${missingAttendanceCopy.descriptionClassName}`}>
+                                    {missingAttendanceCopy.description}
+                                  </p>
+                                </div>
+                              )}
+
                               {!availability ? (
                                 <p
                                   data-testid={`attendance-not-open-${registration.registrationId}`}
@@ -464,14 +490,7 @@ export default function SearchView({
                                 >
                                   {getAttendanceNotOpenMessage(availability.attendanceOpensAt)}
                                 </p>
-                              ) : availability.state === 'deadline_passed' ? (
-                                <p
-                                  data-testid={`search-deadline-passed-${registration.registrationId}`}
-                                  className="text-xs font-medium text-muted"
-                                >
-                                  Anmälningstiden har gått ut
-                                </p>
-                              ) : currentStatus ? (
+                              ) : availability.state === 'deadline_passed' ? null : currentStatus ? (
                                 <button
                                   data-testid={`search-reset-btn-${registration.registrationId}`}
                                   onClick={() =>
