@@ -177,7 +177,7 @@ const CLASS_WORKFLOW_STEP_DEFINITIONS: readonly ClassWorkflowStepDefinition[] = 
     key: 'prize_ceremony',
     order: 8,
     label: 'Prisutdelning',
-    helper: 'Genomför prisutdelning när slutspelet är färdigt.',
+    helper: 'Genomför prisutdelning.',
     canSkip: false,
     dependsOn: ['register_playoff_match_results'],
     requiresAttendanceComplete: false,
