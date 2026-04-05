@@ -64,7 +64,7 @@ test.describe('Admin attendance flow', () => {
     await page.getByTestId('admin-login-button').click()
     await page.waitForURL(`/${SLUG}/admin/dashboard`)
     await expect(page.getByTestId('dashboard-competition-name')).toContainText('Test Admintävling')
-    await expect(page.getByTestId('auto-refresh-status')).toContainText('Automatisk uppdatering var 15:e sekund')
+    await expect(page.getByTestId('auto-refresh-status')).toContainText('Automatisk uppdatering var 30:e sekund')
   })
 
   test('already authenticated admin is redirected from PIN page to dashboard', async ({
@@ -169,7 +169,7 @@ test.describe('Admin attendance flow', () => {
     await page.waitForURL(`/${SLUG}/admin/classes/${seed.futureClassId}`)
     await expect(page.locator('body')).toContainText('Herrar A-klass')
     await expect(page.getByTestId('class-competition-name')).toContainText('Test Admintävling')
-    await expect(page.getByTestId('auto-refresh-status')).toContainText('Automatisk uppdatering var 15:e sekund')
+    await expect(page.getByTestId('auto-refresh-status')).toContainText('Automatisk uppdatering var 30:e sekund')
   })
 
   test('dashboard clearly marks classes where everyone has answered', async ({ page }) => {

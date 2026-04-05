@@ -44,6 +44,8 @@ interface Player {
 
 type SearchMode = 'player' | 'club'
 
+const SEARCH_DEBOUNCE_MS = 250
+
 function getAttendanceStatusCopy(status: 'confirmed' | 'absent') {
   if (status === 'confirmed') {
     return {
@@ -66,7 +68,7 @@ function getAttendanceStatusCopy(status: 'confirmed' | 'absent') {
 
 function getDeadlinePassedWithoutAttendanceCopy() {
   return {
-    title: 'Ingen närvaro registrerad',
+    title: 'Ingen närvaro är registrerad',
     description: 'Anmälningstiden har gått ut och ingen närvaro är registrerad för klassen. Kontakta sekretariatet.',
     containerClassName: 'border-amber-200 bg-amber-50 text-amber-950',
     descriptionClassName: 'text-amber-900',
@@ -92,6 +94,7 @@ export default function SearchView({
   const [fetchedQuery, setFetchedQuery] = useState('')
   const submittingRef = useRef(false)
   const [now, setNow] = useState(() => new Date())
+  const searchTerm = query.trim()
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60_000)
@@ -101,21 +104,25 @@ export default function SearchView({
   const competitionScheduleMissingMessage = 'Tävlingsschemat är inte importerat än.'
 
   useEffect(() => {
-    if (query.length < 2) {
+    if (searchTerm.length < 2) {
       setResults([])
       setLoading(false)
-      setFetchedQuery(query)
+      setFetchedQuery(searchTerm)
       setPlayerMessages({})
       return
     }
 
     setLoading(true)
+    let controller: AbortController | null = null
 
-    // 500 ms debounce — reduces server load during peak event usage.
+    // Short debounce plus aborting stale requests keeps search responsive
+    // without flooding the backend when users type quickly.
     const timer = setTimeout(async () => {
       try {
+        controller = new AbortController()
         const res = await fetch(
-          `/api/players/search?q=${encodeURIComponent(query)}&mode=${searchMode}`
+          `/api/players/search?q=${encodeURIComponent(searchTerm)}&mode=${searchMode}`,
+          { signal: controller.signal }
         )
         if (res.ok) {
           const data = await res.json()
@@ -123,16 +130,25 @@ export default function SearchView({
         } else {
           setResults([])
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+
         setResults([])
       } finally {
-        setFetchedQuery(query)
-        setLoading(false)
+        if (!controller?.signal.aborted) {
+          setFetchedQuery(searchTerm)
+          setLoading(false)
+        }
       }
-    }, 500)
+    }, SEARCH_DEBOUNCE_MS)
 
-    return () => clearTimeout(timer)
-  }, [query, searchMode])
+    return () => {
+      clearTimeout(timer)
+      controller?.abort()
+    }
+  }, [searchMode, searchTerm])
 
   function selectSearchMode(nextMode: SearchMode) {
     setSearchMode(prevMode => {
@@ -337,7 +353,7 @@ export default function SearchView({
 
         {loading && <p className="px-1 text-sm text-muted">Söker...</p>}
 
-        {!loading && fetchedQuery === query && query.length >= 2 && results.length === 0 && (
+        {!loading && fetchedQuery === searchTerm && searchTerm.length >= 2 && results.length === 0 && (
           <p data-testid="no-results" className="px-1 text-sm text-muted">
             {searchMode === 'player' ? 'Inga spelare hittades.' : 'Inga klubbar hittades.'}
           </p>

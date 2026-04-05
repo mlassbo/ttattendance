@@ -6,7 +6,7 @@ import { formatSwedishDateTime, formatSwedishWeekdayTime } from '@/lib/attendanc
 import AutoRefreshStatus from '../../AutoRefreshStatus'
 import { formatTime } from '../../format'
 
-const REFRESH_INTERVAL_MS = 15_000
+const REFRESH_INTERVAL_MS = 30_000
 const REFRESH_INTERVAL_SECONDS = REFRESH_INTERVAL_MS / 1000
 
 interface PlayerAttendance {
@@ -240,6 +240,7 @@ export default function ClassAttendanceView({
   const fetchData = useCallback(async () => {
     // Skip poll if an override is in flight to avoid overwriting optimistic state.
     if (overridingRef.current || workflowMutatingRef.current || refreshInFlightRef.current) return
+    if (typeof document !== 'undefined' && document.hidden) return
 
     const hadDataBeforeRequest = data !== null
     refreshInFlightRef.current = true
@@ -309,6 +310,17 @@ export default function ClassAttendanceView({
       void fetchData()
     }, REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
+  }, [fetchData])
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (!document.hidden) {
+        void fetchData()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [fetchData])
 
   useEffect(() => {

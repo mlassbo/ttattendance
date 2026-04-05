@@ -6,7 +6,7 @@ import Link from 'next/link'
 import AutoRefreshStatus from '../AutoRefreshStatus'
 import { formatTime } from '../format'
 
-const REFRESH_INTERVAL_MS = 15_000
+const REFRESH_INTERVAL_MS = 30_000
 const REFRESH_INTERVAL_SECONDS = REFRESH_INTERVAL_MS / 1000
 
 interface ClassCounts {
@@ -100,6 +100,7 @@ export default function AdminDashboard({
 
   const fetchData = useCallback(async () => {
     if (refreshInFlightRef.current) return
+    if (typeof document !== 'undefined' && document.hidden) return
 
     refreshInFlightRef.current = true
     setIsRefreshing(true)
@@ -139,6 +140,17 @@ export default function AdminDashboard({
       void fetchData()
     }, REFRESH_INTERVAL_MS)
     return () => clearInterval(interval)
+  }, [fetchData])
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (!document.hidden) {
+        void fetchData()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [fetchData])
 
   useEffect(() => {
