@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
         }
       }),
       new Date(),
-      { includeLastCalloutAt: false },
+      { includeLastCalloutAt: true },
     )
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -114,6 +114,15 @@ export async function GET(req: NextRequest) {
             })
             .filter(Boolean)
             .sort((left, right) => left.localeCompare(right, 'sv'))
+          const absentPlayers = regs
+            .filter(r => getAttendanceField(r, 'status') === 'absent')
+            .map(r => {
+              const playerName = r.players?.name ?? ''
+              const clubName = r.players?.club ?? ''
+              return clubName ? `${playerName} (${clubName})` : playerName
+            })
+            .filter(Boolean)
+            .sort((left, right) => left.localeCompare(right, 'sv'))
           const workflow = workflowByClassId.get(cls.id)
 
           return {
@@ -134,6 +143,7 @@ export async function GET(req: NextRequest) {
                   followUpActionLabel: workflow.followUpAction?.label ?? null,
                   lastCalloutAt: workflow.attendance.lastCalloutAt,
                   missingPlayers,
+                  absentPlayers,
                 }
               : {
                   currentPhaseKey: null,
@@ -144,6 +154,7 @@ export async function GET(req: NextRequest) {
                   followUpActionLabel: null,
                   lastCalloutAt: null,
                   missingPlayers,
+                  absentPlayers,
                 },
           }
         }),

@@ -541,6 +541,7 @@ export default function ClassAttendanceView({
   const confirmed = data.players.filter(p => p.status === 'confirmed')
   const absent = data.players.filter(p => p.status === 'absent')
   const noResponse = data.players.filter(p => p.status === null)
+  const absentPlayersText = absent.map(player => `${player.name}${player.club ? ` (${player.club})` : ''}`)
   const missingPlayersText = noResponse.map(player => `${player.name}${player.club ? ` (${player.club})` : ''}`)
   const currentPhase = workflowData?.workflow.currentPhaseLabel ?? null
   const currentPhaseClassName = workflowData
@@ -754,6 +755,21 @@ export default function ClassAttendanceView({
                         <p className="text-xs text-muted/80">
                           Senast uppdaterad {formatSwedishDateTime(step.updatedAt)}
                         </p>
+                      )}
+                      {step.key === 'remove_absent_players' && absentPlayersText.length > 0 && (
+                        <div
+                          data-testid="workflow-absent-players"
+                          className="mt-3 rounded-2xl border border-red-200 bg-red-50/75 px-4 py-3"
+                        >
+                          <p className="text-sm font-semibold text-red-950">
+                            Dessa spelare ska tas bort i tävlingssystemet:
+                          </p>
+                          <div className="mt-2 space-y-1 text-sm text-red-900">
+                            {absentPlayersText.map(playerName => (
+                              <p key={playerName}>{playerName}</p>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
 

@@ -1,4 +1,5 @@
 export const CLASS_WORKFLOW_STEP_KEYS = [
+  'remove_absent_players',
   'seed_class',
   'publish_pools',
   'register_match_results',
@@ -111,17 +112,26 @@ const CLASS_WORKFLOW_EVENT_KEY_SET = new Set<string>(CLASS_WORKFLOW_EVENT_KEYS)
 
 const CLASS_WORKFLOW_STEP_DEFINITIONS: readonly ClassWorkflowStepDefinition[] = [
   {
-    key: 'seed_class',
+    key: 'remove_absent_players',
     order: 1,
-    label: 'Seeda klass',
-    helper: 'Gör seedning i tävlingssystemet om klassen ska seedas.',
-    canSkip: true,
+    label: 'Ta bort frånvarande i tävlingssystemet',
+    helper: 'Ta bort spelare som har rapporterat frånvaro från klassen i tävlingssystemet innan seedning och lottning.',
+    canSkip: false,
     dependsOn: [],
     requiresAttendanceComplete: true,
   },
   {
-    key: 'publish_pools',
+    key: 'seed_class',
     order: 2,
+    label: 'Seeda klass',
+    helper: 'Gör seedning i tävlingssystemet om klassen ska seedas.',
+    canSkip: true,
+    dependsOn: ['remove_absent_players'],
+    requiresAttendanceComplete: true,
+  },
+  {
+    key: 'publish_pools',
+    order: 3,
     label: 'Lotta och publicera pooler',
     helper: 'Skapa lottning, skriv ut, märk med bord, sätt upp lappar och ropa ut att poolspelet startar.',
     canSkip: false,
@@ -130,7 +140,7 @@ const CLASS_WORKFLOW_STEP_DEFINITIONS: readonly ClassWorkflowStepDefinition[] = 
   },
   {
     key: 'register_match_results',
-    order: 3,
+    order: 4,
     label: 'Registrera matchresultat poolspel',
     helper: 'Registrera alla resultat från poolmatcher i tävlingssystemet.',
     canSkip: false,
@@ -139,7 +149,7 @@ const CLASS_WORKFLOW_STEP_DEFINITIONS: readonly ClassWorkflowStepDefinition[] = 
   },
   {
     key: 'publish_pool_results',
-    order: 4,
+    order: 5,
     label: 'Publicera poolresultat',
     helper: 'Skriv ut och sätt upp poolresultaten. Ropa ut att resultaten är uppsatta och att slutspelet lottas inom kort.',
     canSkip: false,
@@ -148,7 +158,7 @@ const CLASS_WORKFLOW_STEP_DEFINITIONS: readonly ClassWorkflowStepDefinition[] = 
   },
   {
     key: 'a_playoff',
-    order: 5,
+    order: 6,
     label: 'Lotta och publicera A-slutspel',
     helper: 'Lotta och publicera A-slutspel när poolresultaten har varit uppe några minuter. Ropa ut att A-slutspelet är uppsatt.',
     canSkip: true,
@@ -157,7 +167,7 @@ const CLASS_WORKFLOW_STEP_DEFINITIONS: readonly ClassWorkflowStepDefinition[] = 
   },
   {
     key: 'b_playoff',
-    order: 6,
+    order: 7,
     label: 'Lotta och publicera B-slutspel',
     helper: 'Lotta och publicera B-slutspel om klassen ska ha B-slutspel. Ropa ut att B-slutspelet är uppsatt.',
     canSkip: true,
@@ -166,7 +176,7 @@ const CLASS_WORKFLOW_STEP_DEFINITIONS: readonly ClassWorkflowStepDefinition[] = 
   },
   {
     key: 'register_playoff_match_results',
-    order: 7,
+    order: 8,
     label: 'Registrera matchresultat slutspel',
     helper: 'Registrera alla matchresultat i slutspelet.',
     canSkip: true,
@@ -175,7 +185,7 @@ const CLASS_WORKFLOW_STEP_DEFINITIONS: readonly ClassWorkflowStepDefinition[] = 
   },
   {
     key: 'prize_ceremony',
-    order: 8,
+    order: 9,
     label: 'Prisutdelning',
     helper: 'Genomför prisutdelning.',
     canSkip: false,
@@ -219,8 +229,11 @@ function isResolvedStepStatus(status: ClassWorkflowStepStatus) {
 function hasResolvedDependencies(
   definition: ClassWorkflowStepDefinition,
   stepsByKey: Map<ClassWorkflowStepKey, ClassWorkflowStepRecord>,
+  visibleStepKeys: ReadonlySet<ClassWorkflowStepKey>,
 ) {
-  return definition.dependsOn.every(stepKey => isResolvedStepStatus(getStepStatus(stepsByKey, stepKey)))
+  return definition.dependsOn.every(stepKey =>
+    !visibleStepKeys.has(stepKey) || isResolvedStepStatus(getStepStatus(stepsByKey, stepKey)),
+  )
 }
 
 function canSkipClassWorkflowStep(
@@ -328,10 +341,12 @@ export function getClassWorkflowDerivedStepState({
   stepKey,
   attendanceState,
   steps,
+  visibleStepKeys = new Set<ClassWorkflowStepKey>(CLASS_WORKFLOW_STEP_KEYS),
 }: {
   stepKey: ClassWorkflowStepKey
   attendanceState: ClassWorkflowAttendanceState
   steps: ReadonlyArray<ClassWorkflowStepRecord>
+  visibleStepKeys?: ReadonlySet<ClassWorkflowStepKey>
 }): ClassWorkflowDerivedStepState {
   const normalizedSteps = normalizeClassWorkflowSteps(steps)
   const stepsByKey = new Map(normalizedSteps.map(step => [step.key, step] as const))
@@ -355,7 +370,18 @@ export function getClassWorkflowDerivedStepState({
     return 'blocked'
   }
 
-  return hasResolvedDependencies(definition, stepsByKey) ? 'ready' : 'blocked'
+  return hasResolvedDependencies(definition, stepsByKey, visibleStepKeys) ? 'ready' : 'blocked'
+}
+
+function isWorkflowStepVisible(
+  definition: ClassWorkflowStepDefinition,
+  counts: ClassWorkflowAttendanceCounts,
+) {
+  if (definition.key === 'remove_absent_players') {
+    return counts.absent > 0
+  }
+
+  return true
 }
 
 export function getClassWorkflowResetStepKeys(stepKey: ClassWorkflowStepKey) {
@@ -431,13 +457,23 @@ export function buildClassWorkflowSummary({
     noResponse: counts.noResponse,
     now,
   })
+  const visibleStepDefinitions = CLASS_WORKFLOW_STEP_DEFINITIONS.filter(definition =>
+    isWorkflowStepVisible(definition, counts),
+  )
+  const visibleStepKeys = new Set(visibleStepDefinitions.map(definition => definition.key))
 
-  const stepSummaries = normalizedSteps.map(step => {
-    const definition = getClassWorkflowStepDefinition(step.key)
+  const stepSummaries = visibleStepDefinitions.map(definition => {
+    const step = stepsByKey.get(definition.key) ?? {
+      key: definition.key,
+      status: 'not_started' as const,
+      note: null,
+      updatedAt: null,
+    }
     const derivedState = getClassWorkflowDerivedStepState({
-      stepKey: step.key,
+      stepKey: definition.key,
       attendanceState,
       steps: normalizedSteps,
+      visibleStepKeys,
     })
 
     return {

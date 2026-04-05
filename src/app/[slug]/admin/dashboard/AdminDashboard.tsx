@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { formatSwedishWeekdayTime } from '@/lib/attendance-window'
 import AutoRefreshStatus from '../AutoRefreshStatus'
 import { formatTime } from '../format'
 
@@ -31,6 +32,7 @@ interface ClassSummary {
     followUpActionLabel: string | null
     lastCalloutAt: string | null
     missingPlayers: string[]
+    absentPlayers: string[]
   }
 }
 
@@ -410,6 +412,26 @@ export default function AdminDashboard({
                                   >
                                     <p className="font-semibold text-amber-950">Ropa upp nu:</p>
                                     {cls.workflow.missingPlayers.map(playerName => (
+                                      <p key={playerName}>{playerName}</p>
+                                    ))}
+                                    {cls.workflow.lastCalloutAt && (
+                                      <p
+                                        data-testid={`dashboard-last-callout-${cls.id}`}
+                                        className="pt-1 text-xs text-amber-800/90"
+                                      >
+                                        Senaste upprop {formatSwedishWeekdayTime(cls.workflow.lastCalloutAt)}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : cls.workflow.nextActionKey === 'remove_absent_players' && cls.workflow.absentPlayers.length > 0 ? (
+                                  <div
+                                    data-testid={`dashboard-absent-list-${cls.id}`}
+                                    className="space-y-1 text-sm text-red-900"
+                                  >
+                                    <p className="font-semibold text-red-950">
+                                      Ta bort i tävlingssystemet:
+                                    </p>
+                                    {cls.workflow.absentPlayers.map(playerName => (
                                       <p key={playerName}>{playerName}</p>
                                     ))}
                                   </div>
