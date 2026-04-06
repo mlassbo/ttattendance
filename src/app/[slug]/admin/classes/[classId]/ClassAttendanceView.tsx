@@ -75,6 +75,8 @@ interface WorkflowData {
   }
 }
 
+type WorkflowVisualState = WorkflowStep['derivedState'] | 'attendance_active' | 'attendance_done'
+
 class FetchError extends Error {
   status: number
 
@@ -98,19 +100,20 @@ function normalizeWorkflowData(payload: WorkflowData): WorkflowData {
 }
 
 function getWorkflowStateLabel(state: WorkflowStep['derivedState']) {
-  if (state === 'blocked') return 'Blockerad'
-  if (state === 'ready') return 'Kan påbörjas'
+  if (state === 'ready') return null
   if (state === 'active') return 'Pågår'
   if (state === 'done') return 'Klar'
-  return 'Skippad'
+  if (state === 'skipped') return 'Skippad'
+  return null
 }
 
 function getWorkflowStateClassName(state: WorkflowStep['derivedState']) {
-  if (state === 'blocked') return 'app-pill-muted'
-  if (state === 'ready') return 'app-pill-warning'
+  if (state === 'blocked') {
+    return 'inline-flex items-center rounded-xl bg-stone-100 px-3 py-1.5 text-xs font-semibold text-muted'
+  }
   if (state === 'active') return 'rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white'
-  if (state === 'done') return 'app-pill-success'
-  return 'rounded-full bg-stone-200 px-3 py-1 text-xs font-semibold text-stone-700'
+  if (state === 'done') return 'rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700'
+  return 'rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600'
 }
 
 function getWorkflowHeadlineClassName(currentPhaseKey: string) {
@@ -127,6 +130,110 @@ function getWorkflowHeadlineClassName(currentPhaseKey: string) {
   }
 
   return null
+}
+
+function getCurrentWorkflowFocusKey(workflowData: WorkflowData) {
+  if (workflowData.attendance.state !== 'attendance_complete') {
+    return 'attendance'
+  }
+
+  return workflowData.workflow.steps.find(step =>
+    step.derivedState === 'active' || step.derivedState === 'ready'
+  )?.key ?? null
+}
+
+function isWorkflowVisualStateCompleted(state: WorkflowVisualState) {
+  return state === 'done' || state === 'skipped' || state === 'attendance_done'
+}
+
+function getWorkflowCardClassName(state: WorkflowVisualState, isCurrentFocus: boolean) {
+  const baseClassName = 'rounded-2xl border px-4 py-4 transition-colors duration-150'
+
+  if (isCurrentFocus) {
+    return `${baseClassName} border-brand/30 bg-brand-soft/70 shadow-sm`
+  }
+
+  if (isWorkflowVisualStateCompleted(state)) {
+    return `${baseClassName} border-stone-200/80 bg-stone-50/75`
+  }
+
+  if (state === 'blocked') {
+    return `${baseClassName} border-line/70 bg-stone-50/40`
+  }
+
+  return `${baseClassName} border-amber-200/80 bg-amber-50/45`
+}
+
+function getWorkflowDotClassName(state: WorkflowVisualState, isCurrentFocus: boolean) {
+  if (isCurrentFocus) {
+    return 'mt-2 h-3.5 w-3.5 rounded-full border-2 border-brand/30 bg-brand shadow-[0_0_0_4px_rgba(249,115,22,0.16)]'
+  }
+
+  if (state === 'done' || state === 'attendance_done') {
+    return 'mt-2 h-3 w-3 rounded-full bg-green-500'
+  }
+
+  if (state === 'skipped') {
+    return 'mt-2 h-3 w-3 rounded-full bg-stone-400'
+  }
+
+  if (state === 'blocked') {
+    return 'mt-2 h-3 w-3 rounded-full bg-stone-300'
+  }
+
+  return 'mt-2 h-3 w-3 rounded-full bg-amber-400'
+}
+
+function getWorkflowConnectorClassName(state: WorkflowVisualState, isCurrentFocus: boolean) {
+  if (isCurrentFocus) {
+    return 'mt-2 w-px flex-1 bg-brand/30'
+  }
+
+  if (isWorkflowVisualStateCompleted(state)) {
+    return 'mt-2 w-px flex-1 bg-stone-300'
+  }
+
+  return 'mt-2 w-px flex-1 bg-stone-200'
+}
+
+function getWorkflowHelperClassName(state: WorkflowVisualState, isCurrentFocus: boolean) {
+  if (isCurrentFocus) {
+    return 'text-sm text-ink/80'
+  }
+
+  if (isWorkflowVisualStateCompleted(state)) {
+    return 'text-sm text-muted/75'
+  }
+
+  return 'text-sm text-muted'
+}
+
+function getWorkflowFocusLabel(state: WorkflowVisualState, isCurrentFocus: boolean) {
+  if (!isCurrentFocus) {
+    return null
+  }
+
+  if (state === 'ready') {
+    return 'Nästa steg'
+  }
+
+  return 'Aktuellt steg'
+}
+
+function getWorkflowDoneButtonClassName(isCurrentFocus: boolean) {
+  if (isCurrentFocus) {
+    return 'min-h-10 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-green-700 disabled:opacity-60'
+  }
+
+  return 'min-h-10 rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm font-semibold text-green-800 transition-colors duration-150 hover:bg-green-100 disabled:opacity-60'
+}
+
+function getWorkflowSecondaryButtonClassName(isSubtle: boolean) {
+  if (isSubtle) {
+    return 'min-h-10 rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-2 text-sm font-medium text-muted transition-colors duration-150 hover:bg-stone-100 disabled:opacity-60'
+  }
+
+  return 'min-h-10 rounded-xl border border-stone-300 bg-surface px-4 py-2 text-sm font-semibold text-ink transition-colors duration-150 hover:bg-stone-50 disabled:opacity-60'
 }
 
 function StatusBadge({
@@ -551,6 +658,7 @@ export default function ClassAttendanceView({
   const attendanceStepState = workflowData?.attendance.state === 'attendance_complete'
     ? 'done'
     : 'active'
+  const currentWorkflowFocusKey = workflowData ? getCurrentWorkflowFocusKey(workflowData) : null
 
   return (
     <main className="app-shell">
@@ -620,195 +728,264 @@ export default function ClassAttendanceView({
               )}
 
               <div className="space-y-3">
-            <div
-              data-testid="workflow-step-attendance"
-              className="rounded-2xl border border-line bg-surface px-4 py-4"
-            >
-              <div className="space-y-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold text-ink">Kolla närvaro</p>
-                      <span
-                        data-testid="workflow-step-state-attendance"
-                        className={getWorkflowStateClassName(attendanceStepState)}
-                      >
-                        {attendanceStepState === 'done' ? 'Klar' : 'Pågår'}
-                      </span>
-                    </div>
-                    <p data-testid="workflow-attendance-state" className="text-sm text-muted">
-                      {workflowData.attendance.state === 'awaiting_attendance'
-                        ? 'Inväntar fler svar före deadline.'
-                        : workflowData.attendance.state === 'callout_needed'
-                          ? 'Deadline passerad och spelare saknas.'
-                          : 'Närvaron är klar för klassen.'}
-                    </p>
-                    {workflowData.attendance.lastCalloutAt && (
-                      <p data-testid="workflow-last-callout" className="text-xs text-muted/80">
-                        Senaste upprop {formatSwedishWeekdayTime(workflowData.attendance.lastCalloutAt)}
-                      </p>
+                <div className="flex gap-4">
+                  <div className="flex w-5 shrink-0 flex-col items-center" aria-hidden="true">
+                    <div
+                      className={getWorkflowDotClassName(
+                        attendanceStepState === 'done' ? 'attendance_done' : 'attendance_active',
+                        currentWorkflowFocusKey === 'attendance',
+                      )}
+                    />
+                    {workflowData.workflow.steps.length > 0 && (
+                      <div
+                        className={getWorkflowConnectorClassName(
+                          attendanceStepState === 'done' ? 'attendance_done' : 'attendance_active',
+                          currentWorkflowFocusKey === 'attendance',
+                        )}
+                      />
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    {data.players.length > 0 && (
-                      <a
-                        data-testid="attendance-list-jump-link"
-                        href="#attendance-list"
-                        className="app-button-secondary min-h-10 px-4 py-2"
-                      >
-                        Gå till närvarolistan
-                      </a>
-                    )}
-                    {workflowData.workflow.canLogCallout && (
-                      <button
-                        data-testid="workflow-callout-button"
-                        onClick={logCallout}
-                        disabled={workflowMutation === 'missing_players_callout' || isRefreshing}
-                        className="app-button-secondary min-h-10 px-4 py-2"
-                      >
-                        Markera upprop gjort
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <span
-                    data-testid="attendance-count-confirmed"
-                    className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-700"
-                    title="Bekräftade"
-                  >
-                    <span>✓</span> {workflowData.attendance.confirmed}
-                  </span>
-                  <span
-                    data-testid="attendance-count-absent"
-                    className="inline-flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"
-                    title="Frånvaro"
-                  >
-                    <span>✗</span> {workflowData.attendance.absent}
-                  </span>
-                  <span
-                    data-testid="attendance-count-no-response"
-                    className={`inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold ${
-                      workflowData.attendance.noResponse > 0 && isPastDeadline
-                        ? 'bg-orange-50 text-orange-700'
-                        : 'bg-stone-100 text-muted'
-                    }`}
-                    title="Ej rapporterat"
-                  >
-                    <span>?</span> {workflowData.attendance.noResponse}
-                  </span>
-                </div>
-
-                <div className="rounded-2xl border border-line/70 bg-stone-50/80 px-4 py-3 text-sm text-muted">
-                  <p data-testid="attendance-response-summary">
-                    Svar inkomna {workflowData.attendance.confirmed + workflowData.attendance.absent}/{workflowData.attendance.total}
-                  </p>
-                  {workflowData.attendance.state === 'attendance_complete' && workflowData.attendance.total > 0 && (
-                    <p data-testid="workflow-attendance-complete" className="mt-1 font-medium text-green-700">
-                      Alla {workflowData.attendance.total} spelare har svarat i klassen.
-                    </p>
-                  )}
-                </div>
-
-                {noResponse.length > 0 && (
                   <div
-                    data-testid="workflow-missing-players"
-                    className="rounded-2xl border border-amber-200 bg-amber-50/75 px-4 py-3"
+                    data-testid="workflow-step-attendance"
+                    className={`flex-1 ${getWorkflowCardClassName(
+                      attendanceStepState === 'done' ? 'attendance_done' : 'attendance_active',
+                      currentWorkflowFocusKey === 'attendance',
+                    )}`}
                   >
-                    <p className="text-sm font-semibold text-amber-950">
-                      {isPastDeadline ? 'Dessa spelare bör ropas upp i sekretariatet:' : 'Dessa spelare saknar fortfarande svar:'}
-                    </p>
-                    <div className="mt-2 space-y-1 text-sm text-amber-900">
-                      {missingPlayersText.map(playerName => (
-                        <p key={playerName}>{playerName}</p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-2">
+                          {currentWorkflowFocusKey === 'attendance' && (
+                            <p
+                              data-testid="workflow-step-focus-attendance"
+                              className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand"
+                            >
+                              Aktuellt steg
+                            </p>
+                          )}
 
-            {workflowData.workflow.steps.map(step => {
-              const isMutatingStep = workflowMutation?.startsWith(`${step.key}:`) ?? false
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-base font-semibold text-ink">Kolla närvaro</p>
+                            <span
+                              data-testid="workflow-step-state-attendance"
+                              className={attendanceStepState === 'done'
+                                ? 'rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700'
+                                : 'rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white'}
+                            >
+                              {attendanceStepState === 'done' ? 'Klar' : 'Pågår'}
+                            </span>
+                          </div>
 
-              return (
-                <div
-                  key={step.key}
-                  data-testid={`workflow-step-${step.key}`}
-                  className="rounded-2xl border border-line bg-surface px-4 py-4"
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-base font-semibold text-ink">{step.label}</p>
+                          <p
+                            data-testid="workflow-attendance-state"
+                            className={getWorkflowHelperClassName(
+                              attendanceStepState === 'done' ? 'attendance_done' : 'attendance_active',
+                              currentWorkflowFocusKey === 'attendance',
+                            )}
+                          >
+                            {workflowData.attendance.state === 'awaiting_attendance'
+                              ? 'Inväntar fler svar före deadline.'
+                              : workflowData.attendance.state === 'callout_needed'
+                                ? 'Deadline passerad och spelare saknas.'
+                                : 'Närvaron är klar för klassen.'}
+                          </p>
+
+                          {workflowData.attendance.lastCalloutAt && (
+                            <p data-testid="workflow-last-callout" className="text-xs text-muted/80">
+                              Senaste upprop {formatSwedishWeekdayTime(workflowData.attendance.lastCalloutAt)}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {data.players.length > 0 && (
+                            <a
+                              data-testid="attendance-list-jump-link"
+                              href="#attendance-list"
+                              className="app-button-secondary min-h-10 px-4 py-2"
+                            >
+                              Gå till närvarolistan
+                            </a>
+                          )}
+                          {workflowData.workflow.canLogCallout && (
+                            <button
+                              data-testid="workflow-callout-button"
+                              onClick={logCallout}
+                              disabled={workflowMutation === 'missing_players_callout' || isRefreshing}
+                              className="app-button-secondary min-h-10 px-4 py-2"
+                            >
+                              Markera upprop gjort
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-3">
                         <span
-                          data-testid={`workflow-step-state-${step.key}`}
-                          className={getWorkflowStateClassName(step.derivedState)}
+                          data-testid="attendance-count-confirmed"
+                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-green-50 px-3 py-2 text-sm font-semibold text-green-700"
+                          title="Bekräftade"
                         >
-                          {getWorkflowStateLabel(step.derivedState)}
+                          <span>✓</span> {workflowData.attendance.confirmed}
+                        </span>
+                        <span
+                          data-testid="attendance-count-absent"
+                          className="inline-flex items-center justify-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"
+                          title="Frånvaro"
+                        >
+                          <span>✗</span> {workflowData.attendance.absent}
+                        </span>
+                        <span
+                          data-testid="attendance-count-no-response"
+                          className={`inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold ${
+                            workflowData.attendance.noResponse > 0 && isPastDeadline
+                              ? 'bg-orange-50 text-orange-700'
+                              : 'bg-stone-100 text-muted'
+                          }`}
+                          title="Ej rapporterat"
+                        >
+                          <span>?</span> {workflowData.attendance.noResponse}
                         </span>
                       </div>
-                      <p className="text-sm text-muted">{step.helper}</p>
-                      {step.updatedAt && (
-                        <p className="text-xs text-muted/80">
-                          Senast uppdaterad {formatSwedishDateTime(step.updatedAt)}
+
+                      <div className="rounded-2xl border border-line/70 bg-stone-50/80 px-4 py-3 text-sm text-muted">
+                        <p data-testid="attendance-response-summary">
+                          Svar inkomna {workflowData.attendance.confirmed + workflowData.attendance.absent}/{workflowData.attendance.total}
                         </p>
-                      )}
-                      {step.key === 'remove_absent_players' && absentPlayersText.length > 0 && (
-                        <div
-                          data-testid="workflow-absent-players"
-                          className="mt-3 rounded-2xl border border-red-200 bg-red-50/75 px-4 py-3"
-                        >
-                          <p className="text-sm font-semibold text-red-950">
-                            Dessa spelare ska tas bort i tävlingssystemet:
+                        {workflowData.attendance.state === 'attendance_complete' && workflowData.attendance.total > 0 && (
+                          <p data-testid="workflow-attendance-complete" className="mt-1 font-medium text-green-700">
+                            Alla {workflowData.attendance.total} spelare har svarat i klassen.
                           </p>
-                          <div className="mt-2 space-y-1 text-sm text-red-900">
-                            {absentPlayersText.map(playerName => (
+                        )}
+                      </div>
+
+                      {noResponse.length > 0 && (
+                        <div
+                          data-testid="workflow-missing-players"
+                          className="rounded-2xl border border-amber-200 bg-amber-50/75 px-4 py-3"
+                        >
+                          <p className="text-sm font-semibold text-amber-950">
+                            {isPastDeadline ? 'Dessa spelare bör ropas upp i sekretariatet:' : 'Dessa spelare saknar fortfarande svar:'}
+                          </p>
+                          <div className="mt-2 space-y-1 text-sm text-amber-900">
+                            {missingPlayersText.map(playerName => (
                               <p key={playerName}>{playerName}</p>
                             ))}
                           </div>
                         </div>
                       )}
                     </div>
-
-                    <div className="flex flex-wrap items-center justify-end gap-2 lg:min-w-[260px] lg:self-center">
-                      {step.canMarkDone && (
-                        <button
-                          data-testid={`workflow-done-btn-${step.key}`}
-                          onClick={() => mutateWorkflowStep(step.key, 'done')}
-                          disabled={isMutatingStep || isRefreshing}
-                          className="min-h-10 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-green-700 disabled:opacity-60"
-                        >
-                          Klar
-                        </button>
-                      )}
-                      {step.canSkipAction && (
-                        <button
-                          data-testid={`workflow-skip-btn-${step.key}`}
-                          onClick={() => mutateWorkflowStep(step.key, 'skipped')}
-                          disabled={isMutatingStep || isRefreshing}
-                          className="min-h-10 rounded-xl border border-stone-300 bg-surface px-4 py-2 text-sm font-semibold text-ink transition-colors duration-150 hover:bg-stone-50 disabled:opacity-60"
-                        >
-                          Skippa
-                        </button>
-                      )}
-                      {step.canReopen && (
-                        <button
-                          data-testid={`workflow-reset-btn-${step.key}`}
-                          onClick={() => mutateWorkflowStep(step.key, 'not_started')}
-                          disabled={isMutatingStep || isRefreshing}
-                          className="min-h-10 rounded-xl border border-stone-300 bg-surface px-4 py-2 text-sm font-semibold text-ink transition-colors duration-150 hover:bg-stone-50 disabled:opacity-60"
-                        >
-                          Nollställ
-                        </button>
-                      )}
-                    </div>
                   </div>
                 </div>
-              )
-            })}
+
+                {workflowData.workflow.steps.map((step, index) => {
+                  const isMutatingStep = workflowMutation?.startsWith(`${step.key}:`) ?? false
+                  const isCurrentFocus = currentWorkflowFocusKey === step.key
+                  const isSubtleAction = step.derivedState === 'done' || step.derivedState === 'skipped'
+                  const stateLabel = getWorkflowStateLabel(step.derivedState)
+
+                  return (
+                    <div key={step.key} className="flex gap-4">
+                      <div className="flex w-5 shrink-0 flex-col items-center" aria-hidden="true">
+                        <div className={getWorkflowDotClassName(step.derivedState, isCurrentFocus)} />
+                        {index < workflowData.workflow.steps.length - 1 && (
+                          <div className={getWorkflowConnectorClassName(step.derivedState, isCurrentFocus)} />
+                        )}
+                      </div>
+
+                      <div
+                        key={step.key}
+                        data-testid={`workflow-step-${step.key}`}
+                        className={`flex-1 ${getWorkflowCardClassName(step.derivedState, isCurrentFocus)}`}
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="min-w-0 flex-1 space-y-2">
+                            {getWorkflowFocusLabel(step.derivedState, isCurrentFocus) && (
+                              <p
+                                data-testid={`workflow-step-focus-${step.key}`}
+                                className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand"
+                              >
+                                {getWorkflowFocusLabel(step.derivedState, isCurrentFocus)}
+                              </p>
+                            )}
+
+                            <div className="flex flex-wrap items-center gap-2 md:flex-nowrap">
+                              <p className="min-w-0 text-base font-semibold text-ink">{step.label}</p>
+                              {stateLabel && (
+                                <span
+                                  data-testid={`workflow-step-state-${step.key}`}
+                                  className={`${getWorkflowStateClassName(step.derivedState)} shrink-0 md:whitespace-nowrap`}
+                                >
+                                  {stateLabel}
+                                </span>
+                              )}
+                            </div>
+
+                            <p className={getWorkflowHelperClassName(step.derivedState, isCurrentFocus)}>
+                              {step.helper}
+                            </p>
+
+                            {step.updatedAt && (
+                              <p className="text-xs text-muted/80">
+                                Klarmarkerad {formatSwedishDateTime(step.updatedAt)}
+                              </p>
+                            )}
+
+                            {step.key === 'remove_absent_players' && absentPlayersText.length > 0 && (
+                              <div
+                                data-testid="workflow-absent-players"
+                                className="mt-3 rounded-2xl border border-red-200 bg-red-50/75 px-4 py-3"
+                              >
+                                <p className="text-sm font-semibold text-red-950">
+                                  Dessa spelare ska tas bort i tävlingssystemet:
+                                </p>
+                                <div className="mt-2 space-y-1 text-sm text-red-900">
+                                  {absentPlayersText.map(playerName => (
+                                    <p key={playerName}>{playerName}</p>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-end gap-2 lg:min-w-[260px] lg:self-center">
+                            {step.canMarkDone && (
+                              <button
+                                data-testid={`workflow-done-btn-${step.key}`}
+                                onClick={() => mutateWorkflowStep(step.key, 'done')}
+                                disabled={isMutatingStep || isRefreshing}
+                                className={getWorkflowDoneButtonClassName(isCurrentFocus)}
+                              >
+                                Klar
+                              </button>
+                            )}
+                            {step.canSkipAction && (
+                              <button
+                                data-testid={`workflow-skip-btn-${step.key}`}
+                                onClick={() => mutateWorkflowStep(step.key, 'skipped')}
+                                disabled={isMutatingStep || isRefreshing}
+                                className={getWorkflowSecondaryButtonClassName(isSubtleAction)}
+                              >
+                                Skippa
+                              </button>
+                            )}
+                            {step.canReopen && (
+                              <button
+                                data-testid={`workflow-reset-btn-${step.key}`}
+                                onClick={() => mutateWorkflowStep(step.key, 'not_started')}
+                                disabled={isMutatingStep || isRefreshing}
+                                className={getWorkflowSecondaryButtonClassName(true)}
+                              >
+                                Nollställ
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </>
           ) : (

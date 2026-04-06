@@ -50,13 +50,14 @@ test.describe('Admin checklist flow', () => {
 
     await page.goto(`/${SLUG}/admin/classes/${seed.futureClassId}`)
     await expect(page.getByTestId('workflow-current-phase')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-step-focus-attendance')).toContainText('Aktuellt steg')
     await expect(page.getByTestId('workflow-step-state-attendance')).toContainText('Pågår')
     await expect(page.getByTestId('workflow-step-remove_absent_players')).toContainText(
       'Ta bort frånvarande i tävlingssystemet',
     )
-    await expect(page.getByTestId('workflow-step-state-remove_absent_players')).toContainText('Blockerad')
+    await expect(page.getByTestId('workflow-step-state-remove_absent_players')).toHaveCount(0)
     await expect(page.getByTestId('workflow-absent-players')).toContainText('Bertil Testsson')
-    await expect(page.getByTestId('workflow-step-state-seed_class')).toContainText('Blockerad')
+    await expect(page.getByTestId('workflow-step-state-seed_class')).toHaveCount(0)
     await expect(page.getByTestId('workflow-missing-players')).toContainText('Carin Testsson')
     await expect(page.getByTestId('attendance-list-jump-link')).toBeVisible()
     await expect(page.getByTestId('workflow-callout-button')).toHaveCount(0)
@@ -102,29 +103,44 @@ test.describe('Admin checklist flow', () => {
 
     await page.getByTestId(`confirm-btn-${carin.futureRegId}`).click()
     await expect(page.getByTestId('workflow-step-state-attendance')).toContainText('Klar')
-    await expect(page.getByTestId('workflow-step-state-remove_absent_players')).toContainText('Kan påbörjas')
-    await expect(page.getByTestId('workflow-step-state-seed_class')).toContainText('Blockerad')
+    await expect(page.getByTestId('workflow-step-state-remove_absent_players')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-remove_absent_players')).toBeVisible()
+    await expect(page.getByTestId('workflow-step-focus-remove_absent_players')).toContainText('Nästa steg')
+    await expect(page.getByTestId('workflow-step-state-seed_class')).toHaveCount(0)
 
     await page.getByTestId('workflow-done-btn-remove_absent_players').click()
     await expect(page.getByTestId('workflow-step-state-remove_absent_players')).toContainText('Klar')
-    await expect(page.getByTestId('workflow-step-state-seed_class')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-seed_class')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-seed_class')).toBeVisible()
+    await expect(page.getByTestId('workflow-step-focus-seed_class')).toContainText('Nästa steg')
+
+    const removeAbsentBox = await page.getByTestId('workflow-step-remove_absent_players').boundingBox()
+    const seedBox = await page.getByTestId('workflow-step-seed_class').boundingBox()
+    expect(removeAbsentBox).not.toBeNull()
+    expect(seedBox).not.toBeNull()
+    expect((removeAbsentBox as { y: number }).y).toBeLessThan((seedBox as { y: number }).y)
 
     await page.getByTestId('workflow-done-btn-seed_class').click()
     await expect(page.getByTestId('workflow-step-state-seed_class')).toContainText('Klar')
-    await expect(page.getByTestId('workflow-step-state-publish_pools')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-publish_pools')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-publish_pools')).toBeVisible()
 
     await page.getByTestId('workflow-done-btn-publish_pools').click()
     await expect(page.getByTestId('workflow-current-phase')).toContainText('Poolspel pågår')
-    await expect(page.getByTestId('workflow-step-state-register_match_results')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-register_match_results')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-register_match_results')).toBeVisible()
     await expect(page.getByTestId('workflow-step-register_match_results')).toContainText('Registrera matchresultat poolspel')
 
     await page.getByTestId('workflow-done-btn-register_match_results').click()
     await expect(page.getByTestId('workflow-current-phase')).toContainText('Poolspel klart')
-    await expect(page.getByTestId('workflow-step-state-publish_pool_results')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-publish_pool_results')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-publish_pool_results')).toBeVisible()
 
     await page.getByTestId('workflow-done-btn-publish_pool_results').click()
-    await expect(page.getByTestId('workflow-step-state-a_playoff')).toContainText('Kan påbörjas')
-    await expect(page.getByTestId('workflow-step-state-b_playoff')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-a_playoff')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-step-state-b_playoff')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-a_playoff')).toBeVisible()
+    await expect(page.getByTestId('workflow-done-btn-b_playoff')).toBeVisible()
 
     await page.getByTestId('workflow-done-btn-a_playoff').click()
     await expect(page.getByTestId('workflow-current-phase')).toContainText('Slutspel pågår')
@@ -133,13 +149,15 @@ test.describe('Admin checklist flow', () => {
     await expect(page.getByTestId('workflow-step-state-b_playoff')).toContainText('Klar')
 
     await expect(page.getByTestId('workflow-step-register_playoff_match_results')).toContainText('Registrera matchresultat slutspel')
-    await expect(page.getByTestId('workflow-step-state-register_playoff_match_results')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-register_playoff_match_results')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-register_playoff_match_results')).toBeVisible()
 
     await page.getByTestId('workflow-done-btn-register_playoff_match_results').click()
     await expect(page.getByTestId('workflow-current-phase')).toContainText('Slutspel klart')
     await expect(page.getByTestId('workflow-step-state-register_playoff_match_results')).toContainText('Klar')
 
-    await expect(page.getByTestId('workflow-step-state-prize_ceremony')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-prize_ceremony')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-prize_ceremony')).toBeVisible()
 
     await page.getByTestId('workflow-done-btn-prize_ceremony').click()
     await expect(page.getByTestId('workflow-current-phase')).toContainText('Klassen är klar')
@@ -158,10 +176,12 @@ test.describe('Admin checklist flow', () => {
     await page.getByTestId('workflow-done-btn-remove_absent_players').click()
 
     await page.getByTestId('workflow-skip-btn-seed_class').click()
-    await expect(page.getByTestId('workflow-step-state-publish_pools')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-publish_pools')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-publish_pools')).toBeVisible()
 
     await page.getByTestId('workflow-done-btn-publish_pools').click()
-    await expect(page.getByTestId('workflow-step-state-register_match_results')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-register_match_results')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-register_match_results')).toBeVisible()
     await page.getByTestId('workflow-done-btn-register_match_results').click()
     await page.getByTestId('workflow-done-btn-publish_pool_results').click()
 
@@ -170,18 +190,21 @@ test.describe('Admin checklist flow', () => {
     await page.getByTestId('workflow-skip-btn-b_playoff').click()
     await expect(page.getByTestId('workflow-step-state-b_playoff')).toContainText('Skippad')
 
-    await expect(page.getByTestId('workflow-step-state-register_playoff_match_results')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-register_playoff_match_results')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-skip-btn-register_playoff_match_results')).toBeVisible()
     await page.getByTestId('workflow-skip-btn-register_playoff_match_results').click()
     await expect(page.getByTestId('workflow-step-state-register_playoff_match_results')).toContainText('Skippad')
-    await expect(page.getByTestId('workflow-step-state-prize_ceremony')).toContainText('Kan påbörjas')
+    await expect(page.getByTestId('workflow-step-state-prize_ceremony')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-prize_ceremony')).toBeVisible()
 
     await page.getByTestId('workflow-reset-btn-publish_pools').click()
-    await expect(page.getByTestId('workflow-step-state-publish_pools')).toContainText('Kan påbörjas')
-    await expect(page.getByTestId('workflow-step-state-register_match_results')).toContainText('Blockerad')
-    await expect(page.getByTestId('workflow-step-state-publish_pool_results')).toContainText('Blockerad')
-    await expect(page.getByTestId('workflow-step-state-a_playoff')).toContainText('Blockerad')
-    await expect(page.getByTestId('workflow-step-state-register_playoff_match_results')).toContainText('Blockerad')
-    await expect(page.getByTestId('workflow-step-state-prize_ceremony')).toContainText('Blockerad')
+    await expect(page.getByTestId('workflow-step-state-publish_pools')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-done-btn-publish_pools')).toBeVisible()
+    await expect(page.getByTestId('workflow-step-state-register_match_results')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-step-state-publish_pool_results')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-step-state-a_playoff')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-step-state-register_playoff_match_results')).toHaveCount(0)
+    await expect(page.getByTestId('workflow-step-state-prize_ceremony')).toHaveCount(0)
   })
 
   test('dashboard shows workflow badges, next action, and concurrent playoff status', async ({ page }) => {
