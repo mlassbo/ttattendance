@@ -304,6 +304,13 @@ export default function CompetitionsView() {
                   </span>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <Link
+                      href={`/super/competitions/${c.id}/integration`}
+                      data-testid={`integration-action-${c.slug}`}
+                      className="app-button-secondary min-h-10 h-fit px-4 py-2"
+                    >
+                      OnData-integration
+                    </Link>
+                    <Link
                       href={`/super/competitions/${c.id}/import`}
                       data-testid={`import-action-${c.slug}`}
                       className="app-button-secondary min-h-10 h-fit px-4 py-2"
