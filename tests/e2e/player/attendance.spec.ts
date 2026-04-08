@@ -10,7 +10,7 @@ import {
 
 config({ path: '.env.test.local' })
 
-const SLUG = 'test-player-2025'
+const SLUG = 'test-player-attendance-2025'
 const PLAYER_PIN = '9999'
 
 async function loginAsPlayer(page: Page, slug: string = SLUG) {
@@ -20,20 +20,12 @@ async function loginAsPlayer(page: Page, slug: string = SLUG) {
   await page.waitForURL(`/${slug}/search`)
 }
 
-async function selectPlayerSearch(page: Page) {
-  await page.getByTestId('search-mode-player').click()
-}
-
-async function selectClubSearch(page: Page) {
-  await page.getByTestId('search-mode-club').click()
-}
-
 test.describe('Player attendance flow', () => {
   let seeded: SeededCompetition
 
   test.beforeEach(async () => {
     const supabase = testClient()
-    await cleanTestCompetitions(supabase, 'test-player-%')
+    await cleanTestCompetitions(supabase, 'test-player-attendance-%')
     seeded = await seedPlayerTestCompetition(supabase, SLUG, PLAYER_PIN)
   })
 
@@ -45,32 +37,30 @@ test.describe('Player attendance flow', () => {
     await page.goto('/')
 
     await expect(page.locator('main')).toContainText(
-      'Välj din tävling och logga in med pin-koden du fått från klubben som arrangerar tävlingen.'
+      'Välj din tävling för att se registrerade spelare, anmäla närvaro och följa tävlingen live.'
     )
     await expect(page.getByTestId(`competition-entry-card-${SLUG}`)).toBeVisible()
-    await expect(page.getByTestId(`player-login-link-${SLUG}`)).toContainText(
-      'Logga in som spelare'
+    await expect(page.getByTestId(`competition-open-link-${SLUG}`)).toContainText(
+      'Öppna tävlingen'
     )
-    await expect(page.getByTestId(`admin-login-link-${SLUG}`)).toContainText(
-      'Logga in som sekretariat'
-    )
+    await expect(page.getByTestId(`admin-login-link-${SLUG}`)).toHaveCount(0)
 
     await expect(page.getByRole('link', { name: 'Superadmin' })).toHaveCount(0)
     await expect(page.getByTestId(`competition-entry-card-${SLUG}`)).toContainText('Test Tävling')
   })
 
-  test('competition chooser links to the player PIN page', async ({ page }) => {
+  test('competition page shows the public start and still keeps secretariat access', async ({ page }) => {
     await page.goto(`/${SLUG}`)
 
-    await expect(page.getByTestId('competition-role-card')).toBeVisible()
-    await expect(
-      page.getByText(
-        'Välj den roll som passar dig just nu. Båda vyerna är anpassade för snabb användning på mobilen.'
-      )
-    ).toHaveCount(0)
-    await page.getByTestId('competition-role-link-player').click()
-    await page.waitForURL(`/${SLUG}/player`)
-    await expect(page.getByTestId('pin-login-page')).toBeVisible()
+    await expect(page.getByTestId('public-start-page')).toBeVisible()
+    await expect(page.getByTestId('public-start-search-input')).toHaveAttribute(
+      'placeholder',
+      'Sök spelare eller klubb',
+    )
+    await expect(page.getByTestId('public-start-search-link')).toContainText(
+      'Sök spelare eller klubb',
+    )
+    await expect(page.getByTestId('public-start-admin-link')).toContainText('Sekretariat')
   })
 
   test('player PIN page renders the shared login shell', async ({ page }) => {
@@ -91,10 +81,11 @@ test.describe('Player attendance flow', () => {
     await expect(page.getByTestId('pin-error')).toContainText('Fel PIN-kod')
   })
 
-  test('correct PIN redirects to search page', async ({ page }) => {
+  test('correct PIN redirects to the public search page', async ({ page }) => {
     await loginAsPlayer(page)
-    await expect(page.getByTestId('search-input')).toBeVisible()
-    await expect(page.getByTestId('search-mode-player')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('public-search-page')).toBeVisible()
+    await expect(page.getByTestId('public-search-input')).toBeVisible()
+    await expect(page.getByTestId('public-search-mode-all')).toHaveAttribute('aria-current', 'page')
   })
 
   test('already logged-in player is redirected from PIN page to search', async ({ page }) => {
@@ -104,191 +95,52 @@ test.describe('Player attendance flow', () => {
     // Navigate back to PIN page — should skip it
     await page.goto(`/${SLUG}/player`)
     await page.waitForURL(`/${SLUG}/search`)
-    await expect(page.getByTestId('search-input')).toBeVisible()
+    await expect(page.getByTestId('public-search-input')).toBeVisible()
   })
 
-  // ── Search ──────────────────────────────────────────────────────────────
-
-  test('search with fewer than 2 characters shows no results', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectPlayerSearch(page)
-
-    await page.getByTestId('search-input').fill('A')
-    // Give the debounce time to settle — results list should stay empty
-    await page.waitForTimeout(400)
-    await expect(page.getByTestId('search-results')).toBeEmpty()
+  test('legacy player search URL redirects to the public search page', async ({ page }) => {
+    await page.goto(`/${SLUG}/player/search`)
+    await page.waitForURL(`/${SLUG}/search`)
+    await expect(page.getByTestId('public-search-page')).toBeVisible()
   })
 
-  test('player search is selected by default', async ({ page }) => {
-    await loginAsPlayer(page)
-
-    await expect(page.getByTestId('search-mode-player')).toHaveAttribute('aria-selected', 'true')
-    await expect(page.getByTestId('search-mode-club')).toHaveAttribute('aria-selected', 'false')
-    await expect(page.getByTestId('search-input')).toBeEnabled()
+  test('legacy player detail URL redirects to the public player page', async ({ page }) => {
+    await page.goto(`/${SLUG}/player/players/${seeded.player.id}`)
+    await page.waitForURL(`/${SLUG}/players/${seeded.player.id}`)
+    await expect(page.getByTestId('public-player-page')).toBeVisible()
   })
 
-  test('search finds player by name prefix', async ({ page }) => {
+  test('player login pre-unlocks attendance in the public flow', async ({ page }) => {
     await loginAsPlayer(page)
-    await selectPlayerSearch(page)
+    await page.getByTestId('public-search-input').fill('Anna')
+    await page.getByTestId('public-search-submit').click()
+    await page.getByTestId(`public-search-player-link-${seeded.player.id}`).click()
 
-    await page.getByTestId('search-input').fill('Ann')
-    await expect(page.getByTestId(`player-result-card-${seeded.player.id}`)).toBeVisible()
-    await expect(page.getByTestId('search-results')).toContainText('Anna Testsson')
-    await expect(page.getByTestId('search-results')).toContainText('Test BTK')
+    await expect(page.getByTestId('public-player-page')).toBeVisible()
+    await page.getByTestId(`public-player-confirm-btn-${seeded.player.futureRegId}`).click()
+    await expect(page.getByTestId('public-pin-modal')).toHaveCount(0)
     await expect(
-      page.locator(`[data-testid^="search-session-${seeded.player.id}-"]`).first()
-    ).toContainText('Lör - Pass 1')
-  })
-
-  test('search finds players by club prefix', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectClubSearch(page)
-
-    await page.getByTestId('search-input').fill('Test B')
-    await expect(page.getByTestId(`player-result-card-${seeded.players[0].id}`)).toBeVisible()
-    await expect(page.getByTestId(`player-result-card-${seeded.players[1].id}`)).toBeVisible()
-  })
-
-  test('player search matches later name tokens like Valter', async ({ page }) => {
-    await loginAsPlayer(page)
-
-    await page.getByTestId('search-input').fill('Valter')
-    await expect(page.getByTestId('search-results')).toContainText('Karl Valtersson')
-    await expect(page.getByTestId('search-results')).not.toContainText('Anna Testsson')
-  })
-
-  test('club search does not return player-name matches', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectClubSearch(page)
-
-    await page.getByTestId('search-input').fill('Ann')
-    await expect(page.getByTestId('no-results')).toContainText('Inga klubbar hittades.')
-  })
-
-  test('player search does not return club-name matches', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectPlayerSearch(page)
-
-    await page.getByTestId('search-input').fill('Test B')
-    await expect(page.getByTestId('no-results')).toContainText('Inga spelare hittades.')
-  })
-
-  test('no results shown for non-matching query', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectPlayerSearch(page)
-
-    await page.getByTestId('search-input').fill('Xyz')
-    await expect(page.getByTestId('no-results')).toBeVisible()
-  })
-
-  // ── Attendance actions ──────────────────────────────────────────────────
-
-  test('can confirm attendance directly from the search results', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectPlayerSearch(page)
-
-    await page.getByTestId('search-input').fill('Ann')
-    await expect(
-      page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`)
-    ).toContainText('Bekräfta närvaro')
-    await page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`).click()
-
-    await expect(
-      page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
+      page.getByTestId(`public-player-status-badge-${seeded.player.futureRegId}`)
     ).toContainText('Närvaro bekräftad')
   })
 
-  test('can confirm attendance on a future-deadline class', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectPlayerSearch(page)
-
-    await page.getByTestId('search-input').fill('Ann')
-    await page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`).click()
-
+  test('past-deadline class shows secretariat warning on the public player page', async ({ page }) => {
+    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
     await expect(
-      page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
-    ).toContainText('Närvaro bekräftad')
-  })
-
-  test('can change attendance from confirmed to absent', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectPlayerSearch(page)
-
-    await page.getByTestId('search-input').fill('Ann')
-    await page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`).click()
+      page.getByTestId(`public-player-missing-attendance-${seeded.player.pastRegId}`)
+    ).toContainText('Tiden för anmälan har gått ut')
     await expect(
-      page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
-    ).toContainText('Närvaro bekräftad')
-    await expect(
-      page.getByTestId(`search-status-summary-${seeded.player.futureRegId}`)
-    ).toContainText('Spelaren är markerad som närvarande i klassen.')
-    await expect(
-      page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`)
-    ).toHaveCount(0)
-    await expect(
-      page.getByTestId(`search-absent-btn-${seeded.player.futureRegId}`)
-    ).toHaveCount(0)
-
-    await page.getByTestId(`search-reset-btn-${seeded.player.futureRegId}`).click()
-    await expect(
-      page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`)
-    ).toBeVisible()
-
-    await page.getByTestId(`search-absent-btn-${seeded.player.futureRegId}`).click()
-    await expect(
-      page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
-    ).toContainText('Frånvaro')
-    await expect(
-      page.getByTestId(`search-status-summary-${seeded.player.futureRegId}`)
-    ).toContainText('Frånvaro anmäld')
-  })
-
-  test('can reset attendance back to no response', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectPlayerSearch(page)
-
-    await page.getByTestId('search-input').fill('Ann')
-    await page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`).click()
-    await expect(
-      page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
-    ).toContainText('Närvaro bekräftad')
-
-    await page.getByTestId(`search-reset-btn-${seeded.player.futureRegId}`).click()
-
-    await expect(
-      page.getByTestId(`search-status-badge-${seeded.player.futureRegId}`)
-    ).toHaveCount(0)
-    await expect(
-      page.getByTestId(`search-reset-btn-${seeded.player.futureRegId}`)
-    ).toHaveCount(0)
-    await expect(
-      page.getByTestId(`search-status-summary-${seeded.player.futureRegId}`)
-    ).toHaveCount(0)
-    await expect(
-      page.getByTestId(`search-confirm-btn-${seeded.player.futureRegId}`)
-    ).toBeVisible()
-  })
-
-  test('past-deadline class shows locked message and no action buttons', async ({ page }) => {
-    await loginAsPlayer(page)
-    await selectPlayerSearch(page)
-
-    await page.getByTestId('search-input').fill('Ann')
-    await expect(
-      page.getByTestId(`search-missing-attendance-${seeded.player.pastRegId}`)
-    ).toContainText('Ingen närvaro är registrerad')
-    await expect(
-      page.getByTestId(`search-missing-attendance-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-player-missing-attendance-${seeded.player.pastRegId}`)
     ).toContainText('Kontakta sekretariatet')
     await expect(
-      page.getByTestId(`search-confirm-btn-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-player-confirm-btn-${seeded.player.pastRegId}`)
     ).toHaveCount(0)
     await expect(
-      page.getByTestId(`search-absent-btn-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-player-absent-btn-${seeded.player.pastRegId}`)
     ).toHaveCount(0)
   })
 
-  test('past-deadline class with registered attendance does not show missing-attendance warning', async ({ page }) => {
+  test('past-deadline class with registered attendance does not show missing warning', async ({ page }) => {
     const supabase = testClient()
     await supabase.from('attendance').insert({
       registration_id: seeded.player.pastRegId,
@@ -298,63 +150,29 @@ test.describe('Player attendance flow', () => {
       idempotency_key: `past-confirmed-${seeded.player.pastRegId}`,
     })
 
-    await loginAsPlayer(page)
-    await selectPlayerSearch(page)
-
-    await page.getByTestId('search-input').fill('Ann')
+    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
     await expect(
-      page.getByTestId(`search-status-badge-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-player-status-badge-${seeded.player.pastRegId}`)
     ).toContainText('Närvaro bekräftad')
     await expect(
-      page.getByTestId(`search-missing-attendance-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-player-missing-attendance-${seeded.player.pastRegId}`)
     ).toHaveCount(0)
-
-    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
-    await expect(page.getByTestId(`status-badge-${seeded.player.pastRegId}`)).toContainText('Närvaro bekräftad')
-    await expect(page.getByTestId(`missing-attendance-${seeded.player.pastRegId}`)).toHaveCount(0)
-  })
-
-  test('player detail view shows secretariat warning when deadline has passed without attendance', async ({ page }) => {
-    await loginAsPlayer(page)
-    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
-
-    await expect(page.getByTestId(`missing-attendance-${seeded.player.pastRegId}`)).toContainText(
-      'Ingen närvaro är registrerad',
-    )
-    await expect(page.getByTestId(`missing-attendance-${seeded.player.pastRegId}`)).toContainText(
-      'Kontakta sekretariatet',
-    )
   })
 
   test('attendance opens per class at 20:00 the night before in Swedish time', async ({ page }) => {
     const supabase = testClient()
-    const windowSlug = 'test-player-window'
+    const windowSlug = 'test-player-attendance-window'
 
-    await cleanTestCompetitions(supabase, 'test-player-%')
+    await cleanTestCompetitions(supabase, 'test-player-attendance-%')
     const windowSeeded = await seedPlayerWindowTestCompetition(supabase, windowSlug, PLAYER_PIN, {
       competitionName: 'Fönster Test Tävling',
     })
 
-    await loginAsPlayer(page, windowSlug)
-    await expect(page.getByTestId('attendance-not-open-banner')).toHaveCount(0)
-
-    await page.getByTestId('search-input').fill('Ann')
-    await expect(
-      page.getByTestId(`search-confirm-btn-${windowSeeded.player.openRegId}`)
-    ).toBeVisible()
-    await expect(
-      page.getByTestId(`attendance-not-open-${windowSeeded.player.lockedRegId}`)
-    ).toContainText('20:00')
-    await expect(
-      page.getByTestId(`search-confirm-btn-${windowSeeded.player.lockedRegId}`)
-    ).toHaveCount(0)
-
     await page.goto(`/${windowSlug}/players/${windowSeeded.player.id}`)
-    await expect(page.getByTestId('attendance-not-open-banner')).toHaveCount(0)
-    await expect(page.getByTestId(`confirm-btn-${windowSeeded.player.openRegId}`)).toBeVisible()
+    await expect(page.getByTestId(`public-player-confirm-btn-${windowSeeded.player.openRegId}`)).toBeVisible()
     await expect(
-      page.getByTestId(`attendance-not-open-${windowSeeded.player.lockedRegId}`)
+      page.getByTestId(`public-player-attendance-not-open-${windowSeeded.player.lockedRegId}`)
     ).toContainText('20:00')
-    await expect(page.getByTestId(`confirm-btn-${windowSeeded.player.lockedRegId}`)).toHaveCount(0)
+    await expect(page.getByTestId(`public-player-confirm-btn-${windowSeeded.player.lockedRegId}`)).toHaveCount(0)
   })
 })

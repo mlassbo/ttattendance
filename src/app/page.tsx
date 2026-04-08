@@ -52,10 +52,10 @@ export default async function HomePage() {
           </p>
           <div className="space-y-3">
             <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-5xl">
-              Närvarorapportering för pingistävlingar
+              Tävlingsinformation och närvarorapportering
             </h1>
             <p className="text-base leading-7 text-muted sm:text-lg">
-              Välj din tävling och logga in med pin-koden du fått från klubben som arrangerar tävlingen.
+              Välj din tävling för att se registrerade spelare, anmäla närvaro och följa tävlingen live.
             </p>
           </div>
         </header>
@@ -85,18 +85,13 @@ export default async function HomePage() {
                     competition.lastClassStart,
                   )}
                   title={competition.name}
-                  description="Välj om du ska rapportera som spelare eller arbeta i sekretariatet."
+                  description="Öppna tävlingen för att söka bland registrerade spelare, anmäla närvaro och följa tävlingen live."
                   testId={`competition-entry-card-${competition.slug}`}
                   actions={[
                     {
-                      href: `/${competition.slug}/player`,
-                      label: 'Logga in som spelare',
-                      testId: `player-login-link-${competition.slug}`,
-                    },
-                    {
-                      href: `/${competition.slug}/admin`,
-                      label: 'Logga in som sekretariat',
-                      testId: `admin-login-link-${competition.slug}`,
+                      href: `/${competition.slug}`,
+                      label: 'Öppna tävlingen',
+                      testId: `competition-open-link-${competition.slug}`,
                     },
                   ]}
                 />

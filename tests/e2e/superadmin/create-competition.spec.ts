@@ -92,12 +92,10 @@ test('newly created competitions appear on the root landing page after cache inv
   await page.goto('/')
 
   await expect(page.getByTestId(`competition-entry-card-${slug}`)).toBeVisible()
-  await expect(page.getByTestId(`player-login-link-${slug}`)).toContainText(
-    'Logga in som spelare'
+  await expect(page.getByTestId(`competition-open-link-${slug}`)).toContainText(
+    'Öppna tävlingen'
   )
-  await expect(page.getByTestId(`admin-login-link-${slug}`)).toContainText(
-    'Logga in som sekretariat'
-  )
+  await expect(page.getByTestId(`admin-login-link-${slug}`)).toHaveCount(0)
 })
 
 test('super admin can permanently delete a competition', async ({ page }) => {

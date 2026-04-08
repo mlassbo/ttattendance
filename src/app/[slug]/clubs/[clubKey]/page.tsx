@@ -1,23 +1,31 @@
 import Link from 'next/link'
-import { getPublicCompetitionBySlug, getPublicPlayerDetails } from '@/lib/public-competition'
 import { createServerClient } from '@/lib/supabase'
-import PublicPlayerView from './PublicPlayerView'
+import { getPublicClubDetails, getPublicCompetitionBySlug } from '@/lib/public-competition'
+import ClubPlayersView from './ClubPlayersView'
 
 export const dynamic = 'force-dynamic'
 
-export default async function PlayerClassesPage({
+function decodeClubKey(value: string) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+export default async function ClubPage({
   params,
   searchParams,
 }: {
-  params: { slug: string; playerId: string }
+  params: { slug: string; clubKey: string }
   searchParams?: { returnTo?: string }
 }) {
-  const { slug, playerId } = params
+  const { slug, clubKey } = params
+  const decodedClubKey = decodeClubKey(clubKey)
   const requestedReturnTo = searchParams?.returnTo
-  const backHref = requestedReturnTo?.startsWith(`/${slug}/`)
+  const returnTo = requestedReturnTo?.startsWith(`/${slug}/`)
     ? requestedReturnTo
-    : `/${slug}/search`
-
+    : `/${slug}/search?mode=club&q=${encodeURIComponent(decodedClubKey)}`
   const supabase = createServerClient()
   try {
     const competition = await getPublicCompetitionBySlug(supabase, slug)
@@ -30,39 +38,39 @@ export default async function PlayerClassesPage({
       )
     }
 
-    const playerDetails = await getPublicPlayerDetails(supabase, competition.id, playerId)
+    const club = await getPublicClubDetails(supabase, competition.id, decodedClubKey)
 
-    if (!playerDetails) {
+    if (!club) {
       return (
         <div className="app-shell flex items-center justify-center">
-          <p className="text-muted">Spelaren hittades inte.</p>
+          <p className="text-muted">Klubben hittades inte.</p>
         </div>
       )
     }
 
     return (
-      <PublicPlayerView
+      <ClubPlayersView
         slug={slug}
         competitionName={competition.name}
-        playerDetails={playerDetails}
-        backHref={backHref}
+        club={club}
+        returnTo={returnTo}
       />
     )
   } catch {
     return (
       <main className="app-shell">
-        <div className="mx-auto max-w-4xl space-y-4 sm:space-y-6">
+        <div className="mx-auto max-w-5xl space-y-4 sm:space-y-6">
           <section className="app-card">
             <Link
-              href={backHref}
+              href={returnTo}
               className="w-fit text-sm font-medium text-brand transition-colors duration-150 hover:text-brand-hover"
             >
               ← Tillbaka till sök
             </Link>
           </section>
 
-          <section data-testid="public-player-load-error" className="app-banner-error">
-            Det gick inte att läsa spelarens uppgifter just nu. Försök igen.
+          <section data-testid="public-club-load-error" className="app-banner-error">
+            Det gick inte att läsa klubbens uppgifter just nu. Försök igen.
           </section>
         </div>
       </main>

@@ -1,0 +1,545 @@
+import { buildDaySessionOrderMap } from './session-order'
+import { createServerClient } from './supabase'
+
+type ServerClient = ReturnType<typeof createServerClient>
+
+type SearchPlayerRow = {
+  id: string
+  name: string
+  club: string | null
+}
+
+type SessionRow = {
+  id: string
+  name: string
+  date: string
+  session_order: number
+}
+
+type CompetitionSessionRow = {
+  id: string
+  date: string
+  session_order: number
+}
+
+type ClassRow = {
+  id: string
+  name: string
+  start_time: string | null
+  attendance_deadline: string | null
+  sessions: RelationValue<SessionRow>
+}
+
+type AttendanceRow = {
+  status: 'confirmed' | 'absent'
+  reported_at: string
+}
+
+type RelationValue<T> = T | T[] | null | undefined
+
+type RegistrationRow = {
+  id: string
+  player_id: string
+  classes: RelationValue<ClassRow>
+  attendance?: RelationValue<AttendanceRow>
+}
+
+type PlayerRow = {
+  id: string
+  name: string
+  club: string | null
+}
+
+type RegistrationCountRow = {
+  player_id: string
+}
+
+type SearchRegistrationRow = {
+  player_id: string
+  classes?: RelationValue<{ name: string | null }>
+}
+
+type ClubCountRow = {
+  club: string | null
+}
+
+export type PublicSearchMode = 'all' | 'player' | 'club'
+
+export interface PublicCompetition {
+  id: string
+  name: string
+  slug: string
+}
+
+export interface PublicClassRegistration {
+  registrationId: string
+  class: {
+    id: string | null
+    name: string
+    startTime: string | null
+    attendanceDeadline: string | null
+    session: {
+      id: string
+      name: string
+      date: string
+      sessionOrder: number
+      daySessionOrder?: number
+    } | null
+  }
+  attendance: {
+    status: 'confirmed' | 'absent'
+    reportedAt: string
+  } | null
+}
+
+export interface PublicRegistrationGroup {
+  session: PublicClassRegistration['class']['session']
+  registrations: PublicClassRegistration[]
+}
+
+export interface PublicSearchPlayer {
+  id: string
+  name: string
+  club: string | null
+  classCount: number
+  classNames: string[]
+}
+
+export interface PublicSearchClub {
+  name: string
+  playerCount: number
+}
+
+export interface PublicPlayerDetails {
+  player: PlayerRow
+  registrations: PublicClassRegistration[]
+  sessionGroups: PublicRegistrationGroup[]
+}
+
+export interface PublicClubDetails {
+  clubName: string
+  players: Array<{
+    id: string
+    name: string
+    classCount: number
+    registrations: PublicClassRegistration[]
+    sessionGroups: PublicRegistrationGroup[]
+  }>
+}
+
+const QUERY_PAGE_SIZE = 1000
+
+export async function getPublicCompetitionBySlug(
+  supabase: ServerClient,
+  slug: string,
+): Promise<PublicCompetition | null> {
+  const { data: competition, error } = await supabase
+    .from('competitions')
+    .select('id, name, slug')
+    .eq('slug', slug)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return competition ?? null
+}
+
+export async function searchPublicCompetition(
+  supabase: ServerClient,
+  competitionId: string,
+  query: string,
+  mode: PublicSearchMode,
+): Promise<{ players: PublicSearchPlayer[]; clubs: PublicSearchClub[] }> {
+  const searchTerm = query.trim()
+
+  if (searchTerm.length < 2) {
+    return { players: [], clubs: [] }
+  }
+
+  const players = mode === 'club'
+    ? []
+    : await searchPlayersWithClassSummary(supabase, competitionId, searchTerm, 'player')
+  const clubs = mode === 'player'
+    ? []
+    : await searchClubs(supabase, competitionId, searchTerm)
+
+  return { players, clubs }
+}
+
+export async function getPublicPlayerDetails(
+  supabase: ServerClient,
+  competitionId: string,
+  playerId: string,
+): Promise<PublicPlayerDetails | null> {
+  const { data: player, error } = await supabase
+    .from('players')
+    .select('id, name, club')
+    .eq('id', playerId)
+    .eq('competition_id', competitionId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  if (!player) {
+    return null
+  }
+
+  const daySessionOrderById = await getDaySessionOrderMap(supabase, competitionId)
+  const registrations = await getRegistrationsByPlayerIds(supabase, [playerId], daySessionOrderById)
+  const playerRegistrations = registrations.get(playerId) ?? []
+
+  return {
+    player,
+    registrations: playerRegistrations,
+    sessionGroups: buildRegistrationGroups(playerRegistrations),
+  }
+}
+
+export async function getPublicClubDetails(
+  supabase: ServerClient,
+  competitionId: string,
+  clubName: string,
+): Promise<PublicClubDetails | null> {
+  const { data: players, error } = await supabase
+    .from('players')
+    .select('id, name, club')
+    .eq('competition_id', competitionId)
+    .eq('club', clubName)
+    .order('name', { ascending: true })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  if (!players || players.length === 0) {
+    return null
+  }
+
+  const daySessionOrderById = await getDaySessionOrderMap(supabase, competitionId)
+  const registrationsByPlayerId = await getRegistrationsByPlayerIds(
+    supabase,
+    players.map(player => player.id),
+    daySessionOrderById,
+  )
+
+  return {
+    clubName,
+    players: players.map(player => {
+      const registrations = registrationsByPlayerId.get(player.id) ?? []
+
+      return {
+        id: player.id,
+        name: player.name,
+        classCount: registrations.length,
+        registrations,
+        sessionGroups: buildRegistrationGroups(registrations),
+      }
+    }),
+  }
+}
+
+async function searchPlayersRaw(
+  supabase: ServerClient,
+  competitionId: string,
+  query: string,
+  mode: 'player' | 'club',
+): Promise<SearchPlayerRow[]> {
+  const { data, error } = await supabase.rpc('search_players', {
+    p_competition_id: competitionId,
+    p_query: query,
+    p_mode: mode,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return ((data ?? []) as SearchPlayerRow[]).sort((left, right) =>
+    left.name.localeCompare(right.name, 'sv'),
+  )
+}
+
+async function searchPlayersWithClassSummary(
+  supabase: ServerClient,
+  competitionId: string,
+  query: string,
+  mode: 'player' | 'club',
+): Promise<PublicSearchPlayer[]> {
+  const players = await searchPlayersRaw(supabase, competitionId, query, mode)
+
+  if (players.length === 0) {
+    return []
+  }
+
+  const registrations = await fetchAllPages<SearchRegistrationRow>(async (from, to) =>
+    await supabase
+      .from('registrations')
+      .select(`
+        player_id,
+        classes (
+          name
+        )
+      `)
+      .in('player_id', players.map(player => player.id))
+      .range(from, to),
+  )
+
+  const classCountByPlayerId = new Map<string, number>()
+  const classNamesByPlayerId = new Map<string, Set<string>>()
+  for (const registration of (registrations ?? []) as SearchRegistrationRow[]) {
+    classCountByPlayerId.set(
+      registration.player_id,
+      (classCountByPlayerId.get(registration.player_id) ?? 0) + 1,
+    )
+
+    const className = getSingleRelation(registration.classes)?.name?.trim()
+    if (className) {
+      const names = classNamesByPlayerId.get(registration.player_id) ?? new Set<string>()
+      names.add(className)
+      classNamesByPlayerId.set(registration.player_id, names)
+    }
+  }
+
+  return players.map(player => ({
+    id: player.id,
+    name: player.name,
+    club: player.club,
+    classCount: classCountByPlayerId.get(player.id) ?? 0,
+    classNames: Array.from(classNamesByPlayerId.get(player.id) ?? []).sort((left, right) =>
+      left.localeCompare(right, 'sv'),
+    ),
+  }))
+}
+
+async function searchClubs(
+  supabase: ServerClient,
+  competitionId: string,
+  query: string,
+): Promise<PublicSearchClub[]> {
+  const matchingPlayers = await searchPlayersRaw(supabase, competitionId, query, 'club')
+  const clubNames = Array.from(
+    new Set(
+      matchingPlayers
+        .map(player => player.club?.trim())
+        .filter((club): club is string => Boolean(club)),
+    ),
+  )
+
+  if (clubNames.length === 0) {
+    return []
+  }
+
+  const clubPlayers = await fetchAllPages<ClubCountRow>(async (from, to) =>
+    await supabase
+      .from('players')
+      .select('club')
+      .eq('competition_id', competitionId)
+      .in('club', clubNames)
+      .range(from, to),
+  )
+
+  const playerCountByClub = new Map<string, number>()
+  for (const player of (clubPlayers ?? []) as ClubCountRow[]) {
+    if (!player.club) {
+      continue
+    }
+
+    playerCountByClub.set(player.club, (playerCountByClub.get(player.club) ?? 0) + 1)
+  }
+
+  return clubNames
+    .map(clubName => ({
+      name: clubName,
+      playerCount: playerCountByClub.get(clubName) ?? 0,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'sv'))
+}
+
+async function getDaySessionOrderMap(
+  supabase: ServerClient,
+  competitionId: string,
+): Promise<Map<string, number>> {
+  const { data: competitionSessions, error } = await supabase
+    .from('sessions')
+    .select('id, date, session_order')
+    .eq('competition_id', competitionId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return buildDaySessionOrderMap((competitionSessions ?? []) as CompetitionSessionRow[])
+}
+
+async function getRegistrationsByPlayerIds(
+  supabase: ServerClient,
+  playerIds: string[],
+  daySessionOrderById: Map<string, number>,
+): Promise<Map<string, PublicClassRegistration[]>> {
+  if (playerIds.length === 0) {
+    return new Map()
+  }
+
+  const registrations = await fetchAllPages<RegistrationRow>(async (from, to) =>
+    await supabase
+      .from('registrations')
+      .select(`
+        id,
+        player_id,
+        classes (
+          id,
+          name,
+          start_time,
+          attendance_deadline,
+          sessions (
+            id,
+            name,
+            date,
+            session_order
+          )
+        ),
+        attendance (
+          status,
+          reported_at
+        )
+      `)
+      .in('player_id', playerIds)
+      .range(from, to),
+  )
+
+  const registrationsByPlayerId = new Map<string, PublicClassRegistration[]>()
+
+  for (const registration of (registrations ?? []) as unknown as RegistrationRow[]) {
+    const cls = getSingleRelation(registration.classes)
+
+    if (!cls) {
+      continue
+    }
+
+    const attendance = getSingleRelation(registration.attendance)
+    const session = getSingleRelation(cls.sessions)
+
+    const groupedRegistrations = registrationsByPlayerId.get(registration.player_id) ?? []
+    groupedRegistrations.push({
+      registrationId: registration.id,
+      class: {
+        id: cls.id,
+        name: cls.name,
+        startTime: cls.start_time,
+        attendanceDeadline: cls.attendance_deadline,
+        session: session
+          ? {
+              id: session.id,
+              name: session.name,
+              date: session.date,
+              sessionOrder: session.session_order,
+              daySessionOrder:
+                daySessionOrderById.get(session.id) ??
+                session.session_order,
+            }
+          : null,
+      },
+      attendance: attendance
+        ? {
+            status: attendance.status,
+            reportedAt: attendance.reported_at,
+          }
+        : null,
+    })
+    registrationsByPlayerId.set(registration.player_id, groupedRegistrations)
+  }
+
+  for (const registrationsForPlayer of Array.from(registrationsByPlayerId.values())) {
+    registrationsForPlayer.sort((left, right) => {
+      const leftSessionDate = left.class.session?.date ?? '9999-12-31'
+      const rightSessionDate = right.class.session?.date ?? '9999-12-31'
+
+      if (leftSessionDate !== rightSessionDate) {
+        return leftSessionDate.localeCompare(rightSessionDate)
+      }
+
+      const leftSessionOrder =
+        left.class.session?.daySessionOrder ??
+        left.class.session?.sessionOrder ??
+        Number.MAX_SAFE_INTEGER
+      const rightSessionOrder =
+        right.class.session?.daySessionOrder ??
+        right.class.session?.sessionOrder ??
+        Number.MAX_SAFE_INTEGER
+
+      if (leftSessionOrder !== rightSessionOrder) {
+        return leftSessionOrder - rightSessionOrder
+      }
+
+      const leftStartTime = left.class.startTime ?? '9999-12-31T23:59:59.999Z'
+      const rightStartTime = right.class.startTime ?? '9999-12-31T23:59:59.999Z'
+
+      if (leftStartTime !== rightStartTime) {
+        return leftStartTime.localeCompare(rightStartTime)
+      }
+
+      return left.class.name.localeCompare(right.class.name, 'sv')
+    })
+  }
+
+  return registrationsByPlayerId
+}
+
+function buildRegistrationGroups(registrations: PublicClassRegistration[]): PublicRegistrationGroup[] {
+  const groups = new Map<string, PublicRegistrationGroup>()
+
+  for (const registration of registrations) {
+    const key = registration.class.session?.id ?? 'unknown'
+    const existingGroup = groups.get(key)
+
+    if (existingGroup) {
+      existingGroup.registrations.push(registration)
+      continue
+    }
+
+    groups.set(key, {
+      session: registration.class.session,
+      registrations: [registration],
+    })
+  }
+
+  return Array.from(groups.values())
+}
+
+function getSingleRelation<T>(value: RelationValue<T>): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null
+  }
+
+  return value ?? null
+}
+
+async function fetchAllPages<T>(
+  fetchPage: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = []
+  let from = 0
+
+  while (true) {
+    const to = from + QUERY_PAGE_SIZE - 1
+    const { data, error } = await fetchPage(from, to)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    const pageRows = data ?? []
+    rows.push(...pageRows)
+
+    if (pageRows.length < QUERY_PAGE_SIZE) {
+      return rows
+    }
+
+    from += QUERY_PAGE_SIZE
+  }
+}

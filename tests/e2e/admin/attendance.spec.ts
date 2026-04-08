@@ -33,9 +33,9 @@ test.describe('Admin attendance flow', () => {
   test('competition chooser links to the admin PIN page', async ({ page }) => {
     await page.goto(`/${SLUG}`)
 
-    await expect(page.getByTestId('competition-role-card')).toBeVisible()
+    await expect(page.getByTestId('public-start-page')).toBeVisible()
 
-    await page.getByTestId('competition-role-link-admin').click()
+    await page.getByTestId('public-start-admin-link').click()
     await page.waitForURL(`/${SLUG}/admin`)
     await expect(page.getByTestId('admin-pin-input')).toBeVisible()
   })

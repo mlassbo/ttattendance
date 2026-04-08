@@ -83,11 +83,21 @@ export const getClassAttendanceOpensAt = getCompetitionAttendanceOpensAt
 
 export const isClassAttendanceOpen = isCompetitionAttendanceOpen
 
+export type PlayerAttendanceAvailability =
+  | { state: 'schedule_missing'; attendanceOpensAt: null }
+  | { state: 'not_open'; attendanceOpensAt: Date }
+  | { state: 'deadline_passed'; attendanceOpensAt: Date }
+  | { state: 'available'; attendanceOpensAt: Date }
+
 export function getPlayerAttendanceAvailability(
-  classStartDate: string | Date,
-  attendanceDeadline: string | Date,
+  classStartDate: string | Date | null | undefined,
+  attendanceDeadline: string | Date | null | undefined,
   now: Date = new Date(),
-) {
+) : PlayerAttendanceAvailability {
+  if (!classStartDate || !attendanceDeadline) {
+    return { state: 'schedule_missing', attendanceOpensAt: null }
+  }
+
   const attendanceOpensAt = getClassAttendanceOpensAt(classStartDate)
 
   if (now.getTime() < attendanceOpensAt.getTime()) {

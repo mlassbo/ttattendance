@@ -453,7 +453,7 @@ export default function AdminDashboard({
                                     )}
                                   </div>
                                 ) : (
-                                  <p className="text-sm text-muted">Inget arbetssteg att uppdatera just nu.</p>
+                                  <p className="text-sm text-muted">Inget sekretariatet behöver göra med klassen just nu.</p>
                                 )}
                               </div>
 

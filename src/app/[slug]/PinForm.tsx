@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import PinLoginCard from '@/components/PinLoginCard'
+import { PUBLIC_ATTENDANCE_UNLOCK_KEY_PREFIX } from '@/lib/public-attendance-ui'
 
 export default function PinForm({
   slug,
@@ -29,6 +30,10 @@ export default function PinForm({
       })
 
       if (res.ok) {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(`${PUBLIC_ATTENDANCE_UNLOCK_KEY_PREFIX}${slug}`, 'true')
+        }
+
         router.push(`/${slug}/search`)
       } else {
         const data = await res.json()
