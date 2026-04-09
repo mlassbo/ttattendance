@@ -47,9 +47,6 @@ export default async function HomePage() {
     <main className="app-shell">
       <div className="relative mx-auto max-w-6xl space-y-8 sm:space-y-10">
         <header className="mx-auto max-w-3xl space-y-4 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
-            TTAttendance
-          </p>
           <div className="space-y-3">
             <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-5xl">
               Tävlingsinformation och närvarorapportering
