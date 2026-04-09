@@ -138,7 +138,7 @@ export default function CompetitionsView() {
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">Superadmin</p>
             <h1 className="text-3xl font-semibold tracking-tight text-ink">Tävlingar</h1>
             <p className="text-sm leading-6 text-muted">
-              Skapa tävlingar, kontrollera inloggningskoder, importera startlistor och rensa bort gamla tävlingar.
+              Skapa tävlingar, kontrollera inloggningskoder, öppna OnData-integrationen och rensa bort gamla tävlingar.
             </p>
           </div>
           <button
@@ -309,13 +309,6 @@ export default function CompetitionsView() {
                       className="app-button-secondary min-h-10 h-fit px-4 py-2"
                     >
                       OnData-integration
-                    </Link>
-                    <Link
-                      href={`/super/competitions/${c.id}/import`}
-                      data-testid={`import-action-${c.slug}`}
-                      className="app-button-secondary min-h-10 h-fit px-4 py-2"
-                    >
-                      Importera startlista
                     </Link>
                     <button
                       type="button"

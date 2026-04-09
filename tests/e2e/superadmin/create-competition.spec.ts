@@ -70,7 +70,8 @@ test('super admin can create a competition and see it in the list', async ({ pag
   await expect(page.getByTestId(`import-status-${TEST_PREFIX}2025`)).toContainText('0 importerade anmälningar')
   await expect(page.getByTestId(`player-pin-${TEST_PREFIX}2025`)).toContainText('1234')
   await expect(page.getByTestId(`admin-pin-${TEST_PREFIX}2025`)).toContainText('5678')
-  await expect(page.getByTestId(`import-action-${TEST_PREFIX}2025`)).toContainText('Importera startlista')
+  await expect(page.getByTestId(`integration-action-${TEST_PREFIX}2025`)).toContainText('OnData-integration')
+  await expect(page.getByTestId(`import-action-${TEST_PREFIX}2025`)).toHaveCount(0)
 })
 
 test('newly created competitions appear on the root landing page after cache invalidation', async ({ page }) => {

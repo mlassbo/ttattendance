@@ -34,8 +34,8 @@ async function loginAsSuperadmin(page: Page) {
 }
 
 async function openImportPage(page: Page, slug: string) {
-  await page.getByTestId(`import-action-${slug}`).click()
-  await page.waitForURL(/\/super\/competitions\/.+\/import$/)
+  await page.getByTestId(`integration-action-${slug}`).click()
+  await page.waitForURL(/\/super\/competitions\/.+\/integration$/)
 }
 
 async function previewImport(page: Page, sourceText: string) {
@@ -66,6 +66,16 @@ test.describe('Competition import', () => {
 
     await page.waitForURL('/super')
     await expect(page.getByTestId('login-button')).toBeVisible()
+  })
+
+  test('old import route redirects to the integration page for superadmin', async ({ page }) => {
+    const { competitionId } = await seedSuperadminCompetition(testClient(), `${TEST_PREFIX}redirect`)
+
+    await loginAsSuperadmin(page)
+    await page.goto(`/super/competitions/${competitionId}/import`)
+
+    await page.waitForURL(new RegExp(`/super/competitions/${competitionId}/integration$`))
+    await expect(page.getByTestId('integration-endpoint-input')).toBeVisible()
   })
 
   test('initial import creates sessions, classes, players, and registrations', async ({ page }) => {
@@ -163,7 +173,7 @@ test.describe('Competition import', () => {
     await page.getByTestId('back-to-competitions').click()
     await page.waitForURL('/super/competitions')
     await expect(page.getByTestId(`import-status-${slug}`)).toContainText('4 importerade anmälningar')
-    await expect(page.getByTestId(`import-action-${slug}`)).toContainText('Importera startlista')
+    await expect(page.getByTestId(`integration-action-${slug}`)).toContainText('OnData-integration')
   })
 
   test('suggested pass can be overridden and is preserved on re-import preview', async ({ page }) => {

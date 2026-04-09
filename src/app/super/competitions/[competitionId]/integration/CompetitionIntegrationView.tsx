@@ -2,26 +2,48 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import OnDataRosterImportPanel from '@/components/OnDataRosterImportPanel'
+import TTCoordinatorImportPanel from '@/components/TTCoordinatorImportPanel'
 
 type IntegrationViewData = {
   competitionId: string
   competitionName: string
   competitionSlug: string
   ingestPath: string
-  schemaVersion: number
+  schemaVersions: {
+    liveSync: number
+    registrationImport: number
+  }
   hasApiKey: boolean
   apiKeyLast4: string | null
   apiKeyGeneratedAt: string | null
-  latestSnapshotReceivedAt: string | null
-  latestSnapshotProcessedAt: string | null
-  latestSourceFileModifiedAt: string | null
-  latestSourceProcessedAt: string | null
-  latestSourceFilePath: string | null
-  lastError: string | null
-  latestSummary: {
-    classes: number
-    pools: number
-    completedMatches: number
+  hasExistingImport: boolean
+  liveSync: {
+    latestSnapshotReceivedAt: string | null
+    latestSnapshotProcessedAt: string | null
+    latestSourceFileModifiedAt: string | null
+    latestSourceProcessedAt: string | null
+    latestSourceFilePath: string | null
+    lastError: string | null
+    latestSummary: {
+      classes: number
+      pools: number
+      completedMatches: number
+    }
+  }
+  registrationImport: {
+    latestSnapshotId: string | null
+    latestSnapshotReceivedAt: string | null
+    latestSnapshotProcessedAt: string | null
+    latestSourceFilePath: string | null
+    lastError: string | null
+    lastAppliedSnapshotId: string | null
+    lastAppliedAt: string | null
+    latestSummary: {
+      classes: number
+      players: number
+      registrations: number
+    }
   }
 }
 
@@ -145,7 +167,7 @@ export default function CompetitionIntegrationView({
 
   return (
     <main className="app-shell">
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="mx-auto max-w-5xl space-y-4">
         <section className="app-card space-y-3">
           <Link
             href="/super/competitions"
@@ -169,7 +191,7 @@ export default function CompetitionIntegrationView({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-ink">Anslutning</h2>
-              <p className="text-sm text-muted">Klistra in endpoint och API-nyckel i integrationsappen.</p>
+              <p className="text-sm text-muted">Klistra in rätt endpoint och samma API-nyckel i integrationsappen.</p>
             </div>
             <button
               type="button"
@@ -182,25 +204,27 @@ export default function CompetitionIntegrationView({
             </button>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="integration-endpoint" className="text-sm font-medium text-ink">Endpoint</label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                id="integration-endpoint"
-                readOnly
-                value={endpointUrl}
-                data-testid="integration-endpoint-input"
-                className="app-input font-mono text-sm"
-              />
-              <button
-                type="button"
-                data-testid="copy-endpoint-button"
-                onClick={() => void copyValue(endpointUrl, 'endpoint')}
-                disabled={!endpointUrl}
-                className="app-button-secondary w-full sm:w-auto"
-              >
-                {copiedField === 'endpoint' ? 'Kopierad' : 'Kopiera'}
-              </button>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="integration-endpoint" className="text-sm font-medium text-ink">Endpoint</label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  id="integration-endpoint"
+                  readOnly
+                  value={endpointUrl}
+                  data-testid="integration-endpoint-input"
+                  className="app-input font-mono text-sm"
+                />
+                <button
+                  type="button"
+                  data-testid="copy-endpoint-button"
+                  onClick={() => void copyValue(endpointUrl, 'endpoint')}
+                  disabled={!endpointUrl}
+                  className="app-button-secondary w-full sm:w-auto"
+                >
+                  {copiedField === 'endpoint' ? 'Kopierad' : 'Kopiera'}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -251,83 +275,114 @@ export default function CompetitionIntegrationView({
             )}
 
             <p data-testid="schema-version" className="text-sm text-muted">
-              schemaVersion: {data?.schemaVersion ?? 1}
+              schemaVersion: live {data?.schemaVersions.liveSync ?? 1} • anmälningar {data?.schemaVersions.registrationImport ?? 1}
             </p>
           </div>
         </section>
 
-        <section data-testid="integration-status-card" className="app-card space-y-4">
+        <section className="app-card space-y-4">
           <div>
-            <h2 className="text-lg font-semibold text-ink">Status</h2>
-            <p className="text-sm text-muted">Senaste mottagna snapshot för tävlingen.</p>
+            <h2 className="text-lg font-semibold text-ink">Anmälningsimport</h2>
+            <p className="text-sm text-muted">OnData stage 1 lagras som snapshot och måste förhandsgranskas innan den appliceras.</p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
-            <SummaryValue
-              label="Klasser"
-              value={data?.latestSummary.classes ?? 0}
-              testId="integration-summary-classes"
-            />
-            <SummaryValue
-              label="Pooler"
-              value={data?.latestSummary.pools ?? 0}
-              testId="integration-summary-pools"
-            />
-            <SummaryValue
-              label="Färdiga matcher"
-              value={data?.latestSummary.completedMatches ?? 0}
-              testId="integration-summary-matches"
-            />
+            <SummaryValue label="Klasser" value={data?.registrationImport.latestSummary.classes ?? 0} testId="registration-summary-classes" />
+            <SummaryValue label="Spelare" value={data?.registrationImport.latestSummary.players ?? 0} testId="registration-summary-players" />
+            <SummaryValue label="Anmälningar" value={data?.registrationImport.latestSummary.registrations ?? 0} testId="registration-summary-registrations" />
+          </div>
+
+          <dl className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-line bg-white px-4 py-3">
+              <dt className="text-xs uppercase tracking-[0.18em] text-muted">Senast mottagen</dt>
+              <dd data-testid="registration-latest-received" className="mt-1 text-sm text-ink">{formatDateTime(data?.registrationImport.latestSnapshotReceivedAt ?? null)}</dd>
+            </div>
+            <div className="rounded-xl border border-line bg-white px-4 py-3">
+              <dt className="text-xs uppercase tracking-[0.18em] text-muted">Senast bearbetad</dt>
+              <dd data-testid="registration-latest-processed" className="mt-1 text-sm text-ink">{formatDateTime(data?.registrationImport.latestSnapshotProcessedAt ?? null)}</dd>
+            </div>
+            <div className="rounded-xl border border-line bg-white px-4 py-3">
+              <dt className="text-xs uppercase tracking-[0.18em] text-muted">Senast applicerad</dt>
+              <dd data-testid="registration-latest-applied" className="mt-1 text-sm text-ink">{formatDateTime(data?.registrationImport.lastAppliedAt ?? null)}</dd>
+            </div>
+          </dl>
+
+          <div className="rounded-xl border border-line bg-white px-4 py-3">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted">Källa</p>
+            <p data-testid="registration-source-path" className="mt-1 break-all font-mono text-sm text-ink">
+              {data?.registrationImport.latestSourceFilePath ?? 'Ingen källa sparad än'}
+            </p>
+          </div>
+
+          {data?.registrationImport.lastError && (
+            <div data-testid="registration-last-error" className="app-banner-error">{data.registrationImport.lastError}</div>
+          )}
+
+          <OnDataRosterImportPanel
+            competitionId={competitionId}
+            hasExistingImport={data?.hasExistingImport ?? false}
+            latestSnapshotId={data?.registrationImport.latestSnapshotId ?? null}
+            onApplied={load}
+          />
+        </section>
+
+        <section data-testid="integration-status-card" className="app-card space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Live-synk</h2>
+            <p className="text-sm text-muted">Senaste mottagna live-snapshot för tävlingen.</p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <SummaryValue label="Klasser" value={data?.liveSync.latestSummary.classes ?? 0} testId="integration-summary-classes" />
+            <SummaryValue label="Pooler" value={data?.liveSync.latestSummary.pools ?? 0} testId="integration-summary-pools" />
+            <SummaryValue label="Färdiga matcher" value={data?.liveSync.latestSummary.completedMatches ?? 0} testId="integration-summary-matches" />
           </div>
 
           <dl className="grid gap-3 md:grid-cols-2">
             <div className="rounded-xl border border-line bg-white px-4 py-3">
               <dt className="text-xs uppercase tracking-[0.18em] text-muted">Senast mottagen</dt>
-              <dd data-testid="integration-latest-received" className="mt-1 text-sm text-ink">
-                {formatDateTime(data?.latestSnapshotReceivedAt ?? null)}
-              </dd>
+              <dd data-testid="integration-latest-received" className="mt-1 text-sm text-ink">{formatDateTime(data?.liveSync.latestSnapshotReceivedAt ?? null)}</dd>
             </div>
             <div className="rounded-xl border border-line bg-white px-4 py-3">
               <dt className="text-xs uppercase tracking-[0.18em] text-muted">Senast bearbetad</dt>
-              <dd data-testid="integration-latest-processed" className="mt-1 text-sm text-ink">
-                {formatDateTime(data?.latestSnapshotProcessedAt ?? null)}
-              </dd>
+              <dd data-testid="integration-latest-processed" className="mt-1 text-sm text-ink">{formatDateTime(data?.liveSync.latestSnapshotProcessedAt ?? null)}</dd>
             </div>
             <div className="rounded-xl border border-line bg-white px-4 py-3">
               <dt className="text-xs uppercase tracking-[0.18em] text-muted">Källfil ändrad</dt>
-              <dd data-testid="integration-source-modified" className="mt-1 text-sm text-ink">
-                {formatDateTime(data?.latestSourceFileModifiedAt ?? null)}
-              </dd>
+              <dd data-testid="integration-source-modified" className="mt-1 text-sm text-ink">{formatDateTime(data?.liveSync.latestSourceFileModifiedAt ?? null)}</dd>
             </div>
             <div className="rounded-xl border border-line bg-white px-4 py-3">
               <dt className="text-xs uppercase tracking-[0.18em] text-muted">Källa bearbetad</dt>
-              <dd data-testid="integration-source-processed" className="mt-1 text-sm text-ink">
-                {formatDateTime(data?.latestSourceProcessedAt ?? null)}
-              </dd>
+              <dd data-testid="integration-source-processed" className="mt-1 text-sm text-ink">{formatDateTime(data?.liveSync.latestSourceProcessedAt ?? null)}</dd>
             </div>
           </dl>
 
           <div className="rounded-xl border border-line bg-white px-4 py-3">
             <p className="text-xs uppercase tracking-[0.18em] text-muted">Källa</p>
             <p data-testid="integration-source-path" className="mt-1 break-all font-mono text-sm text-ink">
-              {data?.latestSourceFilePath ?? 'Ingen källa sparad än'}
+              {data?.liveSync.latestSourceFilePath ?? 'Ingen källa sparad än'}
             </p>
           </div>
 
           {data?.apiKeyGeneratedAt && (
             <div className="rounded-xl border border-line bg-white px-4 py-3">
               <p className="text-xs uppercase tracking-[0.18em] text-muted">Nyckel skapad</p>
-              <p data-testid="integration-api-key-generated-at" className="mt-1 text-sm text-ink">
-                {formatDateTime(data.apiKeyGeneratedAt)}
-              </p>
+              <p data-testid="integration-api-key-generated-at" className="mt-1 text-sm text-ink">{formatDateTime(data.apiKeyGeneratedAt)}</p>
             </div>
           )}
 
-          {data?.lastError ? (
-            <div data-testid="integration-last-error" className="app-banner-error">{data.lastError}</div>
-          ) : (
-            <div data-testid="integration-no-error" className="app-banner-success">Ingen aktuell felstatus.</div>
+          {data?.liveSync.lastError && (
+            <div data-testid="integration-last-error" className="app-banner-error">{data.liveSync.lastError}</div>
           )}
+        </section>
+
+        <section className="app-card space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Reservlösning: TT Coordinator-import</h2>
+            <p className="text-sm text-muted">Använd bara detta om OnData-anmälningsimporten inte är tillgänglig eller innehåller fel.</p>
+          </div>
+
+          <TTCoordinatorImportPanel competitionId={competitionId} hasExistingImport={data?.hasExistingImport ?? false} />
         </section>
       </div>
     </main>

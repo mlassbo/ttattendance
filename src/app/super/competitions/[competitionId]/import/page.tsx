@@ -1,9 +1,6 @@
 import { cookies } from 'next/headers'
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { createServerClient } from '@/lib/supabase'
 import { verifyCookie } from '@/lib/cookie-signing'
-import CompetitionImportView from './CompetitionImportView'
 
 export default async function CompetitionImportPage({
   params,
@@ -19,41 +16,5 @@ export default async function CompetitionImportPage({
     redirect('/super')
   }
 
-  const supabase = createServerClient()
-  const { data: competition } = await supabase
-    .from('competitions')
-    .select('id, name, slug')
-    .eq('id', params.competitionId)
-    .is('deleted_at', null)
-    .single()
-
-  if (!competition) {
-    return (
-      <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 p-6">
-        <Link
-          href="/super/competitions"
-          className="text-sm text-slate-600 underline-offset-2 hover:underline"
-        >
-          Tillbaka till tävlingar
-        </Link>
-        <div className="rounded border border-slate-200 bg-white p-6">
-          <h1 className="text-xl font-semibold">Tävlingen hittades inte</h1>
-        </div>
-      </main>
-    )
-  }
-
-  const { count: sessionCount } = await supabase
-    .from('sessions')
-    .select('*', { count: 'exact', head: true })
-    .eq('competition_id', competition.id)
-
-  return (
-    <CompetitionImportView
-      competitionId={competition.id}
-      competitionName={competition.name}
-      competitionSlug={competition.slug}
-      hasExistingImport={(sessionCount ?? 0) > 0}
-    />
-  )
+  redirect(`/super/competitions/${params.competitionId}/integration`)
 }

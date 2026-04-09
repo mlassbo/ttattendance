@@ -2,8 +2,12 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { OnDataSnapshotPayload } from './ondata-integration-contract'
 
+export function buildOnDataCompetitionIngestPath(competitionSlug: string): string {
+  return `/api/integrations/ondata/competitions/${competitionSlug}`
+}
+
 export function buildOnDataIngestPath(competitionSlug: string): string {
-  return `/api/integrations/ondata/competitions/${competitionSlug}/snapshots`
+  return `${buildOnDataCompetitionIngestPath(competitionSlug)}/snapshots`
 }
 
 export function hashOnDataSnapshotPayload(payload: OnDataSnapshotPayload): string {
@@ -242,7 +246,7 @@ export async function getOnDataIntegrationView(
     return null
   }
 
-  const [{ data: settings }, { data: status }] = await Promise.all([
+  const [{ data: settings }, { data: liveStatus }, { data: registrationStatus }, { count: sessionCount }] = await Promise.all([
     supabase
       .from('ondata_integration_settings')
       .select('api_token_last4, token_generated_at')
@@ -253,38 +257,78 @@ export async function getOnDataIntegrationView(
       .select('current_snapshot_id, last_received_at, last_processed_at, last_source_file_modified_at, last_source_processed_at, last_error, last_summary_classes, last_summary_pools, last_summary_completed_matches')
       .eq('competition_id', competitionId)
       .maybeSingle(),
+    supabase
+      .from('ondata_registration_status')
+      .select('current_snapshot_id, last_received_at, last_processed_at, last_error, last_summary_classes, last_summary_players, last_summary_registrations, last_applied_snapshot_id, last_applied_at')
+      .eq('competition_id', competitionId)
+      .maybeSingle(),
+    supabase
+      .from('sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('competition_id', competitionId),
   ])
 
-  let sourceFilePath: string | null = null
-  if (status?.current_snapshot_id) {
+  let liveSourceFilePath: string | null = null
+  if (liveStatus?.current_snapshot_id) {
     const { data: snapshot } = await supabase
       .from('ondata_integration_snapshots')
       .select('source_file_path')
-      .eq('id', status.current_snapshot_id)
+      .eq('id', liveStatus.current_snapshot_id)
       .maybeSingle()
 
-    sourceFilePath = snapshot?.source_file_path ?? null
+    liveSourceFilePath = snapshot?.source_file_path ?? null
+  }
+
+  let registrationSourceFilePath: string | null = null
+  if (registrationStatus?.current_snapshot_id) {
+    const { data: snapshot } = await supabase
+      .from('ondata_registration_snapshots')
+      .select('source_file_path')
+      .eq('id', registrationStatus.current_snapshot_id)
+      .maybeSingle()
+
+    registrationSourceFilePath = snapshot?.source_file_path ?? null
   }
 
   return {
     competitionId: competition.id,
     competitionName: competition.name,
     competitionSlug: competition.slug,
-    ingestPath: buildOnDataIngestPath(competition.slug),
-    schemaVersion: 1,
+    ingestPath: buildOnDataCompetitionIngestPath(competition.slug),
+    schemaVersions: {
+      liveSync: 1,
+      registrationImport: 1,
+    },
     hasApiKey: Boolean(settings?.token_generated_at),
     apiKeyLast4: settings?.api_token_last4 ?? null,
     apiKeyGeneratedAt: settings?.token_generated_at ?? null,
-    latestSnapshotReceivedAt: status?.last_received_at ?? null,
-    latestSnapshotProcessedAt: status?.last_processed_at ?? null,
-    latestSourceFileModifiedAt: status?.last_source_file_modified_at ?? null,
-    latestSourceProcessedAt: status?.last_source_processed_at ?? null,
-    latestSourceFilePath: sourceFilePath,
-    lastError: status?.last_error ?? null,
-    latestSummary: {
-      classes: status?.last_summary_classes ?? 0,
-      pools: status?.last_summary_pools ?? 0,
-      completedMatches: status?.last_summary_completed_matches ?? 0,
+    hasExistingImport: (sessionCount ?? 0) > 0,
+    liveSync: {
+      latestSnapshotReceivedAt: liveStatus?.last_received_at ?? null,
+      latestSnapshotProcessedAt: liveStatus?.last_processed_at ?? null,
+      latestSourceFileModifiedAt: liveStatus?.last_source_file_modified_at ?? null,
+      latestSourceProcessedAt: liveStatus?.last_source_processed_at ?? null,
+      latestSourceFilePath: liveSourceFilePath,
+      lastError: liveStatus?.last_error ?? null,
+      latestSummary: {
+        classes: liveStatus?.last_summary_classes ?? 0,
+        pools: liveStatus?.last_summary_pools ?? 0,
+        completedMatches: liveStatus?.last_summary_completed_matches ?? 0,
+      },
+    },
+    registrationImport: {
+      latestSnapshotId: registrationStatus?.current_snapshot_id ?? null,
+      latestSnapshotReceivedAt: registrationStatus?.last_received_at ?? null,
+      latestSnapshotProcessedAt: registrationStatus?.last_processed_at ?? null,
+      latestSourceFilePath: registrationSourceFilePath,
+      lastError: registrationStatus?.last_error ?? null,
+      lastAppliedSnapshotId: registrationStatus?.last_applied_snapshot_id ?? null,
+      lastAppliedAt: registrationStatus?.last_applied_at ?? null,
+      latestSummary: {
+        classes: registrationStatus?.last_summary_classes ?? 0,
+        players: registrationStatus?.last_summary_players ?? 0,
+        registrations: registrationStatus?.last_summary_registrations ?? 0,
+      },
     },
   }
 }
