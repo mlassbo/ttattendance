@@ -108,13 +108,32 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId('public-search-classes-section')).toContainText('Bertil Berg')
   })
 
-  test('player class pills are shown as non-clickable status indicators', async ({ page }) => {
+  test('player class pills open the class roster search', async ({ page }) => {
     await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
 
-    await expect(page.getByTestId(`public-search-player-class-pill-${seeded.player.id}-herrar-a-klass`)).toBeVisible()
-    await expect(page.getByTestId(`public-search-player-class-pill-${seeded.player.id}-herrar-a-klass`)).toContainText(
-      'Herrar A-klass',
-    )
+    await page.getByTestId(`public-search-player-class-pill-${seeded.player.id}-herrar-a-klass`).click()
+
+    await expect(page).toHaveURL(`/${SLUG}/search?q=Herrar+A-klass&mode=class`)
+    await expect(page.getByTestId('public-search-results-summary')).toContainText('Sökresultat')
+    await expect(page.getByTestId('public-search-results-summary')).toContainText('1 träff')
+    await expect(page.getByTestId('public-search-classes-section')).toContainText('Herrar A-klass')
+    await expect(page.getByTestId('public-search-classes-section')).toContainText('Anna Testsson')
+    await expect(page.getByTestId('public-search-classes-section')).toContainText('Bertil Berg')
+  })
+
+  test('mobile search shows a visible result summary without refocusing the input', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`/${SLUG}/search?mode=player`)
+
+    await page.getByTestId('public-search-input').fill('Anna')
+    await page.getByTestId('public-search-submit').click()
+
+    await expect(page.getByTestId('public-search-results-summary')).toBeVisible()
+  await expect(page.getByTestId('public-search-results-summary')).toContainText('1 träff')
+    await expect(page.getByTestId(`public-search-player-card-${seeded.player.id}`)).toBeVisible()
+
+    const activeTestId = await page.evaluate(() => document.activeElement?.getAttribute('data-testid'))
+    expect(activeTestId).not.toBe('public-search-input')
   })
 
   test('public player page shows the registered classes without login', async ({ page }) => {

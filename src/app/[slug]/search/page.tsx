@@ -34,6 +34,24 @@ function buildClassSearchHref(slug: string, className: string) {
   return buildSearchHref(slug, className, 'class')
 }
 
+function buildSearchResultsSummary(results: {
+  players: unknown[]
+  clubs: unknown[]
+  classes: unknown[]
+}) {
+  const totalCount = results.players.length + results.clubs.length + results.classes.length
+
+  if (totalCount === 0) {
+    return ''
+  }
+
+  if (totalCount === 1) {
+    return '1 träff'
+  }
+
+  return `${totalCount} träffar`
+}
+
 export default async function SearchPage({
   params,
   searchParams,
@@ -169,7 +187,6 @@ export default async function SearchPage({
                     defaultValue={query}
                     placeholder="Skriv minst 2 tecken"
                     className="app-input"
-                    autoFocus
                   />
                   <button
                     data-testid="public-search-submit"
@@ -199,6 +216,18 @@ export default async function SearchPage({
             <section data-testid="public-search-no-results" className="app-card-soft space-y-1 text-center">
               <p className="text-base font-semibold text-ink">Inga träffar på din sökning.</p>
               <p className="text-sm text-muted">Sök på spelare, klubb eller klass.</p>
+            </section>
+          ) : null}
+
+          {hasSearched && hasResults ? (
+            <section
+              data-testid="public-search-results-summary"
+              className="space-y-1 px-1"
+            >
+              <p className="text-sm font-bold text-ink">
+                Sökresultat
+              </p>
+              <p className="text-sm font-medium text-ink">{buildSearchResultsSummary(results)}</p>
             </section>
           ) : null}
 
