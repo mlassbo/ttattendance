@@ -30,7 +30,7 @@ test.describe('Public browse flow', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Publik Testtävling')
     await expect(page.getByTestId('public-start-search-input')).toHaveAttribute(
       'placeholder',
-      'Sök spelare eller klubb',
+      'Sök spelare, klubb eller klass',
     )
     await expect(page.getByTestId('public-start-live-card')).toContainText('Kommer snart')
     await expect(page.getByTestId('public-start-admin-link')).toContainText('Sekretariat')
@@ -60,7 +60,7 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId('public-search-admin-link')).toHaveCount(0)
     await expect(page.getByTestId('public-search-clubs-section')).toContainText('Test BTK')
     await expect(page.getByTestId('public-search-players-section')).toHaveCount(0)
-    await expect(page.getByTestId('public-search-mode-tabs')).not.toContainText('Klasser')
+    await expect(page.getByTestId('public-search-mode-tabs')).toContainText('Klasser')
   })
 
   test('public search supports club-only filtering', async ({ page }) => {
@@ -71,6 +71,16 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId('public-search-players-section')).toHaveCount(0)
   })
 
+  test('switching search type clears the previous search query', async ({ page }) => {
+    await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
+
+    await page.getByTestId('public-search-mode-club').click()
+
+    await expect(page).toHaveURL(`/${SLUG}/search?mode=club`)
+    await expect(page.getByTestId('public-search-input')).toHaveValue('')
+    await expect(page.getByTestId('public-search-empty-state')).toBeVisible()
+  })
+
   test('public search can open a club page from the result list', async ({ page }) => {
     await page.goto(`/${SLUG}/search?q=Test%20B&mode=club`)
 
@@ -79,6 +89,32 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId('public-club-page')).toBeVisible()
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Test BTK')
     await expect(page.getByTestId('public-club-back-link')).toContainText('Tillbaka till sök')
+  })
+
+  test('class mode shows all class suggestion pills and class roster results', async ({ page }) => {
+    await page.goto(`/${SLUG}/search?mode=class`)
+
+    await expect(page.getByTestId('public-search-mode-class')).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByTestId('public-search-class-picker')).toContainText('Herrar A-klass')
+    await expect(page.getByTestId('public-search-class-picker')).toContainText('Utgången klass')
+    await expect(page.getByTestId('public-search-form')).toHaveCount(0)
+    await expect(page.getByTestId('public-search-input')).toHaveCount(0)
+
+    await page.getByTestId(/^public-search-class-pill-/).filter({ hasText: 'Herrar A-klass' }).click()
+
+    await expect(page.getByTestId('public-search-classes-section')).toBeVisible()
+    await expect(page.getByTestId('public-search-classes-section')).toContainText('Herrar A-klass')
+    await expect(page.getByTestId('public-search-classes-section')).toContainText('Anna Testsson')
+    await expect(page.getByTestId('public-search-classes-section')).toContainText('Bertil Berg')
+  })
+
+  test('player class pills are shown as non-clickable status indicators', async ({ page }) => {
+    await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
+
+    await expect(page.getByTestId(`public-search-player-class-pill-${seeded.player.id}-herrar-a-klass`)).toBeVisible()
+    await expect(page.getByTestId(`public-search-player-class-pill-${seeded.player.id}-herrar-a-klass`)).toContainText(
+      'Herrar A-klass',
+    )
   })
 
   test('public player page shows the registered classes without login', async ({ page }) => {
@@ -94,10 +130,15 @@ test.describe('Public browse flow', () => {
     )
   })
 
-  test('public player page asks for PIN before confirming attendance and accepts a valid PIN', async ({ page }) => {
-    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
+  test('expandable player search card asks for PIN before confirming attendance and accepts a valid PIN', async ({ page }) => {
+    await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
 
-    await page.getByTestId(`public-player-confirm-btn-${seeded.player.futureRegId}`).click()
+    await expect(page.getByTestId(`public-search-player-toggle-${seeded.player.id}`)).toContainText(
+      'Anmäl närvaro',
+    )
+
+    await page.getByTestId(`public-search-player-toggle-${seeded.player.id}`).click()
+    await page.getByTestId(`public-search-confirm-btn-${seeded.player.futureRegId}`).click()
     await expect(page.getByTestId('public-pin-modal')).toBeVisible()
 
     await page.getByTestId('public-pin-input').fill('0000')
@@ -108,12 +149,15 @@ test.describe('Public browse flow', () => {
     await page.getByTestId('public-pin-submit').click()
 
     await expect(page.getByTestId('public-pin-modal')).toHaveCount(0)
-    await expect(page.getByTestId(`public-player-status-badge-${seeded.player.futureRegId}`)).toContainText(
+    await expect(page.getByTestId(`public-search-status-badge-${seeded.player.futureRegId}`)).toContainText(
       'Närvaro bekräftad',
+    )
+    await expect(page.getByTestId(`public-search-player-toggle-${seeded.player.id}`)).toContainText(
+      'Ändra närvaro',
     )
   })
 
-  test('public player page shows an explicit inline error when attendance reporting fails', async ({ page }) => {
+  test('expandable player search card shows an explicit inline error when attendance reporting fails', async ({ page }) => {
     await page.route('**/api/attendance', async route => {
       await route.fulfill({
         status: 409,
@@ -125,31 +169,19 @@ test.describe('Public browse flow', () => {
       })
     })
 
-    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
-    await page.getByTestId(`public-player-confirm-btn-${seeded.player.futureRegId}`).click()
+    await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
+    await page.getByTestId(`public-search-player-toggle-${seeded.player.id}`).click()
+    await page.getByTestId(`public-search-confirm-btn-${seeded.player.futureRegId}`).click()
     await page.getByTestId('public-pin-input').fill(PLAYER_PIN)
     await page.getByTestId('public-pin-submit').click()
 
-    await expect(page.getByTestId('public-player-error')).toContainText(
+    await expect(page.getByTestId('public-search-error')).toContainText(
       'Tävlingsschemat är inte importerat än.',
     )
     await expect(
-      page.getByTestId(`public-player-status-badge-${seeded.player.futureRegId}`),
+      page.getByTestId(`public-search-status-badge-${seeded.player.futureRegId}`),
     ).toHaveCount(0)
-    await expect(page.getByTestId(`public-player-class-card-${seeded.player.futureRegId}`)).toBeVisible()
-  })
-
-  test('public player page returns to the previous search with results preserved', async ({ page }) => {
-    await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
-
-    await page.getByTestId(`public-search-player-link-${seeded.player.id}`).click()
-    await expect(page).toHaveURL(new RegExp(`/players/${seeded.player.id}.*returnTo=`))
-    await expect(page.getByTestId('public-player-back-link')).toContainText('Tillbaka till sök')
-
-    await page.getByTestId('public-player-back-link').click()
-    await expect(page.getByTestId('public-search-input')).toHaveValue('Anna')
-    await expect(page.getByTestId('public-search-mode-player')).toHaveAttribute('aria-current', 'page')
-    await expect(page.getByTestId(`public-search-player-card-${seeded.player.id}`)).toBeVisible()
+    await expect(page.getByTestId(`public-search-player-class-card-${seeded.player.futureRegId}`)).toBeVisible()
   })
 
   test('public club page lists players and filters locally', async ({ page }) => {

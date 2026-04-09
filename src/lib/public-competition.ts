@@ -40,6 +40,7 @@ type RelationValue<T> = T | T[] | null | undefined
 type RegistrationRow = {
   id: string
   player_id: string
+  class_id?: string
   classes: RelationValue<ClassRow>
   attendance?: RelationValue<AttendanceRow>
 }
@@ -50,20 +51,16 @@ type PlayerRow = {
   club: string | null
 }
 
-type RegistrationCountRow = {
-  player_id: string
-}
-
-type SearchRegistrationRow = {
-  player_id: string
-  classes?: RelationValue<{ name: string | null }>
+type ClassRegistrationPlayerRow = {
+  class_id: string
+  players: RelationValue<PlayerRow>
 }
 
 type ClubCountRow = {
   club: string | null
 }
 
-export type PublicSearchMode = 'all' | 'player' | 'club'
+export type PublicSearchMode = 'all' | 'player' | 'club' | 'class'
 
 export interface PublicCompetition {
   id: string
@@ -103,11 +100,27 @@ export interface PublicSearchPlayer {
   club: string | null
   classCount: number
   classNames: string[]
+  registrations: PublicClassRegistration[]
 }
 
 export interface PublicSearchClub {
   name: string
   playerCount: number
+}
+
+export interface PublicSearchClass {
+  id: string
+  name: string
+  startTime: string | null
+  attendanceDeadline: string | null
+  session: PublicClassRegistration['class']['session']
+  playerCount: number
+  players: PlayerRow[]
+}
+
+export interface PublicSearchClassSuggestion {
+  id: string
+  name: string
 }
 
 export interface PublicPlayerDetails {
@@ -152,21 +165,58 @@ export async function searchPublicCompetition(
   competitionId: string,
   query: string,
   mode: PublicSearchMode,
-): Promise<{ players: PublicSearchPlayer[]; clubs: PublicSearchClub[] }> {
+): Promise<{ players: PublicSearchPlayer[]; clubs: PublicSearchClub[]; classes: PublicSearchClass[] }> {
   const searchTerm = query.trim()
 
   if (searchTerm.length < 2) {
-    return { players: [], clubs: [] }
+    return { players: [], clubs: [], classes: [] }
   }
 
-  const players = mode === 'club'
+  const players = mode === 'club' || mode === 'class'
     ? []
-    : await searchPlayersWithClassSummary(supabase, competitionId, searchTerm, 'player')
-  const clubs = mode === 'player'
+    : await searchPlayersWithRegistrations(supabase, competitionId, searchTerm, 'player')
+  const clubs = mode === 'player' || mode === 'class'
     ? []
     : await searchClubs(supabase, competitionId, searchTerm)
+  const classes = mode === 'player' || mode === 'club'
+    ? []
+    : await searchClasses(supabase, competitionId, searchTerm)
 
-  return { players, clubs }
+  return { players, clubs, classes }
+}
+
+export async function getPublicCompetitionClassSuggestions(
+  supabase: ServerClient,
+  competitionId: string,
+): Promise<PublicSearchClassSuggestion[]> {
+  const daySessionOrderById = await getDaySessionOrderMap(supabase, competitionId)
+  const { data: classRows, error } = await supabase
+    .from('classes')
+    .select(`
+      id,
+      name,
+      start_time,
+      attendance_deadline,
+      sessions!inner (
+        id,
+        name,
+        date,
+        session_order,
+        competition_id
+      )
+    `)
+    .eq('sessions.competition_id', competitionId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return ((classRows ?? []) as ClassRow[])
+    .sort((left, right) => comparePublicClassRows(left, right, daySessionOrderById))
+    .map(classRow => ({
+      id: classRow.id,
+      name: classRow.name,
+    }))
 }
 
 export async function getPublicPlayerDetails(
@@ -264,7 +314,7 @@ async function searchPlayersRaw(
   )
 }
 
-async function searchPlayersWithClassSummary(
+async function searchPlayersWithRegistrations(
   supabase: ServerClient,
   competitionId: string,
   query: string,
@@ -276,44 +326,100 @@ async function searchPlayersWithClassSummary(
     return []
   }
 
-  const registrations = await fetchAllPages<SearchRegistrationRow>(async (from, to) =>
+  const daySessionOrderById = await getDaySessionOrderMap(supabase, competitionId)
+  const registrationsByPlayerId = await getRegistrationsByPlayerIds(
+    supabase,
+    players.map(player => player.id),
+    daySessionOrderById,
+  )
+
+  return players.map(player => {
+    const registrations = registrationsByPlayerId.get(player.id) ?? []
+
+    return {
+      id: player.id,
+      name: player.name,
+      club: player.club,
+      classCount: registrations.length,
+      classNames: Array.from(new Set(registrations.map(registration => registration.class.name))).sort(
+        (left, right) => left.localeCompare(right, 'sv'),
+      ),
+      registrations,
+    }
+  })
+}
+
+async function searchClasses(
+  supabase: ServerClient,
+  competitionId: string,
+  query: string,
+): Promise<PublicSearchClass[]> {
+  const daySessionOrderById = await getDaySessionOrderMap(supabase, competitionId)
+  const { data: classRows, error } = await supabase
+    .from('classes')
+    .select(`
+      id,
+      name,
+      start_time,
+      attendance_deadline,
+      sessions!inner (
+        id,
+        name,
+        date,
+        session_order,
+        competition_id
+      )
+    `)
+    .eq('sessions.competition_id', competitionId)
+    .ilike('name', `%${query}%`)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const matchedClasses = (classRows ?? []) as ClassRow[]
+  if (matchedClasses.length === 0) {
+    return []
+  }
+
+  const registrations = await fetchAllPages<ClassRegistrationPlayerRow>(async (from, to) =>
     await supabase
       .from('registrations')
       .select(`
-        player_id,
-        classes (
-          name
+        class_id,
+        players (
+          id,
+          name,
+          club
         )
       `)
-      .in('player_id', players.map(player => player.id))
+      .in('class_id', matchedClasses.map(classRow => classRow.id))
       .range(from, to),
   )
 
-  const classCountByPlayerId = new Map<string, number>()
-  const classNamesByPlayerId = new Map<string, Set<string>>()
-  for (const registration of (registrations ?? []) as SearchRegistrationRow[]) {
-    classCountByPlayerId.set(
-      registration.player_id,
-      (classCountByPlayerId.get(registration.player_id) ?? 0) + 1,
-    )
-
-    const className = getSingleRelation(registration.classes)?.name?.trim()
-    if (className) {
-      const names = classNamesByPlayerId.get(registration.player_id) ?? new Set<string>()
-      names.add(className)
-      classNamesByPlayerId.set(registration.player_id, names)
+  const playersByClassId = new Map<string, PlayerRow[]>()
+  for (const registration of (registrations ?? []) as ClassRegistrationPlayerRow[]) {
+    const player = getSingleRelation(registration.players)
+    if (!player) {
+      continue
     }
+
+    const players = playersByClassId.get(registration.class_id) ?? []
+    players.push(player)
+    playersByClassId.set(registration.class_id, players)
   }
 
-  return players.map(player => ({
-    id: player.id,
-    name: player.name,
-    club: player.club,
-    classCount: classCountByPlayerId.get(player.id) ?? 0,
-    classNames: Array.from(classNamesByPlayerId.get(player.id) ?? []).sort((left, right) =>
-      left.localeCompare(right, 'sv'),
-    ),
-  }))
+  for (const players of Array.from(playersByClassId.values())) {
+    players.sort((left, right) => left.name.localeCompare(right.name, 'sv'))
+  }
+
+  return matchedClasses
+    .sort((left, right) => comparePublicClassRows(left, right, daySessionOrderById))
+    .map(classRow => ({
+      ...buildPublicClassDetails(classRow, daySessionOrderById),
+      playerCount: (playersByClassId.get(classRow.id) ?? []).length,
+      players: playersByClassId.get(classRow.id) ?? [],
+    }))
 }
 
 async function searchClubs(
@@ -542,4 +648,64 @@ async function fetchAllPages<T>(
 
     from += QUERY_PAGE_SIZE
   }
+}
+
+function buildPublicClassDetails(
+  classRow: ClassRow,
+  daySessionOrderById: Map<string, number>,
+) {
+  const session = getSingleRelation(classRow.sessions)
+
+  return {
+    id: classRow.id,
+    name: classRow.name,
+    startTime: classRow.start_time,
+    attendanceDeadline: classRow.attendance_deadline,
+    session: session
+      ? {
+          id: session.id,
+          name: session.name,
+          date: session.date,
+          sessionOrder: session.session_order,
+          daySessionOrder:
+            daySessionOrderById.get(session.id) ??
+            session.session_order,
+        }
+      : null,
+  }
+}
+
+function comparePublicClassRows(
+  left: ClassRow,
+  right: ClassRow,
+  daySessionOrderById: Map<string, number>,
+) {
+  const leftSession = getSingleRelation(left.sessions)
+  const rightSession = getSingleRelation(right.sessions)
+  const leftSessionDate = leftSession?.date ?? '9999-12-31'
+  const rightSessionDate = rightSession?.date ?? '9999-12-31'
+
+  if (leftSessionDate !== rightSessionDate) {
+    return leftSessionDate.localeCompare(rightSessionDate)
+  }
+
+  const leftSessionOrder = leftSession
+    ? (daySessionOrderById.get(leftSession.id) ?? leftSession.session_order)
+    : Number.MAX_SAFE_INTEGER
+  const rightSessionOrder = rightSession
+    ? (daySessionOrderById.get(rightSession.id) ?? rightSession.session_order)
+    : Number.MAX_SAFE_INTEGER
+
+  if (leftSessionOrder !== rightSessionOrder) {
+    return leftSessionOrder - rightSessionOrder
+  }
+
+  const leftStartTime = left.start_time ?? '9999-12-31T23:59:59.999Z'
+  const rightStartTime = right.start_time ?? '9999-12-31T23:59:59.999Z'
+
+  if (leftStartTime !== rightStartTime) {
+    return leftStartTime.localeCompare(rightStartTime)
+  }
+
+  return left.name.localeCompare(right.name, 'sv')
 }

@@ -39,10 +39,10 @@ The `Key` values are only labels for discussion and later implementation. They a
 | Key | Swedish copy | Notes |
 |---|---|---|
 | start.hero_supporting_text | Se anmälda klasser, rapportera närvaro och följa tävlingen live. | Short description below competition title. |
-| start.search_helper | Sök bland spelare som registrerats till tävlingen. | Important orientation text. |
-| start.card_players_title | Spelare och klubbar | Main lane for registration overview and attendance. |
+| start.search_helper | Sök bland spelare, klubbar och klasser i tävlingen. | Important orientation text. |
+| start.card_players_title | Spelare, klubbar och klasser | Main lane for registration overview and attendance. |
 | start.card_players_description | Se anmälda klasser och rapportera närvaro. | Keep short. |
-| start.card_players_action | Sök spelare eller klubb | CTA to search page. |
+| start.card_players_action | Sök spelare, klubb eller klass | CTA to search page. |
 | start.card_live_title | följa tävlingen live | Main lane for public competition progress. |
 | start.card_live_description | Pooler, matcher, resultat och slutspel. | Keep this compact. |
 | start.card_live_action | Visa klasser | CTA to live class index. |
@@ -53,19 +53,30 @@ The `Key` values are only labels for discussion and later implementation. They a
 | Key | Swedish copy | Notes |
 |---|---|---|
 | search.page_title | Sök | Main page heading if needed. |
+| search.filter_all | Alla | Search filter tab. |
 | search.filter_players | Spelare | Search filter tab. |
 | search.filter_clubs | Klubbar | Search filter tab. |
 | search.filter_classes | Klasser | Search filter tab. |
 | search.input_placeholder | Skriv minst 2 tecken | Placeholder on search page. |
+| search.class_pills_heading | Välj klass | Shown above class suggestion pills when class mode is active. |
 | search.section_players | Spelare | Search result group title. |
 | search.section_clubs | Klubbar | Search result group title. |
 | search.section_classes | Klasser | Search result group title. |
 | search.player_result_class_count | klasser | Used after a number, for example `3 klasser`. |
 | search.club_result_player_count | spelare | Used after a number, for example `12 spelare`. |
+| search.expand_cta_open | Anmäl närvaro | Expansion cue when at least one class is open for attendance. |
+| search.expand_cta_opens_at | Närvaroanmälan öppnar {time} | Expansion cue when no class is open yet; use earliest opening time. |
+| search.expand_cta_fallback | Visa klasser | Expansion cue fallback when no stronger attendance-specific cue is available. |
+| search.player_card_status_pending | Närvaro ej rapporterad | Compact player-card status for an unreported class. |
+| search.player_card_status_confirmed | Bekräftad {time} | Compact player-card status for a confirmed class. |
+| search.player_card_status_absent | Frånvaro {time} | Compact player-card status for an absent class. |
+| search.player_card_status_not_open | Öppnar {time} | Compact player-card status before attendance opens. |
 | search.empty | Inga träffar på din sökning. | Empty state after actual search. |
 | search.empty_help | Sök på spelare, klubb eller klass. | Optional helper text under empty state. |
 
 ## Player Page
+
+The player page is now fallback-oriented. The main attendance flow should be search-first.
 
 | Key | Swedish copy | Notes |
 |---|---|---|

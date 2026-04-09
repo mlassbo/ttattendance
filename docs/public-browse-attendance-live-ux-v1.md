@@ -16,10 +16,10 @@ This is a product and UX plan only. It does not describe implementation steps.
 2. Writing attendance requires PIN.
 3. The PIN is requested only on the first attendance action, in context.
 4. Live competition progress is public and read-only.
-5. The player page is the personal hub.
+5. The search page is the main attendance hub during the roster and attendance phase.
 6. The class page is the public live hub.
 7. Club representatives can report attendance directly from a club list view.
-8. Player search results are browse-only until the user opens the player page.
+8. Player search results may expand inline to show attendance state and reporting actions.
 
 ## Start Page
 
@@ -125,19 +125,19 @@ Kept separate from the public flows.
 
 ### Search page
 
-The search page should not allow direct attendance reporting.
+The search page should support direct attendance reporting from expandable player result cards.
 
 Reason:
 
-1. Search results should stay fast and scannable.
-2. Reporting from a search result is too easy to trigger accidentally.
-3. The player page provides better context before a write action.
+1. Morning attendance reporting needs as few clicks as possible.
+2. The player search already acts as the public roster browser.
+3. Expansion keeps the default result compact while still exposing actions quickly.
 
 ### Player page
 
-Attendance reporting is allowed, but only after opening the player page.
+The player page may remain as a fallback detail view, but it should no longer be the normal path for attendance reporting.
 
-This page should be the normal path for players and parents.
+The common path should be search result -> expand -> report attendance.
 
 ### Club page
 
@@ -165,6 +165,42 @@ Default behavior when arriving from the start page:
 1. Show `Alla`.
 2. Group results by type.
 3. Let the user narrow the view with the filters if needed.
+
+### Expandable player result cards
+
+Player result cards should remain compact by default, but clearly signal when attendance actions are available.
+
+Collapsed card contents:
+
+1. Player name.
+2. Club.
+3. Clickable class pills that pivot to class search.
+4. Compact attendance state directly in the card, one row per class if needed.
+5. An expansion cue at the bottom of the card.
+
+Expansion cue rules:
+
+1. If attendance reporting is open for at least one of the player's classes, show `Anmäl närvaro`.
+2. If no class is open yet, show `Närvaroanmälan öppnar {time}` using the earliest class opening time.
+3. If there is no upcoming opening time to show, use a neutral fallback such as `Visa klasser`.
+
+Expanded card contents:
+
+1. Full per-class attendance state.
+2. Attendance actions.
+3. Deadline or not-open messages inline.
+4. Any links to later live class pages, when those exist.
+
+### Class search and suggestion pills
+
+Class search should support both free text and clickable pills.
+
+Rules:
+
+1. Suggestion pills should appear only when the `Klass` filter is active.
+2. The pills should include all classes in the competition, not just a subset.
+3. Pills should behave as shortcuts into class search results.
+4. Class pills shown on player result cards should also be clickable and pivot the search into the chosen class.
 
 ## Wireframes
 
@@ -207,12 +243,17 @@ Start-page search result behavior:
 | [ Alla ] [ Spelare ] [ Klubb ] [ Klass ]         |
 |                                                  |
 | [ Skriv minst 2 tecken ...                  ]    |
+| [ Flickor 13 ] [ Pojkar 14 ] [ Damjuniorer ]     |
+| (visas bara när Klass är vald)                   |
 |                                                  |
 | Spelare                                           |
 | Anna Svensson                                     |
 | Halmstad BTK                                      |
-| 3 klasser                                         |
-| [ Visa spelare ]                                  |
+| Flickor 13 - Närvaro ej rapporterad              |
+| Damjuniorer - Bekräftad 08:12                    |
+| Mixeddubbel - Öppnar fredag 20:00                |
+| [ Anmäl närvaro ]                                 |
+|                                                  |
 |                                                  |
 | Klubbar                                           |
 | IFK Lund Bordtennis                               |
@@ -228,10 +269,14 @@ Start-page search result behavior:
 
 Rule:
 
-1. Search results link into player, club, and class pages.
-2. Search results themselves do not contain attendance buttons.
+1. Search results support players, clubs, and classes.
+2. Player result cards show attendance state in collapsed form.
+3. Player result cards expand inline for attendance actions.
+4. Club and class results still link to their dedicated views.
 
 ### Player page
+
+The player page is optional fallback UI while the search-based attendance flow is being introduced. It should not be the primary design reference for the morning attendance phase.
 
 ```text
 +--------------------------------------------------+

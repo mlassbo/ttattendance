@@ -47,7 +47,7 @@ export default async function CompetitionPage({
                   {competition.name}
                 </h1>
                 <p className="max-w-2xl text-sm leading-6 text-muted sm:text-base">
-                  Se registrerade spelare, anmäl närvaro och följ tävlingen live.
+                  Se registrerade spelare, klubbar och klasser, anmäl närvaro och följ tävlingen live.
                 </p>
               </div>
             </div>
@@ -61,7 +61,7 @@ export default async function CompetitionPage({
                 data-testid="public-start-search-input"
                 name="q"
                 type="search"
-                placeholder="Sök spelare eller klubb"
+                placeholder="Sök spelare, klubb eller klass"
                 className="app-input"
               />
               <button

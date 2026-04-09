@@ -58,7 +58,7 @@ test.describe('Player attendance flow', () => {
     await expect(page.getByTestId('public-start-page')).toBeVisible()
     await expect(page.getByTestId('public-start-search-input')).toHaveAttribute(
       'placeholder',
-      'Sök spelare eller klubb',
+      'Sök spelare, klubb eller klass',
     )
     await expect(page.getByTestId('public-start-admin-link')).toContainText('Sekretariat')
   })
@@ -114,33 +114,38 @@ test.describe('Player attendance flow', () => {
     await loginAsPlayer(page)
     await page.getByTestId('public-search-input').fill('Anna')
     await page.getByTestId('public-search-submit').click()
-    await page.getByTestId(`public-search-player-link-${seeded.player.id}`).click()
 
-    await expect(page.getByTestId('public-player-page')).toBeVisible()
-    await page.getByTestId(`public-player-confirm-btn-${seeded.player.futureRegId}`).click()
+    await page.getByTestId(`public-search-player-toggle-${seeded.player.id}`).click()
+    await page.getByTestId(`public-search-confirm-btn-${seeded.player.futureRegId}`).click()
     await expect(page.getByTestId('public-pin-modal')).toHaveCount(0)
     await expect(
-      page.getByTestId(`public-player-status-badge-${seeded.player.futureRegId}`)
+      page.getByTestId(`public-search-status-badge-${seeded.player.futureRegId}`)
     ).toContainText('Närvaro bekräftad')
+    await expect(page.getByTestId(`public-search-player-toggle-${seeded.player.id}`)).toContainText(
+      'Ändra närvaro',
+    )
+    await expect(page.getByTestId(`public-search-player-toggle-${seeded.player.id}`)).not.toHaveClass(/app-button-primary/)
   })
 
-  test('past-deadline class shows secretariat warning on the public player page', async ({ page }) => {
-    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
+  test('past-deadline class shows secretariat warning in the expanded search result card', async ({ page }) => {
+    await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
+    await page.getByTestId(`public-search-player-toggle-${seeded.player.id}`).click()
+
     await expect(
-      page.getByTestId(`public-player-missing-attendance-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-search-missing-attendance-${seeded.player.pastRegId}`)
     ).toContainText('Tiden för anmälan har gått ut')
     await expect(
-      page.getByTestId(`public-player-missing-attendance-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-search-missing-attendance-${seeded.player.pastRegId}`)
     ).toContainText('Kontakta sekretariatet')
     await expect(
-      page.getByTestId(`public-player-confirm-btn-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-search-confirm-btn-${seeded.player.pastRegId}`)
     ).toHaveCount(0)
     await expect(
-      page.getByTestId(`public-player-absent-btn-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-search-absent-btn-${seeded.player.pastRegId}`)
     ).toHaveCount(0)
   })
 
-  test('past-deadline class with registered attendance does not show missing warning', async ({ page }) => {
+  test('past-deadline class with registered attendance does not show missing warning in search results', async ({ page }) => {
     const supabase = testClient()
     await supabase.from('attendance').insert({
       registration_id: seeded.player.pastRegId,
@@ -150,13 +155,34 @@ test.describe('Player attendance flow', () => {
       idempotency_key: `past-confirmed-${seeded.player.pastRegId}`,
     })
 
-    await page.goto(`/${SLUG}/players/${seeded.player.id}`)
+    await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
+    await page.getByTestId(`public-search-player-toggle-${seeded.player.id}`).click()
+
     await expect(
-      page.getByTestId(`public-player-status-badge-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-search-status-badge-${seeded.player.pastRegId}`)
     ).toContainText('Närvaro bekräftad')
     await expect(
-      page.getByTestId(`public-player-missing-attendance-${seeded.player.pastRegId}`)
+      page.getByTestId(`public-search-missing-attendance-${seeded.player.pastRegId}`)
     ).toHaveCount(0)
+  })
+
+  test('search card cue shows the next opening time when no class has opened yet', async ({ page }) => {
+    const supabase = testClient()
+    const windowSlug = 'test-player-attendance-locked'
+
+    await cleanTestCompetitions(supabase, 'test-player-attendance-%')
+    const windowSeeded = await seedPlayerWindowTestCompetition(supabase, windowSlug, PLAYER_PIN, {
+      competitionName: 'Fönster Test Tävling',
+      openClassDate: '2099-09-15',
+      lockedClassDate: '2099-09-16',
+    })
+
+    await page.goto(`/${windowSlug}/search?q=Anna&mode=player`)
+
+    await expect(page.getByTestId(`public-search-player-toggle-${windowSeeded.player.id}`)).toContainText(
+      'Närvaroanmälan öppnar',
+    )
+    await expect(page.getByTestId(`public-search-player-toggle-${windowSeeded.player.id}`)).toBeDisabled()
   })
 
   test('attendance opens per class at 20:00 the night before in Swedish time', async ({ page }) => {
@@ -168,11 +194,35 @@ test.describe('Player attendance flow', () => {
       competitionName: 'Fönster Test Tävling',
     })
 
-    await page.goto(`/${windowSlug}/players/${windowSeeded.player.id}`)
-    await expect(page.getByTestId(`public-player-confirm-btn-${windowSeeded.player.openRegId}`)).toBeVisible()
+    await page.goto(`/${windowSlug}/search?q=Anna&mode=player`)
+    await page.getByTestId(`public-search-player-toggle-${windowSeeded.player.id}`).click()
+
+    await expect(page.getByTestId(`public-search-confirm-btn-${windowSeeded.player.openRegId}`)).toBeVisible()
     await expect(
-      page.getByTestId(`public-player-attendance-not-open-${windowSeeded.player.lockedRegId}`)
+      page.getByTestId(`public-search-attendance-not-open-${windowSeeded.player.lockedRegId}`)
     ).toContainText('20:00')
-    await expect(page.getByTestId(`public-player-confirm-btn-${windowSeeded.player.lockedRegId}`)).toHaveCount(0)
+    await expect(page.getByTestId(`public-search-confirm-btn-${windowSeeded.player.lockedRegId}`)).toHaveCount(0)
+  })
+
+  test('search card hides the attendance CTA when all classes are no longer playable', async ({ page }) => {
+    const supabase = testClient()
+    const { data: sessions } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('competition_id', seeded.competitionId)
+
+    const sessionIds = (sessions ?? []).map(session => session.id)
+    if (sessionIds.length > 0) {
+      await supabase
+        .from('classes')
+        .update({
+          start_time: '2020-09-13T09:00:00+02:00',
+          attendance_deadline: '2020-09-13T08:15:00+02:00',
+        })
+        .in('session_id', sessionIds)
+    }
+
+    await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
+    await expect(page.getByTestId(`public-search-player-toggle-${seeded.player.id}`)).toHaveCount(0)
   })
 })
