@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Inter } from 'next/font/google'
+import { Analytics } from '@vercel/analytics/next'
 import Elva9Logo from '@/components/Elva9Logo'
 import './globals.css'
 
@@ -69,6 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </footer>
         </div>
+        <Analytics />
       </body>
     </html>
   )
