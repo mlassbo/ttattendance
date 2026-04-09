@@ -57,9 +57,6 @@ test.describe('Player attendance flow', () => {
       'placeholder',
       'Sök spelare eller klubb',
     )
-    await expect(page.getByTestId('public-start-search-link')).toContainText(
-      'Sök spelare eller klubb',
-    )
     await expect(page.getByTestId('public-start-admin-link')).toContainText('Sekretariat')
   })
 

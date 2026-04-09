@@ -49,20 +49,17 @@ Reason:
 
 ### Start-page sections
 
-The start page should have three clear actions:
+The start page should use the search field as the primary public entry.
 
-1. `Spelare & klubbar`
-2. `följa tävlingen live`
-3. `Sekretariat`
+Below the search, it should have two secondary actions:
 
-Helper text near the search or player/club card:
-
-`Du kan se klasser och resultat utan PIN. PIN behövs först när du rapporterar närvaro.`
+1. `följa tävlingen live`
+2. `Sekretariat`
 
 ## Proposed Page Tree
 
 1. `/{competitionSlug}`
-Purpose: public competition start page with global search and three clear entry lanes.
+Purpose: public competition start page with global search as the main entry and two secondary lanes.
 
 2. `/{competitionSlug}/search?q=...`
 Purpose: public search page for players, clubs, and classes.
@@ -181,22 +178,17 @@ Default behavior when arriving from the start page:
 | [ Sök spelare, klubb eller klass ...        ]    |
 | [ Sök ]                                          |
 |                                                  |
-| Du kan se klasser och resultat utan PIN.         |
-| PIN behövs först när du rapporterar närvaro.     |
-|                                                  |
-| +----------------------------------------------+ |
-| | Spelare & klubbar                            | |
-| | Se anmälda klasser och rapportera närvaro    | |
-| | [ Sök spelare eller klubb ]                  | |
-| +----------------------------------------------+ |
-|                                                  |
 | +----------------------------------------------+ |
 | | följa tävlingen live                          | |
 | | Pooler, matcher, resultat och slutspel       | |
 | | [ Visa klasser ]                             | |
 | +----------------------------------------------+ |
 |                                                  |
-| [ Sekretariat ]                                  |
+| +----------------------------------------------+ |
+| | Sekretariat                                  | |
+| | Arbeta med tävlingen                         | |
+| | [ Sekretariat ]                              | |
+| +----------------------------------------------+ |
 +--------------------------------------------------+
 ```
 

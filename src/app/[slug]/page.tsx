@@ -75,29 +75,7 @@ export default async function CompetitionPage({
           </div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-3 lg:gap-6">
-          <article data-testid="public-start-players-card" className="app-card relative overflow-hidden">
-            <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-brand/10 blur-3xl" />
-            <div className="relative space-y-4">
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold tracking-tight text-ink">
-                  Spelare och närvaroanmälan
-                </h2>
-                <p className="text-sm leading-6 text-muted sm:text-base">
-                  Se anmälda klasser för spelare och klubbar och anmäl närvaro.
-                </p>
-              </div>
-
-              <Link
-                href={`/${slug}/search`}
-                data-testid="public-start-search-link"
-                className="app-button-primary w-full sm:w-auto"
-              >
-                Sök spelare eller klubb
-              </Link>
-            </div>
-          </article>
-
+        <section className="grid gap-4 md:grid-cols-2 lg:gap-6">
           <article data-testid="public-start-live-card" className="app-card-soft space-y-4 opacity-80">
             <div className="space-y-2">
               <h2 className="text-2xl font-semibold tracking-tight text-ink">Följ tävlingen live</h2>
