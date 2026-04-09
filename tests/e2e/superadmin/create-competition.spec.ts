@@ -90,11 +90,14 @@ test('newly created competitions appear on the root landing page after cache inv
   await page.getByTestId('field-admin-pin').fill('5678')
   await page.getByTestId('submit-competition').click()
 
+  await expect(page.getByTestId('competition-list')).toContainText('Test Root 2026')
+  await expect(page.getByTestId('competition-list')).toContainText(slug)
+
   await page.goto('/')
 
   await expect(page.getByTestId(`competition-entry-card-${slug}`)).toBeVisible()
   await expect(page.getByTestId(`competition-open-link-${slug}`)).toContainText(
-    'Öppna tävlingen'
+    'Till tävlingen →'
   )
   await expect(page.getByTestId(`admin-login-link-${slug}`)).toHaveCount(0)
 })

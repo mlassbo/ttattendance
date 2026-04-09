@@ -87,13 +87,8 @@ export default async function HomePage() {
                   title={competition.name}
                   description="Öppna tävlingen för att söka bland registrerade spelare, anmäla närvaro och följa tävlingen live."
                   testId={`competition-entry-card-${competition.slug}`}
-                  actions={[
-                    {
-                      href: `/${competition.slug}`,
-                      label: 'Öppna tävlingen',
-                      testId: `competition-open-link-${competition.slug}`,
-                    },
-                  ]}
+                  href={`/${competition.slug}`}
+                  hrefTestId={`competition-open-link-${competition.slug}`}
                 />
               </div>
             ))}

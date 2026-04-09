@@ -31,7 +31,7 @@ test.describe('Player attendance flow', () => {
 
   // ── Authentication ──────────────────────────────────────────────────────
 
-  test('root landing page lists the competition and login actions', async ({
+  test('root landing page lists the competition and opens it from the card', async ({
     page,
   }) => {
     await page.goto('/')
@@ -41,12 +41,15 @@ test.describe('Player attendance flow', () => {
     )
     await expect(page.getByTestId(`competition-entry-card-${SLUG}`)).toBeVisible()
     await expect(page.getByTestId(`competition-open-link-${SLUG}`)).toContainText(
-      'Öppna tävlingen'
+      'Till tävlingen →'
     )
     await expect(page.getByTestId(`admin-login-link-${SLUG}`)).toHaveCount(0)
 
     await expect(page.getByRole('link', { name: 'Superadmin' })).toHaveCount(0)
     await expect(page.getByTestId(`competition-entry-card-${SLUG}`)).toContainText('Test Tävling')
+
+    await page.getByTestId(`competition-open-link-${SLUG}`).click()
+    await page.waitForURL(`/${SLUG}`)
   })
 
   test('competition page shows the public start and still keeps secretariat access', async ({ page }) => {
