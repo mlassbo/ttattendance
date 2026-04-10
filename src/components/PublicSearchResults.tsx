@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import {
+  getClassAttendanceOpensAt,
   formatSwedishDateTime,
   formatSwedishTime,
   getAttendanceNotOpenMessage,
@@ -510,6 +511,16 @@ export default function PublicSearchResults({
                     {classResult.startTime ? (
                       <p className="text-sm text-muted">
                         Start {formatSwedishDateTime(classResult.startTime)}
+                      </p>
+                    ) : null}
+                    {classResult.startTime ? (
+                      <p className="text-xs text-muted/80">
+                        Närvarorapportering öppnar {formatSwedishDateTime(getClassAttendanceOpensAt(classResult.startTime))}
+                      </p>
+                    ) : null}
+                    {classResult.attendanceDeadline ? (
+                      <p className="text-xs text-muted/80">
+                        Anmäl senast {formatSwedishDateTime(classResult.attendanceDeadline)}
                       </p>
                     ) : null}
                   </div>

@@ -122,6 +122,12 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId('public-search-classes-section')).toContainText('Herrar A-klass')
     await expect(page.getByTestId('public-search-classes-section')).toContainText('Anna Testsson')
     await expect(page.getByTestId('public-search-classes-section')).toContainText('Bertil Berg')
+    await expect(page.getByTestId('public-search-classes-section')).toContainText(
+      'Närvarorapportering öppnar 2025-09-12 20:00',
+    )
+    await expect(page.getByTestId('public-search-classes-section')).toContainText(
+      'Anmäl senast 2099-09-13 08:15',
+    )
   })
 
   test('player class pills open the class roster search', async ({ page }) => {
