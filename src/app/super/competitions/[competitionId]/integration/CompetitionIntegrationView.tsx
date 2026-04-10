@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import OnDataRosterImportPanel from '@/components/OnDataRosterImportPanel'
 import TTCoordinatorImportPanel from '@/components/TTCoordinatorImportPanel'
@@ -49,8 +48,6 @@ type IntegrationViewData = {
 
 type CompetitionIntegrationViewProps = {
   competitionId: string
-  competitionName: string
-  competitionSlug: string
 }
 
 function formatDateTime(value: string | null): string {
@@ -75,8 +72,6 @@ function SummaryValue({ label, value, testId }: { label: string; value: number; 
 
 export default function CompetitionIntegrationView({
   competitionId,
-  competitionName,
-  competitionSlug,
 }: CompetitionIntegrationViewProps) {
   const [data, setData] = useState<IntegrationViewData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -166,24 +161,7 @@ export default function CompetitionIntegrationView({
   }
 
   return (
-    <main className="app-shell">
-      <div className="mx-auto max-w-5xl space-y-4">
-        <section className="app-card space-y-3">
-          <Link
-            href="/super/competitions"
-            data-testid="back-to-competitions"
-            className="inline-flex items-center gap-2 text-sm text-muted underline-offset-2 hover:underline"
-          >
-            <span aria-hidden="true">&larr;</span>
-            Tillbaka till tävlingar
-          </Link>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">OnData-integration</p>
-            <h1 className="text-3xl font-semibold tracking-tight text-ink">{competitionName}</h1>
-            <p className="text-sm text-muted">{competitionSlug}</p>
-          </div>
-        </section>
-
+    <>
         {loadError && <p data-testid="integration-load-error" className="app-banner-error">{loadError}</p>}
         {actionError && <p data-testid="integration-action-error" className="app-banner-error">{actionError}</p>}
 
@@ -384,7 +362,6 @@ export default function CompetitionIntegrationView({
 
           <TTCoordinatorImportPanel competitionId={competitionId} hasExistingImport={data?.hasExistingImport ?? false} />
         </section>
-      </div>
-    </main>
+    </>
   )
 }

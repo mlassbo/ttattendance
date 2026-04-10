@@ -447,3 +447,96 @@ export async function seedPlayerWindowTestCompetition(
     },
   }
 }
+
+export interface SeededClassSettingsCompetition {
+  competitionId: string
+  sessions: Array<{
+    id: string
+    name: string
+    classes: Array<{
+      id: string
+      name: string
+      startTime: string
+      attendanceDeadline: string
+    }>
+  }>
+}
+
+export async function seedClassSettingsCompetition(
+  supabase: SupabaseClient,
+  slug: string,
+  playerPin: string = '1111',
+  adminPin: string = '2222',
+): Promise<SeededClassSettingsCompetition> {
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash(playerPin, 4),
+    bcrypt.hash(adminPin, 4),
+  ])
+
+  const { data: comp } = await supabase
+    .from('competitions')
+    .insert({
+      name: 'Test Klassinställningar',
+      slug,
+      player_pin_hash: playerPinHash,
+      admin_pin_hash: adminPinHash,
+    })
+    .select('id')
+    .single()
+
+  const competitionId = comp!.id
+
+  const { data: sessions } = await supabase
+    .from('sessions')
+    .insert([
+      { competition_id: competitionId, name: 'Pass 1', date: '2025-09-13', session_order: 1 },
+      { competition_id: competitionId, name: 'Pass 2', date: '2025-09-13', session_order: 2 },
+    ])
+    .select('id, name')
+
+  const session1 = sessions!.find(s => s.name === 'Pass 1')!
+  const session2 = sessions!.find(s => s.name === 'Pass 2')!
+
+  const { data: classes } = await supabase
+    .from('classes')
+    .insert([
+      {
+        session_id: session1.id,
+        name: 'Herrar A',
+        start_time: '2025-09-13T09:00:00+02:00',
+        attendance_deadline: '2025-09-13T08:15:00+02:00',
+      },
+      {
+        session_id: session1.id,
+        name: 'Damer A',
+        start_time: '2025-09-13T09:30:00+02:00',
+        attendance_deadline: '2025-09-13T08:45:00+02:00',
+      },
+      {
+        session_id: session2.id,
+        name: 'Herrar B',
+        start_time: '2025-09-13T13:00:00+02:00',
+        attendance_deadline: '2025-09-13T12:15:00+02:00',
+      },
+    ])
+    .select('id, name, session_id, start_time, attendance_deadline')
+
+  function classesForSession(sessionId: string) {
+    return classes!
+      .filter(c => c.session_id === sessionId)
+      .map(c => ({
+        id: c.id,
+        name: c.name,
+        startTime: c.start_time,
+        attendanceDeadline: c.attendance_deadline,
+      }))
+  }
+
+  return {
+    competitionId,
+    sessions: [
+      { id: session1.id, name: 'Pass 1', classes: classesForSession(session1.id) },
+      { id: session2.id, name: 'Pass 2', classes: classesForSession(session2.id) },
+    ],
+  }
+}

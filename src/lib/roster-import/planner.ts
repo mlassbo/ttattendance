@@ -754,13 +754,36 @@ function buildApplyPlan(
       knownSessionSlotKeys.add(sessionSlotKey)
     }
 
+    const existingClass = classesByIdentityKey.get(classRow.identityKey) ?? null
+
+    // Preserve manually edited attendance_deadline and session assignment for existing classes
+    const attendanceDeadline = existingClass
+      ? existingClass.attendance_deadline
+      : attendanceDeadlineFromStartAt(classRow.startAt)
+
+    const effectiveSessionSlotKey = existingClass
+      ? (() => {
+          const existingSessionNumber = initialSessionSlots.find(
+            slot => slot.session.id === existingClass.session_id,
+          )?.sessionNumber
+          if (existingSessionNumber) {
+            const existingDate = isoToStockholmDate(existingClass.start_time)
+            const existingSlotKey = buildSessionSlotKey(existingDate, existingSessionNumber)
+            if (knownSessionSlotKeys.has(existingSlotKey)) {
+              return existingSlotKey
+            }
+          }
+          return sessionSlotKey
+        })()
+      : sessionSlotKey
+
     return {
       class_key: classRow.identityKey,
-      existing_class_id: classesByIdentityKey.get(classRow.identityKey)?.id ?? null,
+      existing_class_id: existingClass?.id ?? null,
       class_name: classRow.className,
       start_time: classRow.startAt,
-      attendance_deadline: attendanceDeadlineFromStartAt(classRow.startAt),
-      session_slot_key: sessionSlotKey,
+      attendance_deadline: attendanceDeadline,
+      session_slot_key: effectiveSessionSlotKey,
     }
   })
 

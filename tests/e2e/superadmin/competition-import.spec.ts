@@ -34,7 +34,7 @@ async function loginAsSuperadmin(page: Page) {
 }
 
 async function openImportPage(page: Page, slug: string) {
-  await page.getByTestId(`integration-action-${slug}`).click()
+  await page.getByTestId(`settings-action-${slug}`).click()
   await page.waitForURL(/\/super\/competitions\/.+\/integration$/)
 }
 
@@ -173,7 +173,7 @@ test.describe('Competition import', () => {
     await page.getByTestId('back-to-competitions').click()
     await page.waitForURL('/super/competitions')
     await expect(page.getByTestId(`import-status-${slug}`)).toContainText('4 importerade anmälningar')
-    await expect(page.getByTestId(`integration-action-${slug}`)).toContainText('OnData-integration')
+    await expect(page.getByTestId(`settings-action-${slug}`)).toContainText('Inställningar')
   })
 
   test('suggested pass can be overridden and is preserved on re-import preview', async ({ page }) => {

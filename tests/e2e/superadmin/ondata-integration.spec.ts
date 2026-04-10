@@ -33,7 +33,7 @@ async function loginAsSuperadmin(page: Page) {
 }
 
 async function openIntegrationPage(page: Page, slug: string) {
-  await page.getByTestId(`integration-action-${slug}`).click()
+  await page.getByTestId(`settings-action-${slug}`).click()
   await page.waitForURL(/\/super\/competitions\/.+\/integration$/)
 }
 
