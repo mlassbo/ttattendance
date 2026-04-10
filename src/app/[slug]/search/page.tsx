@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import type { PublicSearchClassSuggestion, PublicSearchMode } from '@/lib/public-competition'
-import PublicSearchResults from '@/components/PublicSearchResults'
+import PublicSearchResultsPanel from '@/components/PublicSearchResultsPanel'
 import {
   getPublicCompetitionBySlug,
   getPublicCompetitionClassSuggestions,
@@ -220,25 +220,16 @@ export default async function SearchPage({
           ) : null}
 
           {hasSearched && hasResults ? (
-            <section
-              data-testid="public-search-results-summary"
-              className="space-y-1 px-1"
-            >
-              <p className="text-sm font-bold text-ink">
-                Sökresultat
-              </p>
-              <p className="text-sm font-medium text-ink">{buildSearchResultsSummary(results)}</p>
-            </section>
+            <PublicSearchResultsPanel
+              slug={slug}
+              query={query}
+              mode={mode}
+              players={results.players}
+              clubs={results.clubs}
+              classes={results.classes}
+              summaryText={buildSearchResultsSummary(results)}
+            />
           ) : null}
-
-          <PublicSearchResults
-            slug={slug}
-            query={query}
-            mode={mode}
-            initialPlayers={results.players}
-            clubs={results.clubs}
-            classes={results.classes}
-          />
         </div>
       </main>
     )

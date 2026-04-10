@@ -81,6 +81,22 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId('public-search-empty-state')).toBeVisible()
   })
 
+  test('mobile search scrolls the results summary into view after submitting a query', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 500 })
+    await page.goto(`/${SLUG}/search?mode=player`)
+
+    await page.getByTestId('public-search-input').fill('Anna')
+    await page.getByTestId('public-search-submit').click()
+
+    await expect.poll(async () => new URL(page.url()).pathname).toBe(`/${SLUG}/search`)
+    await expect.poll(async () => new URL(page.url()).searchParams.get('q')).toBe('Anna')
+    await expect.poll(async () => new URL(page.url()).searchParams.get('mode')).toBe('player')
+    await expect(page.getByTestId('public-search-results-summary')).toBeVisible()
+    await expect(page.getByTestId(`public-search-player-card-${seeded.player.id}`)).toBeVisible()
+    await expect.poll(async () => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+    await expect.poll(async () => page.getByTestId('public-search-results-summary').evaluate(element => Math.round(element.getBoundingClientRect().top))).toBeLessThan(80)
+  })
+
   test('public search can open a club page from the result list', async ({ page }) => {
     await page.goto(`/${SLUG}/search?q=Test%20B&mode=club`)
 
@@ -108,32 +124,13 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId('public-search-classes-section')).toContainText('Bertil Berg')
   })
 
-  test('player class pills open the class roster search', async ({ page }) => {
+  test('player class pills are shown as non-clickable status indicators', async ({ page }) => {
     await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
 
-    await page.getByTestId(`public-search-player-class-pill-${seeded.player.id}-herrar-a-klass`).click()
-
-    await expect(page).toHaveURL(`/${SLUG}/search?q=Herrar+A-klass&mode=class`)
-    await expect(page.getByTestId('public-search-results-summary')).toContainText('Sökresultat')
-    await expect(page.getByTestId('public-search-results-summary')).toContainText('1 träff')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Herrar A-klass')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Anna Testsson')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Bertil Berg')
-  })
-
-  test('mobile search shows a visible result summary without refocusing the input', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(`/${SLUG}/search?mode=player`)
-
-    await page.getByTestId('public-search-input').fill('Anna')
-    await page.getByTestId('public-search-submit').click()
-
-    await expect(page.getByTestId('public-search-results-summary')).toBeVisible()
-  await expect(page.getByTestId('public-search-results-summary')).toContainText('1 träff')
-    await expect(page.getByTestId(`public-search-player-card-${seeded.player.id}`)).toBeVisible()
-
-    const activeTestId = await page.evaluate(() => document.activeElement?.getAttribute('data-testid'))
-    expect(activeTestId).not.toBe('public-search-input')
+    await expect(page.getByTestId(`public-search-player-class-pill-${seeded.player.id}-herrar-a-klass`)).toBeVisible()
+    await expect(page.getByTestId(`public-search-player-class-pill-${seeded.player.id}-herrar-a-klass`)).toContainText(
+      'Herrar A-klass',
+    )
   })
 
   test('public player page shows the registered classes without login', async ({ page }) => {

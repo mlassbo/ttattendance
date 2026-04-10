@@ -69,14 +69,12 @@ function clubTestIdFragment(clubName: string) {
 }
 
 function getClassPillClassName(registration: PublicClassRegistration, now: Date) {
-  const baseClassName = 'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150 hover:-translate-y-px hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
-
   if (registration.attendance?.status === 'confirmed') {
-    return `${baseClassName} bg-green-100 text-green-700`
+    return 'inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700'
   }
 
   if (registration.attendance?.status === 'absent') {
-    return `${baseClassName} bg-red-100 text-red-700`
+    return 'inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700'
   }
 
   const availability = getPlayerAttendanceAvailability(
@@ -86,10 +84,10 @@ function getClassPillClassName(registration: PublicClassRegistration, now: Date)
   )
 
   if (availability.state === 'available') {
-    return `${baseClassName} bg-brand text-white`
+    return 'inline-flex items-center rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white'
   }
 
-  return `${baseClassName} bg-stone-100 text-stone-600`
+  return 'inline-flex items-center rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-600'
 }
 
 function getPlayerCardAction(registrations: PublicClassRegistration[], now: Date): {
@@ -279,15 +277,13 @@ export default function PublicSearchResults({
                       className="flex flex-wrap gap-2"
                     >
                       {player.registrations.map(registration => (
-                        <Link
+                        <span
                           key={registration.registrationId}
-                          href={buildClassSearchHref(slug, registration.class.name)}
                           data-testid={`public-search-player-class-pill-${player.id}-${sanitizeFragment(registration.class.name)}`}
-                          aria-label={`Visa alla spelare i ${registration.class.name}`}
                           className={getClassPillClassName(registration, now)}
                         >
                           {registration.class.name}
-                        </Link>
+                        </span>
                       ))}
                     </div>
                   ) : null}

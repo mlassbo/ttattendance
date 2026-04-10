@@ -171,7 +171,7 @@ Test projects run in parallel. Each `beforeEach` must only clean its own slugs �
 The global setup (`tests/global-setup.ts`) uses the default `'test-%'` pattern to clean everything once before the full run.
 
 ### Selectors
-Always use `data-testid` attributes — never select by Swedish text, which is fragile. Add `data-testid` to any new interactive or verifiable element.
+For Playwright selectors, prefer stable `data-testid` hooks instead of Swedish text. In production runtime code, never read, query, style, or otherwise depend on `data-testid`; those attributes exist only for tests.
 
 ### After writing tests
 Run `npm run test:e2e:agent` when the agent is executing the suite itself, and fix any failures before finishing the task. If a developer explicitly wants the default Playwright report behavior, they can still run `npm run test:e2e` manually. If Supabase is not running, start it first with `npx supabase start`.
@@ -223,7 +223,7 @@ Use a commit message that a stakeholder can understand without reading code.
 
 ## Project conventions
 
-- **data-testid attributes** are used for all Playwright selectors — never select by Swedish text strings, which are fragile.
+- **data-testid attributes** may exist to support Playwright selectors, but production code must never query or depend on them. If app logic needs an element target, use refs, IDs, or semantic structure instead.
 - **Test slugs** must start with `test-` so the global setup can clean them up safely.
 - **API routes under `/api/super/*`** are protected by middleware checking for `role=superadmin` cookie. The auth route `/api/auth/super` is intentionally not protected.
 - **The Supabase client** (`src/lib/supabase.ts`) uses the service role key and must only be called from server-side API routes, never from client components.
