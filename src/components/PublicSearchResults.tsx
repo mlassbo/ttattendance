@@ -520,7 +520,7 @@ export default function PublicSearchResults({
                     ) : null}
                     {classResult.attendanceDeadline ? (
                       <p className="text-xs text-muted/80">
-                        Anmäl senast {formatSwedishDateTime(classResult.attendanceDeadline)}
+                        Anmäl närvaro senast {formatSwedishDateTime(classResult.attendanceDeadline)}
                       </p>
                     ) : null}
                   </div>
