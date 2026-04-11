@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { formatSwedishDateTime, formatSwedishWeekdayTime } from '@/lib/attendance-window'
 import AutoRefreshStatus from '../../AutoRefreshStatus'
 import { formatTime } from '../../format'
+import ReserveListSection, { type ReserveEntry } from './ReserveListSection'
 
 const REFRESH_INTERVAL_MS = 30_000
 const REFRESH_INTERVAL_SECONDS = REFRESH_INTERVAL_MS / 1000
@@ -29,6 +30,7 @@ interface ClassInfo {
 interface ClassData {
   class: ClassInfo
   players: PlayerAttendance[]
+  reserveList: ReserveEntry[]
 }
 
 interface WorkflowAttendance {
@@ -303,9 +305,15 @@ export default function ClassAttendanceView({
   const [workflowError, setWorkflowError] = useState<string | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
+  const dataRef = useRef<ClassData | null>(null)
   const overridingRef = useRef(false)
   const workflowMutatingRef = useRef(false)
+  const reserveMutatingRef = useRef(false)
   const refreshInFlightRef = useRef(false)
+
+  useEffect(() => {
+    dataRef.current = data
+  }, [data])
 
   const fetchAttendanceData = useCallback(async () => {
     const res = await fetch(`/api/admin/classes/${classId}/attendance`, {
@@ -346,10 +354,10 @@ export default function ClassAttendanceView({
 
   const fetchData = useCallback(async () => {
     // Skip poll if an override is in flight to avoid overwriting optimistic state.
-    if (overridingRef.current || workflowMutatingRef.current || refreshInFlightRef.current) return
+    if (overridingRef.current || workflowMutatingRef.current || reserveMutatingRef.current || refreshInFlightRef.current) return
     if (typeof document !== 'undefined' && document.hidden) return
 
-    const hadDataBeforeRequest = data !== null
+    const hadDataBeforeRequest = dataRef.current !== null
     refreshInFlightRef.current = true
     setIsRefreshing(true)
 
@@ -1077,6 +1085,25 @@ export default function ClassAttendanceView({
             <p className="px-1 text-sm text-muted">Inga spelare registrerade i denna klass.</p>
           )}
         </section>
+
+        <ReserveListSection
+          slug={slug}
+          classId={classId}
+          reserveList={data.reserveList}
+          onMutatingChange={mutating => { reserveMutatingRef.current = mutating }}
+          onReserveListChange={updater => {
+            setData(previous => {
+              if (!previous) {
+                return previous
+              }
+
+              return {
+                ...previous,
+                reserveList: updater(previous.reserveList),
+              }
+            })
+          }}
+        />
       </div>
     </main>
   )

@@ -9,7 +9,8 @@ import {
 
 config({ path: '.env.test.local' })
 
-const SLUG      = 'test-admin-2025'
+const TEST_PREFIX = 'test-admin-attendance-'
+const SLUG = `${TEST_PREFIX}2025`
 const ADMIN_PIN = '7777'
 
 async function loginAsAdmin(page: Page, slug: string, pin: string) {
@@ -24,7 +25,7 @@ test.describe('Admin attendance flow', () => {
 
   test.beforeEach(async () => {
     const supabase = testClient()
-    await cleanTestCompetitions(supabase, 'test-admin-%')
+    await cleanTestCompetitions(supabase, `${TEST_PREFIX}%`)
     seed = await seedAdminTestCompetition(supabase, SLUG, ADMIN_PIN)
   })
 

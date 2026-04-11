@@ -540,3 +540,70 @@ export async function seedClassSettingsCompetition(
     ],
   }
 }
+
+export async function seedWaitingList(
+  supabase: SupabaseClient,
+  options: {
+    slug: string
+    classId: string
+    playerName: string
+    clubName: string
+    joinedAt?: string
+    playerId?: string
+  },
+): Promise<{ registrationId: string; playerId: string }> {
+  let playerId = options.playerId
+
+  if (!playerId) {
+    const { data: competition, error: competitionError } = await supabase
+      .from('competitions')
+      .select('id')
+      .eq('slug', options.slug)
+      .single()
+
+    if (competitionError || !competition) {
+      throw new Error(`Failed to find competition for waiting list seed: ${competitionError?.message ?? 'Unknown error'}`)
+    }
+
+    const { data: player, error: playerError } = await supabase
+      .from('players')
+      .insert({
+        competition_id: competition.id,
+        name: options.playerName,
+        club: options.clubName,
+      })
+      .select('id')
+      .single()
+
+    if (playerError || !player) {
+      throw new Error(`Failed to seed waiting list player: ${playerError?.message ?? 'Unknown error'}`)
+    }
+
+    playerId = player.id
+  }
+
+  const resolvedPlayerId = playerId
+  if (!resolvedPlayerId) {
+    throw new Error('Failed to resolve waiting list player id')
+  }
+
+  const { data: registration, error: registrationError } = await supabase
+    .from('registrations')
+    .insert({
+      player_id: resolvedPlayerId,
+      class_id: options.classId,
+      status: 'reserve',
+      reserve_joined_at: options.joinedAt ?? new Date().toISOString(),
+    })
+    .select('id')
+    .single()
+
+  if (registrationError || !registration) {
+    throw new Error(`Failed to seed waiting list registration: ${registrationError?.message ?? 'Unknown error'}`)
+  }
+
+  return {
+    registrationId: registration.id,
+    playerId: resolvedPlayerId,
+  }
+}

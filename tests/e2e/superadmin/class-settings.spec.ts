@@ -32,7 +32,7 @@ async function loginAsSuperadmin(page: Page) {
 
 test.beforeEach(async () => {
   const supabase = testClient()
-  await cleanTestCompetitions(supabase, 'test-sm-%')
+  await cleanTestCompetitions(supabase, `${TEST_PREFIX}%`)
 })
 
 test('auth gate — visiting classes page without cookie redirects', async ({ page }) => {

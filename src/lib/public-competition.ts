@@ -1,4 +1,9 @@
 import { buildDaySessionOrderMap } from './session-order'
+import {
+  buildReserveListEntries,
+  buildReservePositionMap,
+  type RegistrationStatus,
+} from './reserve-status'
 import { createServerClient } from './supabase'
 
 type ServerClient = ReturnType<typeof createServerClient>
@@ -40,7 +45,9 @@ type RelationValue<T> = T | T[] | null | undefined
 type RegistrationRow = {
   id: string
   player_id: string
-  class_id?: string
+  class_id: string
+  status: RegistrationStatus
+  reserve_joined_at: string | null
   classes: RelationValue<ClassRow>
   attendance?: RelationValue<AttendanceRow>
 }
@@ -52,7 +59,10 @@ type PlayerRow = {
 }
 
 type ClassRegistrationPlayerRow = {
+  id: string
   class_id: string
+  status: RegistrationStatus
+  reserve_joined_at: string | null
   players: RelationValue<PlayerRow>
 }
 
@@ -70,6 +80,8 @@ export interface PublicCompetition {
 
 export interface PublicClassRegistration {
   registrationId: string
+  status: RegistrationStatus
+  reservePosition: number | null
   class: {
     id: string | null
     name: string
@@ -87,6 +99,14 @@ export interface PublicClassRegistration {
     status: 'confirmed' | 'absent'
     reportedAt: string
   } | null
+}
+
+export interface PublicReserveEntry {
+  registrationId: string
+  position: number
+  name: string
+  club: string | null
+  joinedAt: string | null
 }
 
 export interface PublicRegistrationGroup {
@@ -116,6 +136,7 @@ export interface PublicSearchClass {
   session: PublicClassRegistration['class']['session']
   playerCount: number
   players: PlayerRow[]
+  reserveList: PublicReserveEntry[]
 }
 
 export interface PublicSearchClassSuggestion {
@@ -386,7 +407,10 @@ async function searchClasses(
     await supabase
       .from('registrations')
       .select(`
+        id,
         class_id,
+        status,
+        reserve_joined_at,
         players (
           id,
           name,
@@ -398,9 +422,32 @@ async function searchClasses(
   )
 
   const playersByClassId = new Map<string, PlayerRow[]>()
+  const reserveListByClassId = new Map<string, PublicReserveEntry[]>()
+  const reserveClassIdByRegistrationId = new Map<string, string>()
+  const reserveSources: Array<{
+    registrationId: string
+    classId: string
+    status: RegistrationStatus
+    reserveJoinedAt: string | null
+    name: string
+    club: string | null
+  }> = []
   for (const registration of (registrations ?? []) as ClassRegistrationPlayerRow[]) {
     const player = getSingleRelation(registration.players)
     if (!player) {
+      continue
+    }
+
+    if (registration.status === 'reserve') {
+      reserveClassIdByRegistrationId.set(registration.id, registration.class_id)
+      reserveSources.push({
+        registrationId: registration.id,
+        classId: registration.class_id,
+        status: registration.status,
+        reserveJoinedAt: registration.reserve_joined_at,
+        name: player.name,
+        club: player.club,
+      })
       continue
     }
 
@@ -413,12 +460,24 @@ async function searchClasses(
     players.sort((left, right) => left.name.localeCompare(right.name, 'sv'))
   }
 
+  for (const entry of buildReserveListEntries(reserveSources)) {
+    const classId = reserveClassIdByRegistrationId.get(entry.registrationId)
+    if (!classId) {
+      continue
+    }
+
+    const reserveList = reserveListByClassId.get(classId) ?? []
+    reserveList.push(entry)
+    reserveListByClassId.set(classId, reserveList)
+  }
+
   return matchedClasses
     .sort((left, right) => comparePublicClassRows(left, right, daySessionOrderById))
     .map(classRow => ({
       ...buildPublicClassDetails(classRow, daySessionOrderById),
       playerCount: (playersByClassId.get(classRow.id) ?? []).length,
       players: playersByClassId.get(classRow.id) ?? [],
+      reserveList: reserveListByClassId.get(classRow.id) ?? [],
     }))
 }
 
@@ -497,6 +556,9 @@ async function getRegistrationsByPlayerIds(
       .select(`
         id,
         player_id,
+        class_id,
+        status,
+        reserve_joined_at,
         classes (
           id,
           name,
@@ -519,6 +581,16 @@ async function getRegistrationsByPlayerIds(
   )
 
   const registrationsByPlayerId = new Map<string, PublicClassRegistration[]>()
+  const reservePositions = buildReservePositionMap(
+    ((registrations ?? []) as RegistrationRow[])
+      .filter(registration => registration.status === 'reserve')
+      .map(registration => ({
+        registrationId: registration.id,
+        classId: registration.class_id,
+        status: registration.status,
+        reserveJoinedAt: registration.reserve_joined_at,
+      }))
+  )
 
   for (const registration of (registrations ?? []) as unknown as RegistrationRow[]) {
     const cls = getSingleRelation(registration.classes)
@@ -533,6 +605,10 @@ async function getRegistrationsByPlayerIds(
     const groupedRegistrations = registrationsByPlayerId.get(registration.player_id) ?? []
     groupedRegistrations.push({
       registrationId: registration.id,
+      status: registration.status,
+      reservePosition: registration.status === 'reserve'
+        ? (reservePositions.get(registration.id) ?? null)
+        : null,
       class: {
         id: cls.id,
         name: cls.name,

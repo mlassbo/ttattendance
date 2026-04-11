@@ -126,7 +126,7 @@ test.describe('Public browse flow', () => {
       'Närvarorapportering öppnar 2025-09-12 20:00',
     )
     await expect(page.getByTestId('public-search-classes-section')).toContainText(
-      'Anmäl senast 2099-09-13 08:15',
+      'Anmäl närvaro senast 2099-09-13 08:15',
     )
   })
 

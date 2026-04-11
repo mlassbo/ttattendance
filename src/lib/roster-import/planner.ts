@@ -510,6 +510,7 @@ async function loadCompetitionState(
       .from('registrations')
       .select('id, player_id, class_id, attendance(status)')
       .in('class_id', classIds)
+      .eq('status', 'registered')
 
     if (registrationsError) {
       throw new Error(`Failed to load registrations: ${registrationsError.message}`)

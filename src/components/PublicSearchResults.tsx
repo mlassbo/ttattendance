@@ -69,8 +69,22 @@ function clubTestIdFragment(clubName: string) {
   return sanitizeFragment(clubName)
 }
 
+function getReserveLabel(registration: PublicClassRegistration) {
+  return registration.reservePosition
+    ? `Reserv #${registration.reservePosition}`
+    : 'Reserv'
+}
+
+function getReservePillLabel(registration: PublicClassRegistration) {
+  return `${registration.class.name} · ${getReserveLabel(registration)}`
+}
+
 function getClassPillClassName(registration: PublicClassRegistration, now: Date) {
   const baseClassName = 'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150 hover:-translate-y-px hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
+
+  if (registration.status === 'reserve') {
+    return `${baseClassName} bg-stone-100 text-stone-600`
+  }
 
   if (registration.attendance?.status === 'confirmed') {
     return `${baseClassName} bg-green-100 text-green-700`
@@ -94,10 +108,26 @@ function getClassPillClassName(registration: PublicClassRegistration, now: Date)
 }
 
 function getPlayerCardAction(registrations: PublicClassRegistration[], now: Date): {
-  state: 'available' | 'editable' | 'upcoming' | 'hidden'
+  state: 'available' | 'editable' | 'upcoming' | 'view' | 'hidden'
   label: string | null
 } {
-  const availabilities = registrations.map(registration =>
+  const registeredRegistrations = registrations.filter(registration => registration.status === 'registered')
+
+  if (registeredRegistrations.length === 0) {
+    if (registrations.some(registration => registration.status === 'reserve')) {
+      return {
+        state: 'view',
+        label: 'Visa klasser',
+      }
+    }
+
+    return {
+      state: 'hidden',
+      label: null,
+    }
+  }
+
+  const availabilities = registeredRegistrations.map(registration =>
     getPlayerAttendanceAvailability(
       registration.class.startTime,
       registration.class.attendanceDeadline,
@@ -105,7 +135,7 @@ function getPlayerCardAction(registrations: PublicClassRegistration[], now: Date
     ),
   )
 
-  const availableRegistrations = registrations.filter((registration, index) =>
+  const availableRegistrations = registeredRegistrations.filter((registration, index) =>
     availabilities[index]?.state === 'available',
   )
 
@@ -287,7 +317,9 @@ export default function PublicSearchResults({
                           aria-label={`Visa alla spelare i ${registration.class.name}`}
                           className={getClassPillClassName(registration, now)}
                         >
-                          {registration.class.name}
+                          {registration.status === 'reserve'
+                            ? getReservePillLabel(registration)
+                            : registration.class.name}
                         </Link>
                       ))}
                     </div>
@@ -299,6 +331,7 @@ export default function PublicSearchResults({
                       className="space-y-3 border-t border-line/70 pt-4"
                     >
                       {player.registrations.map(registration => {
+                        const isReserve = registration.status === 'reserve'
                         const availability = getPlayerAttendanceAvailability(
                           registration.class.startTime,
                           registration.class.attendanceDeadline,
@@ -339,7 +372,11 @@ export default function PublicSearchResults({
                                 ) : null}
                               </div>
 
-                              {currentStatus ? (
+                              {isReserve ? (
+                                <span className="inline-flex items-center rounded-full border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-700 whitespace-nowrap">
+                                  {getReserveLabel(registration)}
+                                </span>
+                              ) : currentStatus ? (
                                 <span
                                   data-testid={`public-search-status-badge-${registration.registrationId}`}
                                   className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap ${
@@ -353,7 +390,16 @@ export default function PublicSearchResults({
                               ) : null}
                             </div>
 
-                            {statusCopy ? (
+                            {isReserve ? (
+                              <div className="mb-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                                <p className="text-sm font-semibold text-ink">
+                                  Du är på plats #{registration.reservePosition ?? '–'} på reservlistan för denna klass.
+                                </p>
+                                <p className="mt-1 text-sm text-muted">
+                                  Närvaroknappar visas först när du blir fullt registrerad i klassen.
+                                </p>
+                              </div>
+                            ) : statusCopy ? (
                               <div
                                 data-testid={`public-search-status-summary-${registration.registrationId}`}
                                 className={`mb-4 rounded-2xl border px-4 py-3 ${statusCopy.containerClassName}`}
@@ -370,7 +416,7 @@ export default function PublicSearchResults({
                               </div>
                             ) : null}
 
-                            {missingAttendanceCopy ? (
+                            {!isReserve && missingAttendanceCopy ? (
                               <div
                                 data-testid={`public-search-missing-attendance-${registration.registrationId}`}
                                 className={`mb-4 rounded-2xl border px-4 py-3 ${missingAttendanceCopy.containerClassName}`}
@@ -382,7 +428,7 @@ export default function PublicSearchResults({
                               </div>
                             ) : null}
 
-                            {scheduleMissingCopy ? (
+                            {!isReserve && scheduleMissingCopy ? (
                               <div
                                 data-testid={`public-search-schedule-missing-${registration.registrationId}`}
                                 className={`mb-4 rounded-2xl border px-4 py-3 ${scheduleMissingCopy.containerClassName}`}
@@ -394,7 +440,7 @@ export default function PublicSearchResults({
                               </div>
                             ) : null}
 
-                            {availability.state === 'schedule_missing' ? null : availability.state === 'not_open' ? (
+                            {isReserve ? null : availability.state === 'schedule_missing' ? null : availability.state === 'not_open' ? (
                               <p
                                 data-testid={`public-search-attendance-not-open-${registration.registrationId}`}
                                 className="text-xs font-medium text-amber-800"
@@ -525,9 +571,19 @@ export default function PublicSearchResults({
                     ) : null}
                   </div>
 
-                  <span className="app-pill-muted whitespace-nowrap">
-                    {classResult.playerCount} spelare
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <span className="app-pill-muted whitespace-nowrap">
+                      {classResult.playerCount} spelare
+                    </span>
+                    {classResult.reserveList.length > 0 ? (
+                      <span
+                        data-testid={`public-search-class-reserve-pill-${classResult.id}`}
+                        className="app-pill-muted whitespace-nowrap"
+                      >
+                        {classResult.reserveList.length} på reservlistan
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div
@@ -551,6 +607,26 @@ export default function PublicSearchResults({
                     <p className="text-sm text-muted">Inga spelare registrerade.</p>
                   )}
                 </div>
+
+                {classResult.reserveList.length > 0 ? (
+                  <div className="rounded-2xl border border-line/80 bg-surface px-4 py-3">
+                    <p className="text-sm font-semibold text-ink">Reservlista</p>
+                    <ol className="mt-3 space-y-2">
+                      {classResult.reserveList.map(entry => (
+                        <li
+                          key={entry.registrationId}
+                          data-testid={`public-search-class-reserve-${classResult.id}-${entry.registrationId}`}
+                          className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <span className="text-sm font-medium text-ink">
+                            {entry.position}. {entry.name}
+                          </span>
+                          {entry.club ? <span className="text-sm text-muted">{entry.club}</span> : null}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>

@@ -36,10 +36,12 @@ export async function GET(
     .from('registrations')
     .select(`
       id,
+      status,
       players ( name, club ),
       attendance ( status, reported_at, reported_by )
     `)
     .eq('class_id', params.classId)
+    .eq('status', 'registered')
 
   if (regError) {
     return NextResponse.json({ error: 'Databasfel' }, { status: 500 })

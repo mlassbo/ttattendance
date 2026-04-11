@@ -26,6 +26,10 @@ type AttendanceAction =
     }
   | { type: 'reset'; playerId: string; registrationId: string }
 
+function getReserveLabel(reservePosition: number | null) {
+  return reservePosition ? `Reserv #${reservePosition}` : 'Reserv'
+}
+
 export default function ClubPlayersView({
   slug,
   competitionName,
@@ -181,6 +185,7 @@ export default function ClubPlayersView({
 
                       <ul className="space-y-2">
                         {group.registrations.map(registration => {
+                          const isReserve = registration.status === 'reserve'
                           const availability = getPlayerAttendanceAvailability(
                             registration.class.startTime,
                             registration.class.attendanceDeadline,
@@ -221,7 +226,11 @@ export default function ClubPlayersView({
                                   ) : null}
                                 </div>
 
-                                {currentStatus ? (
+                                {isReserve ? (
+                                  <span className="inline-flex items-center rounded-full border border-stone-300 px-3 py-1 text-xs font-semibold text-stone-700 whitespace-nowrap">
+                                    {getReserveLabel(registration.reservePosition)}
+                                  </span>
+                                ) : currentStatus ? (
                                   <span
                                     data-testid={`public-club-status-badge-${registration.registrationId}`}
                                     className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap ${
@@ -235,7 +244,13 @@ export default function ClubPlayersView({
                                 ) : null}
                               </div>
 
-                              {statusCopy ? (
+                              {isReserve ? (
+                                <div className="mt-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                                  <p className="text-sm font-semibold text-ink">
+                                    Spelaren står som #{registration.reservePosition ?? '–'} på reservlistan för denna klass.
+                                  </p>
+                                </div>
+                              ) : statusCopy ? (
                                 <div
                                   data-testid={`public-club-status-summary-${registration.registrationId}`}
                                   className={`mt-3 rounded-2xl border px-4 py-3 ${statusCopy.containerClassName}`}
@@ -247,7 +262,7 @@ export default function ClubPlayersView({
                                 </div>
                               ) : null}
 
-                              {missingAttendanceCopy ? (
+                              {!isReserve && missingAttendanceCopy ? (
                                 <div
                                   data-testid={`public-club-missing-attendance-${registration.registrationId}`}
                                   className={`mt-3 rounded-2xl border px-4 py-3 ${missingAttendanceCopy.containerClassName}`}
@@ -259,7 +274,7 @@ export default function ClubPlayersView({
                                 </div>
                               ) : null}
 
-                              {scheduleMissingCopy ? (
+                              {!isReserve && scheduleMissingCopy ? (
                                 <div
                                   data-testid={`public-club-schedule-missing-${registration.registrationId}`}
                                   className={`mt-3 rounded-2xl border px-4 py-3 ${scheduleMissingCopy.containerClassName}`}
@@ -272,7 +287,7 @@ export default function ClubPlayersView({
                               ) : null}
 
                               <div className="mt-3">
-                                {availability.state === 'schedule_missing' ? null : availability.state === 'not_open' ? (
+                                {isReserve ? null : availability.state === 'schedule_missing' ? null : availability.state === 'not_open' ? (
                                   <p
                                     data-testid={`public-club-attendance-not-open-${registration.registrationId}`}
                                     className="text-xs font-medium text-amber-800"

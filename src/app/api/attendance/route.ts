@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getCompetitionAuth } from '@/lib/auth'
+import type { RegistrationStatus } from '@/lib/reserve-status'
 import {
   getAttendanceNotOpenMessage,
   getClassAttendanceOpensAt,
@@ -9,12 +10,14 @@ import {
 type CompetitionAuth = NonNullable<Awaited<ReturnType<typeof getCompetitionAuth>>>
 type RegistrationRow = {
   id: string
+  status: RegistrationStatus
   players: { competition_id: string } | null
   classes: { start_time: string; attendance_deadline: string } | null
 }
 type RelationValue<T> = T | T[] | null | undefined
 type RawRegistrationRow = {
   id: unknown
+  status?: unknown
   players?: RelationValue<{ competition_id: unknown }>
   classes?: RelationValue<{ start_time: unknown; attendance_deadline: unknown }>
 }
@@ -37,6 +40,10 @@ function normalizeRegistrationRow(registration: unknown): RegistrationRow | null
     return null
   }
 
+  if (raw.status !== 'registered' && raw.status !== 'reserve') {
+    return null
+  }
+
   const player = getSingleRelation(raw.players)
   const cls = getSingleRelation(raw.classes)
 
@@ -53,6 +60,7 @@ function normalizeRegistrationRow(registration: unknown): RegistrationRow | null
 
   return {
     id: raw.id,
+    status: raw.status,
     players: competitionId ? { competition_id: competitionId } : null,
     classes:
       classStartTime && attendanceDeadline
@@ -72,6 +80,7 @@ async function getAuthorizedRegistration(
     .from('registrations')
     .select(`
       id,
+      status,
       players ( competition_id ),
       classes ( start_time, attendance_deadline )
     `)
@@ -97,6 +106,16 @@ async function getAuthorizedRegistration(
   if (reg.players?.competition_id !== auth.competitionId) {
     return {
       errorResponse: NextResponse.json({ error: 'Anmälan hittades inte' }, { status: 404 }),
+      registration: null,
+    }
+  }
+
+  if (reg.status === 'reserve') {
+    return {
+      errorResponse: NextResponse.json(
+        { error: 'Reservspelare kan inte anmäla närvaro i denna klass' },
+        { status: 400 }
+      ),
       registration: null,
     }
   }

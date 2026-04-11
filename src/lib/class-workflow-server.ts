@@ -126,6 +126,7 @@ export async function getClassAttendanceCountsByIds(
     .from('registrations')
     .select('class_id, attendance(status)')
     .in('class_id', classIds)
+    .eq('status', 'registered')
 
   if (error) {
     throw new Error(error.message)

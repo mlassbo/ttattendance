@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getScopedCompetitionAuth } from '@/lib/scoped-competition-auth'
 import { getAuthorizedAdminClass } from '@/lib/class-workflow-server'
+import { buildReserveListEntries, type RegistrationStatus } from '@/lib/reserve-status'
 import { createServerClient } from '@/lib/supabase'
 import { getAttendanceField } from '../../../lib'
 
@@ -42,7 +43,7 @@ async function getAuthorizedRegistration(
 ) {
   const { data: registration, error } = await supabase
     .from('registrations')
-    .select('id')
+    .select('id, status')
     .eq('id', registrationId)
     .eq('class_id', classId)
     .maybeSingle()
@@ -56,7 +57,7 @@ async function getAuthorizedRegistration(
 
   return {
     errorResponse: null,
-    registration,
+    registration: registration as { id: string; status: RegistrationStatus },
   }
 }
 
@@ -77,6 +78,9 @@ export async function GET(
     .from('registrations')
     .select(`
       id,
+      class_id,
+      status,
+      reserve_joined_at,
       players ( id, name, club ),
       attendance ( status, reported_at, reported_by )
     `)
@@ -87,9 +91,12 @@ export async function GET(
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const players = ((registrations ?? []) as any[])
+  const rows = ((registrations ?? []) as any[])
     .map(r => ({
       registrationId: r.id,
+      classId: r.class_id as string,
+      registrationStatus: (r.status ?? 'registered') as RegistrationStatus,
+      reserveJoinedAt: r.reserve_joined_at ?? null,
       playerId: r.players?.id ?? null,
       name: r.players?.name ?? '',
       club: r.players?.club ?? null,
@@ -97,7 +104,28 @@ export async function GET(
       reportedAt: getAttendanceField(r, 'reported_at'),
       reportedBy: getAttendanceField(r, 'reported_by'),
     }))
+  const players = rows
+    .filter(row => row.registrationStatus === 'registered')
+    .map(r => ({
+      registrationId: r.registrationId,
+      playerId: r.playerId,
+      name: r.name,
+      club: r.club,
+      status: r.status,
+      reportedAt: r.reportedAt,
+      reportedBy: r.reportedBy,
+    }))
     .sort((a, b) => a.name.localeCompare(b.name, 'sv'))
+  const reserveList = buildReserveListEntries(
+    rows.map(row => ({
+      registrationId: row.registrationId,
+      classId: row.classId,
+      status: row.registrationStatus,
+      reserveJoinedAt: row.reserveJoinedAt,
+      name: row.name,
+      club: row.club,
+    }))
+  )
 
   return NextResponse.json({
     class: {
@@ -107,6 +135,7 @@ export async function GET(
       attendanceDeadline: cls.attendanceDeadline,
     },
     players,
+    reserveList,
   })
 }
 
@@ -135,13 +164,20 @@ export async function POST(
     return NextResponse.json({ error: 'Ogiltiga uppgifter' }, { status: 400 })
   }
 
-  const { errorResponse: registrationError } = await getAuthorizedRegistration(
+  const { errorResponse: registrationError, registration } = await getAuthorizedRegistration(
     supabase,
     params.classId,
     registrationId
   )
   if (registrationError) {
     return registrationError
+  }
+
+  if (registration?.status === 'reserve') {
+    return NextResponse.json(
+      { error: 'Reservspelare kan inte närvarorapporteras' },
+      { status: 400 }
+    )
   }
 
   const { error: upsertError } = await supabase
@@ -183,13 +219,20 @@ export async function DELETE(
     return NextResponse.json({ error: 'Ogiltiga uppgifter' }, { status: 400 })
   }
 
-  const { errorResponse: registrationError } = await getAuthorizedRegistration(
+  const { errorResponse: registrationError, registration } = await getAuthorizedRegistration(
     supabase,
     params.classId,
     registrationId
   )
   if (registrationError) {
     return registrationError
+  }
+
+  if (registration?.status === 'reserve') {
+    return NextResponse.json(
+      { error: 'Reservspelare kan inte närvarorapporteras' },
+      { status: 400 }
+    )
   }
 
   const { error: deleteError } = await supabase

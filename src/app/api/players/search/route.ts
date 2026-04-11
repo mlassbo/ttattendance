@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getCompetitionAuth } from '@/lib/auth'
+import { buildReservePositionMap, type RegistrationStatus } from '@/lib/reserve-status'
 import { buildDaySessionOrderMap } from '@/lib/session-order'
+
+type ReservePositionRow = {
+  id: string
+  class_id: string
+  status: RegistrationStatus
+  reserve_joined_at: string | null
+}
 
 type SearchPlayerRow = {
   id: string
@@ -32,6 +40,9 @@ type AttendanceRow = {
 type RegistrationRow = {
   id: string
   player_id: string
+  class_id: string
+  status: RegistrationStatus
+  reserve_joined_at: string | null
   classes: ClassRow | null
   attendance: AttendanceRow | null
 }
@@ -121,6 +132,9 @@ export async function GET(req: NextRequest) {
     .select(`
       id,
       player_id,
+      class_id,
+      status,
+      reserve_joined_at,
       classes (
         id,
         name,
@@ -145,8 +159,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
   }
 
+  const registrationRows = (registrations ?? []) as unknown as RegistrationRow[]
+  const classIds = Array.from(new Set(registrationRows.map(registration => registration.class_id)))
+  const { data: reserveRegistrations, error: reserveError } = classIds.length === 0
+    ? { data: [], error: null }
+    : await supabase
+      .from('registrations')
+      .select('id, class_id, status, reserve_joined_at')
+      .in('class_id', classIds)
+      .eq('status', 'reserve')
+
+  if (reserveError) {
+    return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
+  }
+
+  const reservePositions = buildReservePositionMap(
+    ((reserveRegistrations ?? []) as ReservePositionRow[]).map(registration => ({
+      registrationId: registration.id,
+      classId: registration.class_id,
+      status: registration.status,
+      reserveJoinedAt: registration.reserve_joined_at,
+    }))
+  )
+
   const registrationsByPlayer = new Map<string, RegistrationRow[]>()
-  for (const registration of (registrations ?? []) as unknown as RegistrationRow[]) {
+  for (const registration of registrationRows) {
     const grouped = registrationsByPlayer.get(registration.player_id) ?? []
     grouped.push(registration)
     registrationsByPlayer.set(registration.player_id, grouped)
@@ -172,6 +209,10 @@ export async function GET(req: NextRequest) {
       ...player,
       registrations: (registrationsByPlayer.get(player.id) ?? []).map(registration => ({
         registrationId: registration.id,
+        status: registration.status,
+        reservePosition: registration.status === 'reserve'
+          ? (reservePositions.get(registration.id) ?? null)
+          : null,
         class: {
           id: registration.classes?.id,
           name: registration.classes?.name,

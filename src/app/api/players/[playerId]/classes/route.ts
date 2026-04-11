@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { getCompetitionAuth } from '@/lib/auth'
+import { buildReservePositionMap, type RegistrationStatus } from '@/lib/reserve-status'
 import { buildDaySessionOrderMap } from '@/lib/session-order'
+
+type ReservePositionRow = {
+  id: string
+  class_id: string
+  status: RegistrationStatus
+  reserve_joined_at: string | null
+}
 
 export async function GET(
   req: NextRequest,
@@ -44,6 +52,9 @@ export async function GET(
     .from('registrations')
     .select(`
       id,
+      class_id,
+      status,
+      reserve_joined_at,
       classes (
         id,
         name,
@@ -73,10 +84,40 @@ export async function GET(
   type AttRow = { status: string; reported_at: string }
   // PostgREST detects the unique(registration_id) constraint and returns
   // attendance as a single object or null, not an array.
-  type RegRow = { id: string; classes: ClassRow | null; attendance: AttRow | null }
+  type RegRow = {
+    id: string
+    class_id: string
+    status: RegistrationStatus
+    reserve_joined_at: string | null
+    classes: ClassRow | null
+    attendance: AttRow | null
+  }
+
+  const registrationRows = (registrations ?? []) as unknown as RegRow[]
+  const classIds = Array.from(new Set(registrationRows.map(registration => registration.class_id)))
+  const { data: reserveRegistrations, error: reserveError } = classIds.length === 0
+    ? { data: [], error: null }
+    : await supabase
+      .from('registrations')
+      .select('id, class_id, status, reserve_joined_at')
+      .in('class_id', classIds)
+      .eq('status', 'reserve')
+
+  if (reserveError) {
+    return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
+  }
+
+  const reservePositions = buildReservePositionMap(
+    ((reserveRegistrations ?? []) as ReservePositionRow[]).map(registration => ({
+      registrationId: registration.id,
+      classId: registration.class_id,
+      status: registration.status,
+      reserveJoinedAt: registration.reserve_joined_at,
+    }))
+  )
 
   // Sort by session_order, then class start_time.
-  const sorted = ((registrations ?? []) as unknown as RegRow[]).sort((a, b) => {
+  const sorted = registrationRows.sort((a, b) => {
     const aOrder = a.classes?.sessions?.session_order ?? 0
     const bOrder = b.classes?.sessions?.session_order ?? 0
     if (aOrder !== bOrder) return aOrder - bOrder
@@ -93,6 +134,8 @@ export async function GET(
       const att = r.attendance
       return {
         registrationId: r.id,
+        status: r.status,
+        reservePosition: r.status === 'reserve' ? (reservePositions.get(r.id) ?? null) : null,
         class: {
           id: cls?.id,
           name: cls?.name,

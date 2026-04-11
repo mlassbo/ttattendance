@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
       .from('registrations')
       .select('id, class_id, players(name, club), attendance(status)')
       .in('class_id', classIds)
+      .eq('status', 'registered')
 
     if (regError) {
       return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
