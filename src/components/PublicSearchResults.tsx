@@ -136,13 +136,6 @@ function getPlayerCardAction(registrations: PublicClassRegistration[], now: Date
   const registeredRegistrations = registrations.filter(registration => registration.status === 'registered')
 
   if (registeredRegistrations.length === 0) {
-    if (registrations.some(registration => registration.status === 'reserve')) {
-      return {
-        state: 'view',
-        label: 'Visa klasser',
-      }
-    }
-
     return {
       state: 'hidden',
       label: null,

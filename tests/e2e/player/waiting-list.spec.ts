@@ -59,13 +59,7 @@ test.describe('Public waiting list', () => {
 
     await expect(page.getByTestId('public-search-players-section')).toContainText('Rasmus Reserv')
     await expect(page.getByTestId('public-search-players-section')).toContainText('Reserv #2')
-    await expect(page.getByTestId(/^public-search-player-toggle-/)).toContainText('Visa klasser')
-
-    await page.getByTestId(/^public-search-player-toggle-/).click()
-
-    await expect(page.getByTestId(`public-search-player-class-card-${seededReserve.registrationId}`)).toContainText(
-      'Du är på plats #2 på reservlistan för denna klass.',
-    )
+    await expect(page.getByTestId(/^public-search-player-toggle-/)).toHaveCount(0)
     await expect(page.getByTestId(`public-search-confirm-btn-${seededReserve.registrationId}`)).toHaveCount(0)
     await expect(page.getByTestId(`public-search-absent-btn-${seededReserve.registrationId}`)).toHaveCount(0)
   })
