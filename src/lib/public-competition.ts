@@ -32,6 +32,7 @@ type ClassRow = {
   name: string
   start_time: string | null
   attendance_deadline: string | null
+  max_players: number | null
   sessions: RelationValue<SessionRow>
 }
 
@@ -70,12 +71,42 @@ type ClubCountRow = {
   club: string | null
 }
 
+type ClassDashboardRow = {
+  id: string
+  session_id: string
+  name: string
+  start_time: string | null
+  max_players: number | null
+}
+
+type ClassDashboardRegistrationRow = {
+  class_id: string
+  status: RegistrationStatus
+}
+
 export type PublicSearchMode = 'all' | 'player' | 'club' | 'class'
 
 export interface PublicCompetition {
   id: string
   name: string
   slug: string
+}
+
+export interface ClassDashboardSession {
+  id: string
+  name: string
+  date: string
+  sessionOrder: number
+  classes: ClassDashboardEntry[]
+}
+
+export interface ClassDashboardEntry {
+  id: string
+  name: string
+  startTime: string | null
+  maxPlayers: number | null
+  registeredCount: number
+  reserveCount: number
 }
 
 export interface PublicClassRegistration {
@@ -133,6 +164,7 @@ export interface PublicSearchClass {
   name: string
   startTime: string | null
   attendanceDeadline: string | null
+  maxPlayers: number | null
   session: PublicClassRegistration['class']['session']
   playerCount: number
   players: PlayerRow[]
@@ -181,6 +213,99 @@ export async function getPublicCompetitionBySlug(
   return competition ?? null
 }
 
+export async function getClassDashboard(
+  supabase: ServerClient,
+  competitionId: string,
+): Promise<ClassDashboardSession[]> {
+  const { data: sessions, error: sessionsError } = await supabase
+    .from('sessions')
+    .select('id, name, date, session_order')
+    .eq('competition_id', competitionId)
+    .order('date', { ascending: true })
+    .order('session_order', { ascending: true })
+
+  if (sessionsError) {
+    throw new Error(sessionsError.message)
+  }
+
+  const sessionRows = (sessions ?? []) as SessionRow[]
+  if (sessionRows.length === 0) {
+    return []
+  }
+
+  const { data: classes, error: classesError } = await supabase
+    .from('classes')
+    .select('id, session_id, name, start_time, max_players')
+    .in('session_id', sessionRows.map(session => session.id))
+
+  if (classesError) {
+    throw new Error(classesError.message)
+  }
+
+  const classRows = (classes ?? []) as ClassDashboardRow[]
+  if (classRows.length === 0) {
+    return []
+  }
+
+  const registrations = await fetchAllPages<ClassDashboardRegistrationRow>(async (from, to) =>
+    await supabase
+      .from('registrations')
+      .select('class_id, status')
+      .in('class_id', classRows.map(classRow => classRow.id))
+      .in('status', ['registered', 'reserve'])
+      .range(from, to),
+  )
+
+  const registeredCountByClassId = new Map<string, number>()
+  const reserveCountByClassId = new Map<string, number>()
+
+  for (const registration of registrations) {
+    if (registration.status === 'registered') {
+      registeredCountByClassId.set(
+        registration.class_id,
+        (registeredCountByClassId.get(registration.class_id) ?? 0) + 1,
+      )
+      continue
+    }
+
+    if (registration.status === 'reserve') {
+      reserveCountByClassId.set(
+        registration.class_id,
+        (reserveCountByClassId.get(registration.class_id) ?? 0) + 1,
+      )
+    }
+  }
+
+  return sessionRows
+    .map(session => ({
+      id: session.id,
+      name: session.name,
+      date: session.date,
+      sessionOrder: session.session_order,
+      classes: classRows
+        .filter(classRow => classRow.session_id === session.id)
+        .sort((left, right) => {
+          const leftStartTime = left.start_time ?? '9999-12-31T23:59:59.999Z'
+          const rightStartTime = right.start_time ?? '9999-12-31T23:59:59.999Z'
+
+          if (leftStartTime !== rightStartTime) {
+            return leftStartTime.localeCompare(rightStartTime)
+          }
+
+          return left.name.localeCompare(right.name, 'sv')
+        })
+        .map(classRow => ({
+          id: classRow.id,
+          name: classRow.name,
+          startTime: classRow.start_time,
+          maxPlayers: classRow.max_players,
+          registeredCount: registeredCountByClassId.get(classRow.id) ?? 0,
+          reserveCount: reserveCountByClassId.get(classRow.id) ?? 0,
+        })),
+    }))
+    .filter(session => session.classes.length > 0)
+}
+
 export async function searchPublicCompetition(
   supabase: ServerClient,
   competitionId: string,
@@ -218,6 +343,7 @@ export async function getPublicCompetitionClassSuggestions(
       name,
       start_time,
       attendance_deadline,
+      max_players,
       sessions!inner (
         id,
         name,
@@ -383,6 +509,7 @@ async function searchClasses(
       name,
       start_time,
       attendance_deadline,
+      max_players,
       sessions!inner (
         id,
         name,
@@ -564,6 +691,7 @@ async function getRegistrationsByPlayerIds(
           name,
           start_time,
           attendance_deadline,
+          max_players,
           sessions (
             id,
             name,
@@ -737,6 +865,7 @@ function buildPublicClassDetails(
     name: classRow.name,
     startTime: classRow.start_time,
     attendanceDeadline: classRow.attendance_deadline,
+    maxPlayers: classRow.max_players,
     session: session
       ? {
           id: session.id,

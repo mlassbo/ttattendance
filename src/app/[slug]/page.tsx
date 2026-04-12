@@ -1,5 +1,7 @@
 import Link from 'next/link'
+import ClassDashboard from '@/components/ClassDashboard'
 import { formatCompetitionDateRange, getCompetitionDateRange } from '@/lib/competition-dates'
+import { getClassDashboard } from '@/lib/public-competition'
 import { createServerClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
@@ -27,7 +29,10 @@ export default async function CompetitionPage({
     )
   }
 
-  const competitionDateRange = await getCompetitionDateRange(supabase, competition.id)
+  const [competitionDateRange, dashboardSessions] = await Promise.all([
+    getCompetitionDateRange(supabase, competition.id),
+    getClassDashboard(supabase, competition.id),
+  ])
 
   return (
     <main data-testid="public-start-page" className="app-shell">
@@ -74,6 +79,10 @@ export default async function CompetitionPage({
             </form>
           </div>
         </section>
+
+        {dashboardSessions.length > 0 && (
+          <ClassDashboard sessions={dashboardSessions} slug={slug} />
+        )}
 
         <section className="grid gap-4 md:grid-cols-2 lg:gap-6">
           <article data-testid="public-start-live-card" className="app-card-soft space-y-4 opacity-80">

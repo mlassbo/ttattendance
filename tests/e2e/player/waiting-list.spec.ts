@@ -82,6 +82,7 @@ test.describe('Public waiting list', () => {
     await page.goto(`/${SLUG}/search?q=Herrar%20A-klass&mode=class`)
 
     await expect(page.getByTestId('public-search-classes-section')).toContainText('Reservlista')
+    await expect(page.getByTestId(/^public-search-class-availability-/)).toContainText('Fullt')
     await expect(
       page.getByTestId(`public-search-class-reserve-${futureClassId}-${first.registrationId}`),
     ).toContainText('1. Axel Reserv')

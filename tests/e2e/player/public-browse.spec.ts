@@ -122,12 +122,20 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId('public-search-classes-section')).toContainText('Herrar A-klass')
     await expect(page.getByTestId('public-search-classes-section')).toContainText('Anna Testsson')
     await expect(page.getByTestId('public-search-classes-section')).toContainText('Bertil Berg')
+    await expect(page.getByTestId(/^public-search-class-availability-/)).toContainText('Fullt')
     await expect(page.getByTestId('public-search-classes-section')).toContainText(
       'Närvarorapportering öppnar 2025-09-12 20:00',
     )
     await expect(page.getByTestId('public-search-classes-section')).toContainText(
       'Anmäl närvaro senast 2099-09-13 08:15',
     )
+  })
+
+  test('class search result card shows remaining spots when the class is not full', async ({ page }) => {
+    await page.goto(`/${SLUG}/search?q=Utgången%20klass&mode=class`)
+
+    await expect(page.getByTestId('public-search-classes-section')).toContainText('Utgången klass')
+    await expect(page.getByTestId(/^public-search-class-availability-/)).toContainText('2 platser kvar')
   })
 
   test('player class pills open the class roster search', async ({ page }) => {

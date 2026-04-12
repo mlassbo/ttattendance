@@ -107,6 +107,28 @@ function getClassPillClassName(registration: PublicClassRegistration, now: Date)
   return `${baseClassName} bg-stone-100 text-stone-600`
 }
 
+function ClassAvailabilityBadge({ classResult }: { classResult: PublicSearchClass }) {
+  if (classResult.maxPlayers == null) {
+    return null
+  }
+
+  const spotsLeft = classResult.maxPlayers - classResult.playerCount
+
+  if (classResult.playerCount < classResult.maxPlayers && spotsLeft > 2) {
+    return <span className="text-xs font-medium text-muted">{spotsLeft} platser kvar</span>
+  }
+
+  if (classResult.playerCount < classResult.maxPlayers && spotsLeft === 1) {
+    return <span className="app-pill-warning">1 plats kvar</span>
+  }
+
+  if (classResult.playerCount < classResult.maxPlayers && spotsLeft === 2) {
+    return <span className="app-pill-warning">2 platser kvar</span>
+  }
+
+  return <span className="app-pill-muted">Fullt</span>
+}
+
 function getPlayerCardAction(registrations: PublicClassRegistration[], now: Date): {
   state: 'available' | 'editable' | 'upcoming' | 'view' | 'hidden'
   label: string | null
@@ -574,6 +596,9 @@ export default function PublicSearchResults({
                   <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <span className="app-pill-muted whitespace-nowrap">
                       {classResult.playerCount} spelare
+                    </span>
+                    <span data-testid={`public-search-class-availability-${classResult.id}`}>
+                      <ClassAvailabilityBadge classResult={classResult} />
                     </span>
                     {classResult.reserveList.length > 0 ? (
                       <span

@@ -284,12 +284,14 @@ export async function seedPlayerTestCompetition(
         name: 'Herrar A-klass',
         start_time:           `${scheduleDate}T09:00:00+02:00`,
         attendance_deadline:  `${futureDeadlineDate}T08:15:00+02:00`,
+        max_players: 3,
       },
       {
         session_id: sessionId,
         name: 'Utgången klass',
         start_time:           `${scheduleDate}T11:00:00+02:00`,
         attendance_deadline:  '2020-09-13T08:15:00+02:00',
+        max_players: 5,
       },
     ])
     .select('id, name')
@@ -606,4 +608,135 @@ export async function seedWaitingList(
     registrationId: registration.id,
     playerId: resolvedPlayerId,
   }
+}
+
+export async function seedClassDashboard(
+  supabase: SupabaseClient,
+  slug: string,
+  adminPin: string,
+): Promise<{ competitionId: string; slug: string }> {
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash('0000', 4),
+    bcrypt.hash(adminPin, 4),
+  ])
+
+  const { data: competition, error: competitionError } = await supabase
+    .from('competitions')
+    .insert({
+      name: 'Dashboard Testtävling',
+      slug,
+      player_pin_hash: playerPinHash,
+      admin_pin_hash: adminPinHash,
+    })
+    .select('id')
+    .single()
+
+  if (competitionError || !competition) {
+    throw new Error(`Failed to seed dashboard competition: ${competitionError?.message ?? 'Unknown error'}`)
+  }
+
+  const competitionId = competition.id
+
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .insert({
+      competition_id: competitionId,
+      name: 'Pass 1',
+      date: '2025-09-13',
+      session_order: 1,
+    })
+    .select('id')
+    .single()
+
+  if (sessionError || !session) {
+    throw new Error(`Failed to seed dashboard session: ${sessionError?.message ?? 'Unknown error'}`)
+  }
+
+  const { data: classes, error: classError } = await supabase
+    .from('classes')
+    .insert([
+      {
+        session_id: session.id,
+        name: 'H-klass A',
+        start_time: '2025-09-13T09:00:00+02:00',
+        attendance_deadline: '2025-09-13T08:15:00+02:00',
+        max_players: 16,
+      },
+      {
+        session_id: session.id,
+        name: 'D-klass A',
+        start_time: '2025-09-13T10:30:00+02:00',
+        attendance_deadline: '2025-09-13T09:45:00+02:00',
+        max_players: 8,
+      },
+      {
+        session_id: session.id,
+        name: 'Mixed',
+        start_time: '2025-09-13T12:00:00+02:00',
+        attendance_deadline: '2025-09-13T11:15:00+02:00',
+        max_players: null,
+      },
+    ])
+    .select('id, name')
+
+  if (classError || !classes) {
+    throw new Error(`Failed to seed dashboard classes: ${classError?.message ?? 'Unknown error'}`)
+  }
+
+  const hClass = classes.find(classRow => classRow.name === 'H-klass A')
+  const dClass = classes.find(classRow => classRow.name === 'D-klass A')
+  const mixedClass = classes.find(classRow => classRow.name === 'Mixed')
+
+  if (!hClass || !dClass || !mixedClass) {
+    throw new Error('Failed to resolve seeded dashboard classes')
+  }
+
+  const playerRows = Array.from({ length: 30 }, (_, index) => ({
+    competition_id: competitionId,
+    name: `Dashboardspelare ${index + 1}`,
+    club: index < 15 ? 'Test BTK' : 'Valbo BTK',
+  }))
+
+  const { data: players, error: playerError } = await supabase
+    .from('players')
+    .insert(playerRows)
+    .select('id')
+
+  if (playerError || !players) {
+    throw new Error(`Failed to seed dashboard players: ${playerError?.message ?? 'Unknown error'}`)
+  }
+
+  const registrations = [
+    ...players.slice(0, 14).map(player => ({
+      player_id: player.id,
+      class_id: hClass.id,
+      status: 'registered' as const,
+    })),
+    ...players.slice(14, 22).map(player => ({
+      player_id: player.id,
+      class_id: dClass.id,
+      status: 'registered' as const,
+    })),
+    ...players.slice(22, 25).map((player, index) => ({
+      player_id: player.id,
+      class_id: dClass.id,
+      status: 'reserve' as const,
+      reserve_joined_at: new Date(Date.UTC(2025, 0, 1, 8, index, 0)).toISOString(),
+    })),
+    ...players.slice(25, 30).map(player => ({
+      player_id: player.id,
+      class_id: mixedClass.id,
+      status: 'registered' as const,
+    })),
+  ]
+
+  const { error: registrationError } = await supabase
+    .from('registrations')
+    .insert(registrations)
+
+  if (registrationError) {
+    throw new Error(`Failed to seed dashboard registrations: ${registrationError.message}`)
+  }
+
+  return { competitionId, slug }
 }
