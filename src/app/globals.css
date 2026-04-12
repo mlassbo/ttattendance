@@ -178,6 +178,30 @@
 	width: 7.5rem !important;
 }
 
+@keyframes class-settings-save-flash {
+	0% {
+		background-color: rgba(255, 255, 255, 0.8);
+		border-color: rgba(251, 146, 60, 0.35);
+		box-shadow: 0 1px 2px rgba(120, 53, 15, 0.08);
+	}
+
+	30% {
+		background-color: rgba(255, 247, 237, 0.96);
+		border-color: rgba(249, 115, 22, 0.7);
+		box-shadow: 0 10px 24px rgba(249, 115, 22, 0.16);
+	}
+
+	100% {
+		background-color: rgba(255, 255, 255, 0.8);
+		border-color: rgba(251, 146, 60, 0.35);
+		box-shadow: 0 1px 2px rgba(120, 53, 15, 0.08);
+	}
+}
+
+.class-settings-card-flash {
+	animation: class-settings-save-flash 900ms ease-out;
+}
+
 .class-settings-timepicker-calendar .react-datepicker__time-list-item {
 	height: 2.25rem !important;
 	padding: 0.5rem 0.75rem !important;

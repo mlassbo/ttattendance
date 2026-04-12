@@ -11,6 +11,25 @@ config({ path: '.env.test.local' })
 
 const TEST_PREFIX = 'test-sm-cls-'
 
+function formatDeadlineForInputs(iso: string): { date: string; time: string } {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Europe/Stockholm',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(iso)).map(part => [part.type, part.value]),
+  )
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  }
+}
+
 async function loginAsSuperadmin(page: Page) {
   const secret = process.env.COOKIE_SECRET
   if (!secret) {
@@ -90,24 +109,35 @@ test('edit attendance deadline — happy path', async ({ page }) => {
   await loginAsSuperadmin(page)
   await page.goto(`/super/competitions/${competitionId}/classes`)
 
-  // Click deadline to start editing
-  await page.getByTestId(`deadline-display-${cls.id}`).click()
   await expect(page.getByTestId(`deadline-date-${cls.id}`)).toBeVisible()
   await page.getByTestId(`deadline-date-${cls.id}`).click()
   await expect(page.locator('.class-settings-datepicker-calendar')).toBeVisible()
 
-  // Set a new valid deadline (08:00, before 09:00 start)
   await page.getByTestId(`deadline-date-${cls.id}`).fill('2025-09-13')
+  await page.getByTestId(`deadline-date-${cls.id}`).press('Tab')
   await page.getByTestId(`deadline-time-${cls.id}`).fill('08:00')
-  await page.getByTestId(`deadline-save-${cls.id}`).click()
+  await page.getByTestId(`deadline-time-${cls.id}`).press('Tab')
 
-  // Wait for the editing UI to disappear
-  await expect(page.getByTestId(`deadline-date-${cls.id}`)).not.toBeVisible()
+  await expect.poll(async () => {
+    const { data, error } = await supabase
+      .from('classes')
+      .select('attendance_deadline')
+      .eq('id', cls.id)
+      .single()
 
-  // Reload and verify the new deadline is persisted
+    expect(error).toBeNull()
+
+    if (!data?.attendance_deadline) {
+      return null
+    }
+
+    const formatted = formatDeadlineForInputs(data.attendance_deadline)
+    return `${formatted.date} ${formatted.time}`
+  }).toBe('2025-09-13 08:00')
+
   await page.reload()
-  const deadlineText = await page.getByTestId(`deadline-display-${cls.id}`).textContent()
-  expect(deadlineText).toContain('08:00')
+  await expect(page.getByTestId(`deadline-date-${cls.id}`)).toHaveValue('2025-09-13')
+  await expect(page.getByTestId(`deadline-time-${cls.id}`)).toHaveValue('08:00')
 })
 
 test('edit attendance deadline — validation rejects deadline after start time', async ({ page }) => {
@@ -120,12 +150,11 @@ test('edit attendance deadline — validation rejects deadline after start time'
   await loginAsSuperadmin(page)
   await page.goto(`/super/competitions/${competitionId}/classes`)
 
-  await page.getByTestId(`deadline-display-${cls.id}`).click()
-
   // Set a deadline AFTER the start time
   await page.getByTestId(`deadline-date-${cls.id}`).fill('2025-09-13')
+  await page.getByTestId(`deadline-date-${cls.id}`).press('Tab')
   await page.getByTestId(`deadline-time-${cls.id}`).fill('10:00')
-  await page.getByTestId(`deadline-save-${cls.id}`).click()
+  await page.getByTestId(`deadline-time-${cls.id}`).press('Tab')
 
   // Error should be shown
   await expect(page.getByTestId(`deadline-error-${cls.id}`)).toBeVisible()
@@ -170,9 +199,9 @@ test('re-import preserves manually edited deadline', async ({ page }) => {
   await loginAsSuperadmin(page)
   await page.goto(`/super/competitions/${competitionId}/classes`)
 
-  // Verify the manual deadline is displayed
-  const deadlineText = await page.getByTestId(`deadline-display-${cls.id}`).textContent()
-  expect(deadlineText).toContain('07:00')
+  // Verify the manual deadline is shown in the autosaving inputs
+  await expect(page.getByTestId(`deadline-date-${cls.id}`)).toHaveValue('2025-09-13')
+  await expect(page.getByTestId(`deadline-time-${cls.id}`)).toHaveValue('07:00')
 
   // Verify the deadline persists in the database (simulating that re-import wouldn't change it)
   const { data: classAfter } = await supabase

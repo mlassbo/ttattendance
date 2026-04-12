@@ -15,11 +15,12 @@ export async function PATCH(
   const { attendanceDeadline, sessionId } = body as {
     attendanceDeadline?: string
     sessionId?: string
+    maxPlayers?: number | null
   }
 
-  if (!attendanceDeadline && !sessionId) {
+  if (!('attendanceDeadline' in body) && !('sessionId' in body) && !('maxPlayers' in body)) {
     return NextResponse.json(
-      { error: 'Minst ett fält måste skickas (attendanceDeadline eller sessionId)' },
+      { error: 'Minst ett fält måste skickas (attendanceDeadline, sessionId eller maxPlayers)' },
       { status: 400 },
     )
   }
@@ -40,7 +41,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Klassen tillhör inte denna tävling' }, { status: 404 })
   }
 
-  const updates: Record<string, string> = {}
+  const updates: Record<string, string | number | null> = {}
 
   if (attendanceDeadline) {
     const deadline = new Date(attendanceDeadline)
@@ -57,6 +58,17 @@ export async function PATCH(
     }
 
     updates.attendance_deadline = deadline.toISOString()
+  }
+
+  if ('maxPlayers' in body) {
+    if (body.maxPlayers !== null && (!Number.isInteger(body.maxPlayers) || body.maxPlayers <= 0)) {
+      return NextResponse.json(
+        { error: 'Max spelare måste vara ett positivt heltal' },
+        { status: 400 },
+      )
+    }
+
+    updates.max_players = body.maxPlayers
   }
 
   if (sessionId) {
@@ -82,7 +94,7 @@ export async function PATCH(
     .from('classes')
     .update(updates)
     .eq('id', params.classId)
-    .select('id, session_id, name, start_time, attendance_deadline')
+    .select('id, session_id, name, start_time, attendance_deadline, max_players')
     .single()
 
   if (updateError) {
@@ -95,5 +107,6 @@ export async function PATCH(
     name: updated.name,
     startTime: updated.start_time,
     attendanceDeadline: updated.attendance_deadline,
+    maxPlayers: updated.max_players,
   })
 }
