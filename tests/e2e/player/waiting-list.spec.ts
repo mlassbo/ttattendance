@@ -40,6 +40,13 @@ test.describe('Public waiting list', () => {
   })
 
   test('player search shows reserve position and hides attendance actions for reserve classes', async ({ page }) => {
+    await seedWaitingList(testClient(), {
+      slug: SLUG,
+      classId: futureClassId,
+      playerName: 'Adam Reserv',
+      clubName: 'Valbo BTK',
+      joinedAt: '2025-01-01T07:55:00.000Z',
+    })
     const seededReserve = await seedWaitingList(testClient(), {
       slug: SLUG,
       classId: futureClassId,
@@ -51,13 +58,13 @@ test.describe('Public waiting list', () => {
     await page.goto(`/${SLUG}/search?q=Rasmus&mode=player`)
 
     await expect(page.getByTestId('public-search-players-section')).toContainText('Rasmus Reserv')
-    await expect(page.getByTestId('public-search-players-section')).toContainText('Reserv #1')
+    await expect(page.getByTestId('public-search-players-section')).toContainText('Reserv #2')
     await expect(page.getByTestId(/^public-search-player-toggle-/)).toContainText('Visa klasser')
 
     await page.getByTestId(/^public-search-player-toggle-/).click()
 
     await expect(page.getByTestId(`public-search-player-class-card-${seededReserve.registrationId}`)).toContainText(
-      'Du är på plats #1 på reservlistan för denna klass.',
+      'Du är på plats #2 på reservlistan för denna klass.',
     )
     await expect(page.getByTestId(`public-search-confirm-btn-${seededReserve.registrationId}`)).toHaveCount(0)
     await expect(page.getByTestId(`public-search-absent-btn-${seededReserve.registrationId}`)).toHaveCount(0)

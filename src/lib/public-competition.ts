@@ -53,6 +53,13 @@ type RegistrationRow = {
   attendance?: RelationValue<AttendanceRow>
 }
 
+type ReservePositionRow = {
+  id: string
+  class_id: string
+  status: RegistrationStatus
+  reserve_joined_at: string | null
+}
+
 type PlayerRow = {
   id: string
   name: string
@@ -708,10 +715,23 @@ async function getRegistrationsByPlayerIds(
       .range(from, to),
   )
 
+  const classIds = Array.from(
+    new Set(((registrations ?? []) as RegistrationRow[]).map(registration => registration.class_id)),
+  )
+  const reserveRegistrations = classIds.length === 0
+    ? []
+    : await fetchAllPages<ReservePositionRow>(async (from, to) =>
+        await supabase
+          .from('registrations')
+          .select('id, class_id, status, reserve_joined_at')
+          .in('class_id', classIds)
+          .eq('status', 'reserve')
+          .range(from, to),
+      )
+
   const registrationsByPlayerId = new Map<string, PublicClassRegistration[]>()
   const reservePositions = buildReservePositionMap(
-    ((registrations ?? []) as RegistrationRow[])
-      .filter(registration => registration.status === 'reserve')
+    ((reserveRegistrations ?? []) as ReservePositionRow[])
       .map(registration => ({
         registrationId: registration.id,
         classId: registration.class_id,
