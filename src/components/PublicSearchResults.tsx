@@ -56,6 +56,13 @@ function buildClassSearchHref(slug: string, className: string) {
   return buildSearchHref(slug, className, 'class')
 }
 
+function buildClassPageHref(slug: string, classId: string, returnTo: string) {
+  const params = new URLSearchParams()
+  params.set('returnTo', returnTo)
+
+  return `/${slug}/classes/${classId}?${params.toString()}`
+}
+
 function sanitizeFragment(value: string) {
   return value
     .normalize('NFKD')
@@ -205,6 +212,7 @@ export default function PublicSearchResults({
   const [players, setPlayers] = useState(initialPlayers)
   const [expandedPlayers, setExpandedPlayers] = useState<string[]>([])
   const [now, setNow] = useState(() => new Date())
+  const returnTo = buildSearchHref(slug, query, mode)
 
   useEffect(() => {
     setPlayers(initialPlayers)
@@ -327,7 +335,9 @@ export default function PublicSearchResults({
                       {player.registrations.map(registration => (
                         <Link
                           key={registration.registrationId}
-                          href={buildClassSearchHref(slug, registration.class.name)}
+                          href={registration.class.id
+                            ? buildClassPageHref(slug, registration.class.id, returnTo)
+                            : buildClassSearchHref(slug, registration.class.name)}
                           data-testid={`public-search-player-class-pill-${player.id}-${sanitizeFragment(registration.class.name)}`}
                           aria-label={`Visa alla spelare i ${registration.class.name}`}
                           className={getClassPillClassName(registration, now)}

@@ -30,8 +30,11 @@ function buildSearchHref(slug: string, query: string, mode: PublicSearchMode) {
   return queryString ? `/${slug}/search?${queryString}` : `/${slug}/search`
 }
 
-function buildClassSearchHref(slug: string, className: string) {
-  return buildSearchHref(slug, className, 'class')
+function buildClassPageHref(slug: string, classId: string, returnTo: string) {
+  const params = new URLSearchParams()
+  params.set('returnTo', returnTo)
+
+  return `/${slug}/classes/${classId}?${params.toString()}`
 }
 
 function buildSearchResultsSummary(results: {
@@ -170,6 +173,7 @@ export default async function SearchPage({
               <ClassSearchPills
                 slug={slug}
                 query={query}
+                returnTo={buildSearchHref(slug, query, mode)}
                 classSuggestions={classSuggestions}
               />
             ) : (
@@ -265,10 +269,12 @@ export default async function SearchPage({
 function ClassSearchPills({
   slug,
   query,
+  returnTo,
   classSuggestions,
 }: {
   slug: string
   query: string
+  returnTo: string
   classSuggestions: PublicSearchClassSuggestion[]
 }) {
   return (
@@ -281,7 +287,7 @@ function ClassSearchPills({
           return (
             <Link
               key={classSuggestion.id}
-              href={buildClassSearchHref(slug, classSuggestion.name)}
+              href={buildClassPageHref(slug, classSuggestion.id, returnTo)}
               data-testid={`public-search-class-pill-${classSuggestion.id}`}
               aria-current={selected ? 'page' : undefined}
               className={selected

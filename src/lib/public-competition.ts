@@ -91,7 +91,36 @@ type ClassDashboardRegistrationRow = {
   status: RegistrationStatus
 }
 
+type CompetitionClassNameRow = {
+  id: string
+  name: string
+}
+
+type OnDataIntegrationStatusRow = {
+  current_snapshot_id: string | null
+}
+
+type OnDataSnapshotClassRow = {
+  id: string
+  class_name: string
+}
+
+type OnDataSnapshotPoolRow = {
+  id: string
+  snapshot_class_id: string
+  pool_number: number
+  pool_order: number
+}
+
+type OnDataSnapshotPlayerRow = {
+  snapshot_pool_id: string
+  player_order: number
+  name: string
+  club: string | null
+}
+
 export type PublicSearchMode = 'all' | 'player' | 'club' | 'class'
+export type ClassLiveStatus = 'none' | 'pools_available'
 
 export interface PublicCompetition {
   id: string
@@ -181,6 +210,15 @@ export interface PublicSearchClass {
 export interface PublicSearchClassSuggestion {
   id: string
   name: string
+}
+
+export interface ClassLivePool {
+  poolNumber: number
+  players: Array<{ name: string; club: string | null }>
+}
+
+export interface ClassLiveData {
+  pools: ClassLivePool[]
 }
 
 export interface PublicPlayerDetails {
@@ -373,6 +411,245 @@ export async function getPublicCompetitionClassSuggestions(
     }))
 }
 
+export async function getPublicClassDetails(
+  supabase: ServerClient,
+  competitionId: string,
+  classId: string,
+): Promise<PublicSearchClass | null> {
+  const { data: classRow, error } = await supabase
+    .from('classes')
+    .select(`
+      id,
+      name,
+      start_time,
+      attendance_deadline,
+      max_players,
+      sessions!inner (
+        id,
+        name,
+        date,
+        session_order,
+        competition_id
+      )
+    `)
+    .eq('id', classId)
+    .eq('sessions.competition_id', competitionId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  if (!classRow) {
+    return null
+  }
+
+  const daySessionOrderById = await getDaySessionOrderMap(supabase, competitionId)
+  const classes = await buildPublicSearchClasses(
+    supabase,
+    [classRow as ClassRow],
+    daySessionOrderById,
+  )
+
+  return classes[0] ?? null
+}
+
+export async function getClassLiveData(
+  supabase: ServerClient,
+  competitionId: string,
+  classId: string,
+): Promise<ClassLiveData | null> {
+  const { data: classRow, error: classError } = await supabase
+    .from('classes')
+    .select(`
+      name,
+      sessions!inner (
+        competition_id
+      )
+    `)
+    .eq('id', classId)
+    .eq('sessions.competition_id', competitionId)
+    .maybeSingle()
+
+  if (classError) {
+    throw new Error(classError.message)
+  }
+
+  if (!classRow) {
+    return null
+  }
+
+  const currentSnapshotId = await getCurrentOnDataSnapshotId(supabase, competitionId)
+  if (!currentSnapshotId) {
+    return null
+  }
+
+  const { data: snapshotClass, error: snapshotClassError } = await supabase
+    .from('ondata_integration_snapshot_classes')
+    .select('id')
+    .eq('snapshot_id', currentSnapshotId)
+    .eq('class_name', classRow.name)
+    .maybeSingle()
+
+  if (snapshotClassError) {
+    throw new Error(snapshotClassError.message)
+  }
+
+  if (!snapshotClass) {
+    return null
+  }
+
+  const { data: pools, error: poolsError } = await supabase
+    .from('ondata_integration_snapshot_pools')
+    .select('id, snapshot_class_id, pool_number, pool_order')
+    .eq('snapshot_class_id', snapshotClass.id)
+    .order('pool_order', { ascending: true })
+
+  if (poolsError) {
+    throw new Error(poolsError.message)
+  }
+
+  const poolRows = (pools ?? []) as OnDataSnapshotPoolRow[]
+  if (poolRows.length === 0) {
+    return null
+  }
+
+  const { data: players, error: playersError } = await supabase
+    .from('ondata_integration_snapshot_players')
+    .select('snapshot_pool_id, player_order, name, club')
+    .in('snapshot_pool_id', poolRows.map(pool => pool.id))
+    .order('player_order', { ascending: true })
+
+  if (playersError) {
+    throw new Error(playersError.message)
+  }
+
+  const playersByPoolId = new Map<string, Array<{ name: string; club: string | null }>>()
+  for (const player of (players ?? []) as OnDataSnapshotPlayerRow[]) {
+    const poolPlayers = playersByPoolId.get(player.snapshot_pool_id) ?? []
+    poolPlayers.push({
+      name: player.name,
+      club: player.club,
+    })
+    playersByPoolId.set(player.snapshot_pool_id, poolPlayers)
+  }
+
+  const livePools = poolRows.map(pool => ({
+    poolNumber: pool.pool_number,
+    players: playersByPoolId.get(pool.id) ?? [],
+  }))
+
+  if (livePools.every(pool => pool.players.length === 0)) {
+    return null
+  }
+
+  return {
+    pools: livePools,
+  }
+}
+
+export async function getClassDashboardLiveStatus(
+  supabase: ServerClient,
+  competitionId: string,
+): Promise<Map<string, ClassLiveStatus>> {
+  const { data: classes, error: classesError } = await supabase
+    .from('classes')
+    .select(`
+      id,
+      name,
+      sessions!inner (
+        competition_id
+      )
+    `)
+    .eq('sessions.competition_id', competitionId)
+
+  if (classesError) {
+    throw new Error(classesError.message)
+  }
+
+  const localClasses = (classes ?? []) as CompetitionClassNameRow[]
+  const liveStatus = new Map<string, ClassLiveStatus>(
+    localClasses.map(classRow => [classRow.id, 'none']),
+  )
+
+  if (localClasses.length === 0) {
+    return liveStatus
+  }
+
+  const currentSnapshotId = await getCurrentOnDataSnapshotId(supabase, competitionId)
+  if (!currentSnapshotId) {
+    return liveStatus
+  }
+
+  const { data: snapshotClasses, error: snapshotClassesError } = await supabase
+    .from('ondata_integration_snapshot_classes')
+    .select('id, class_name')
+    .eq('snapshot_id', currentSnapshotId)
+
+  if (snapshotClassesError) {
+    throw new Error(snapshotClassesError.message)
+  }
+
+  const snapshotClassRows = (snapshotClasses ?? []) as OnDataSnapshotClassRow[]
+  if (snapshotClassRows.length === 0) {
+    return liveStatus
+  }
+
+  const { data: pools, error: poolsError } = await supabase
+    .from('ondata_integration_snapshot_pools')
+    .select('id, snapshot_class_id')
+    .in('snapshot_class_id', snapshotClassRows.map(snapshotClass => snapshotClass.id))
+
+  if (poolsError) {
+    throw new Error(poolsError.message)
+  }
+
+  const poolRows = (pools ?? []) as Array<Pick<OnDataSnapshotPoolRow, 'id' | 'snapshot_class_id'>>
+  if (poolRows.length === 0) {
+    return liveStatus
+  }
+
+  const poolClassIdByPoolId = new Map(
+    poolRows.map(poolRow => [poolRow.id, poolRow.snapshot_class_id]),
+  )
+
+  const { data: players, error: playersError } = await supabase
+    .from('ondata_integration_snapshot_players')
+    .select('snapshot_pool_id')
+    .in('snapshot_pool_id', poolRows.map(pool => pool.id))
+
+  if (playersError) {
+    throw new Error(playersError.message)
+  }
+
+  const snapshotClassIdsWithPlayers = new Set<string>()
+  for (const player of (players ?? []) as Array<Pick<OnDataSnapshotPlayerRow, 'snapshot_pool_id'>>) {
+    const snapshotClassId = poolClassIdByPoolId.get(player.snapshot_pool_id)
+    if (snapshotClassId) {
+      snapshotClassIdsWithPlayers.add(snapshotClassId)
+    }
+  }
+
+  const localClassIdsByName = new Map<string, string[]>()
+  for (const classRow of localClasses) {
+    const classIds = localClassIdsByName.get(classRow.name) ?? []
+    classIds.push(classRow.id)
+    localClassIdsByName.set(classRow.name, classIds)
+  }
+
+  for (const snapshotClass of snapshotClassRows) {
+    if (!snapshotClassIdsWithPlayers.has(snapshotClass.id)) {
+      continue
+    }
+
+    for (const classId of localClassIdsByName.get(snapshotClass.class_name) ?? []) {
+      liveStatus.set(classId, 'pools_available')
+    }
+  }
+
+  return liveStatus
+}
+
 export async function getPublicPlayerDetails(
   supabase: ServerClient,
   competitionId: string,
@@ -537,82 +814,7 @@ async function searchClasses(
     return []
   }
 
-  const registrations = await fetchAllPages<ClassRegistrationPlayerRow>(async (from, to) =>
-    await supabase
-      .from('registrations')
-      .select(`
-        id,
-        class_id,
-        status,
-        reserve_joined_at,
-        players (
-          id,
-          name,
-          club
-        )
-      `)
-      .in('class_id', matchedClasses.map(classRow => classRow.id))
-      .range(from, to),
-  )
-
-  const playersByClassId = new Map<string, PlayerRow[]>()
-  const reserveListByClassId = new Map<string, PublicReserveEntry[]>()
-  const reserveClassIdByRegistrationId = new Map<string, string>()
-  const reserveSources: Array<{
-    registrationId: string
-    classId: string
-    status: RegistrationStatus
-    reserveJoinedAt: string | null
-    name: string
-    club: string | null
-  }> = []
-  for (const registration of (registrations ?? []) as ClassRegistrationPlayerRow[]) {
-    const player = getSingleRelation(registration.players)
-    if (!player) {
-      continue
-    }
-
-    if (registration.status === 'reserve') {
-      reserveClassIdByRegistrationId.set(registration.id, registration.class_id)
-      reserveSources.push({
-        registrationId: registration.id,
-        classId: registration.class_id,
-        status: registration.status,
-        reserveJoinedAt: registration.reserve_joined_at,
-        name: player.name,
-        club: player.club,
-      })
-      continue
-    }
-
-    const players = playersByClassId.get(registration.class_id) ?? []
-    players.push(player)
-    playersByClassId.set(registration.class_id, players)
-  }
-
-  for (const players of Array.from(playersByClassId.values())) {
-    players.sort((left, right) => left.name.localeCompare(right.name, 'sv'))
-  }
-
-  for (const entry of buildReserveListEntries(reserveSources)) {
-    const classId = reserveClassIdByRegistrationId.get(entry.registrationId)
-    if (!classId) {
-      continue
-    }
-
-    const reserveList = reserveListByClassId.get(classId) ?? []
-    reserveList.push(entry)
-    reserveListByClassId.set(classId, reserveList)
-  }
-
-  return matchedClasses
-    .sort((left, right) => comparePublicClassRows(left, right, daySessionOrderById))
-    .map(classRow => ({
-      ...buildPublicClassDetails(classRow, daySessionOrderById),
-      playerCount: (playersByClassId.get(classRow.id) ?? []).length,
-      players: playersByClassId.get(classRow.id) ?? [],
-      reserveList: reserveListByClassId.get(classRow.id) ?? [],
-    }))
+  return buildPublicSearchClasses(supabase, matchedClasses, daySessionOrderById)
 }
 
 async function searchClubs(
@@ -673,6 +875,111 @@ async function getDaySessionOrderMap(
   }
 
   return buildDaySessionOrderMap((competitionSessions ?? []) as CompetitionSessionRow[])
+}
+
+async function getCurrentOnDataSnapshotId(
+  supabase: ServerClient,
+  competitionId: string,
+): Promise<string | null> {
+  const { data: integrationStatus, error } = await supabase
+    .from('ondata_integration_status')
+    .select('current_snapshot_id')
+    .eq('competition_id', competitionId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return ((integrationStatus ?? null) as OnDataIntegrationStatusRow | null)?.current_snapshot_id ?? null
+}
+
+async function buildPublicSearchClasses(
+  supabase: ServerClient,
+  classRows: ClassRow[],
+  daySessionOrderById: Map<string, number>,
+): Promise<PublicSearchClass[]> {
+  if (classRows.length === 0) {
+    return []
+  }
+
+  const registrations = await fetchAllPages<ClassRegistrationPlayerRow>(async (from, to) =>
+    await supabase
+      .from('registrations')
+      .select(`
+        id,
+        class_id,
+        status,
+        reserve_joined_at,
+        players (
+          id,
+          name,
+          club
+        )
+      `)
+      .in('class_id', classRows.map(classRow => classRow.id))
+      .range(from, to),
+  )
+
+  const playersByClassId = new Map<string, PlayerRow[]>()
+  const reserveListByClassId = new Map<string, PublicReserveEntry[]>()
+  const reserveClassIdByRegistrationId = new Map<string, string>()
+  const reserveSources: Array<{
+    registrationId: string
+    classId: string
+    status: RegistrationStatus
+    reserveJoinedAt: string | null
+    name: string
+    club: string | null
+  }> = []
+
+  for (const registration of (registrations ?? []) as ClassRegistrationPlayerRow[]) {
+    const player = getSingleRelation(registration.players)
+    if (!player) {
+      continue
+    }
+
+    if (registration.status === 'reserve') {
+      reserveClassIdByRegistrationId.set(registration.id, registration.class_id)
+      reserveSources.push({
+        registrationId: registration.id,
+        classId: registration.class_id,
+        status: registration.status,
+        reserveJoinedAt: registration.reserve_joined_at,
+        name: player.name,
+        club: player.club,
+      })
+      continue
+    }
+
+    const playersForClass = playersByClassId.get(registration.class_id) ?? []
+    playersForClass.push(player)
+    playersByClassId.set(registration.class_id, playersForClass)
+  }
+
+  for (const playersForClass of Array.from(playersByClassId.values())) {
+    playersForClass.sort((left, right) => left.name.localeCompare(right.name, 'sv'))
+  }
+
+  for (const entry of buildReserveListEntries(reserveSources)) {
+    const classId = reserveClassIdByRegistrationId.get(entry.registrationId)
+    if (!classId) {
+      continue
+    }
+
+    const reserveList = reserveListByClassId.get(classId) ?? []
+    reserveList.push(entry)
+    reserveListByClassId.set(classId, reserveList)
+  }
+
+  return classRows
+    .sort((left, right) => comparePublicClassRows(left, right, daySessionOrderById))
+    .map(classRow => ({
+      ...buildPublicClassDetails(classRow, daySessionOrderById),
+      playerCount: (playersByClassId.get(classRow.id) ?? []).length,
+      players: playersByClassId.get(classRow.id) ?? [],
+      reserveList: reserveListByClassId.get(classRow.id) ?? [],
+    }))
 }
 
 async function getRegistrationsByPlayerIds(

@@ -107,7 +107,7 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId('public-club-back-link')).toContainText('Tillbaka till sök')
   })
 
-  test('class mode shows all class suggestion pills and class roster results', async ({ page }) => {
+  test('class mode suggestion pills open the class page with search context', async ({ page }) => {
     await page.goto(`/${SLUG}/search?mode=class`)
 
     await expect(page.getByTestId('public-search-mode-class')).toHaveAttribute('aria-current', 'page')
@@ -118,17 +118,28 @@ test.describe('Public browse flow', () => {
 
     await page.getByTestId(/^public-search-class-pill-/).filter({ hasText: 'Herrar A-klass' }).click()
 
-    await expect(page.getByTestId('public-search-classes-section')).toBeVisible()
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Herrar A-klass')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Anna Testsson')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Bertil Berg')
-    await expect(page.getByTestId(/^public-search-class-availability-/)).toContainText('Fullt')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText(
+    await expect.poll(async () => new URL(page.url()).pathname).toMatch(
+      new RegExp(`^/${SLUG}/classes/[^/]+$`),
+    )
+    await expect.poll(async () => new URL(page.url()).searchParams.get('returnTo')).toBe(
+      `/${SLUG}/search?mode=class`,
+    )
+    await expect(page.getByTestId('class-page-back-link')).toContainText('Tillbaka till sök')
+    await expect(page.getByTestId('class-page-back-link')).toHaveAttribute(
+      'href',
+      `/${SLUG}/search?mode=class`,
+    )
+    await expect(page.getByTestId('class-page-header')).toContainText('Herrar A-klass')
+    await expect(page.getByTestId('class-page-header')).toContainText('3 anmälda')
+    await expect(page.getByTestId('class-page-header')).toContainText('Fullt')
+    await expect(page.getByTestId('class-page-header')).toContainText(
       'Närvarorapportering öppnar 2025-09-12 20:00',
     )
-    await expect(page.getByTestId('public-search-classes-section')).toContainText(
+    await expect(page.getByTestId('class-page-header')).toContainText(
       'Anmäl närvaro senast 2099-09-13 08:15',
     )
+    await expect(page.locator('main')).toContainText('Anna Testsson')
+    await expect(page.locator('main')).toContainText('Bertil Berg')
   })
 
   test('class search result card shows remaining spots when the class is not full', async ({ page }) => {
@@ -138,17 +149,24 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId(/^public-search-class-availability-/)).toContainText('2 platser kvar')
   })
 
-  test('player class pills open the class roster search', async ({ page }) => {
+  test('player class pills open the class page and preserve the search return path', async ({ page }) => {
     await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
 
     await page.getByTestId(`public-search-player-class-pill-${seeded.player.id}-herrar-a-klass`).click()
 
-    await expect(page).toHaveURL(`/${SLUG}/search?q=Herrar+A-klass&mode=class`)
-    await expect(page.getByTestId('public-search-results-summary')).toContainText('Sökresultat')
-    await expect(page.getByTestId('public-search-results-summary')).toContainText('1 träff')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Herrar A-klass')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Anna Testsson')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Bertil Berg')
+    await expect.poll(async () => new URL(page.url()).pathname).toMatch(
+      new RegExp(`^/${SLUG}/classes/[^/]+$`),
+    )
+    await expect.poll(async () => new URL(page.url()).searchParams.get('returnTo')).toBe(
+      `/${SLUG}/search?q=Anna&mode=player`,
+    )
+    await expect(page.getByTestId('class-page-back-link')).toContainText('Tillbaka till sök')
+    await expect(page.getByTestId('class-page-header')).toContainText('Herrar A-klass')
+
+    await page.getByTestId('class-page-back-link').click()
+
+    await expect(page).toHaveURL(`/${SLUG}/search?q=Anna&mode=player`)
+    await expect(page.getByTestId(`public-search-player-card-${seeded.player.id}`)).toBeVisible()
   })
 
   test('public player page shows the registered classes without login', async ({ page }) => {

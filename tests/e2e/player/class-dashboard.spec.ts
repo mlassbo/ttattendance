@@ -28,7 +28,7 @@ test.describe('Public class dashboard', () => {
     await expect(dashboard).toContainText('D-klass A')
     await expect(dashboard).toContainText('Fullt')
     await expect(dashboard).toContainText('3 på reservlistan')
-    await expect(page.getByRole('link', { name: /Mixed/ })).toContainText('–')
+    await expect(page.getByTestId(/^class-card-expand-/).filter({ hasText: 'Mixed' })).toContainText('–')
   })
 
   test('session heading format', async ({ page }) => {
@@ -37,16 +37,13 @@ test.describe('Public class dashboard', () => {
     await expect(page.getByTestId('class-dashboard')).toContainText('Lör - Pass 1')
   })
 
-  test('class row is a link', async ({ page }) => {
+  test('class row expands inline instead of navigating away', async ({ page }) => {
     await page.goto(`/${SLUG}`)
 
-    await page.getByRole('link', { name: /H-klass A/ }).click()
+    await page.getByTestId(/^class-card-expand-/).filter({ hasText: 'H-klass A' }).click()
 
-    await expect(page).toHaveURL(`/${SLUG}/search?mode=class&q=H-klass+A`)
-    await expect(page.getByTestId('public-search-mode-class')).toHaveAttribute('aria-current', 'page')
-    await expect(
-      page.getByTestId(/^public-search-class-pill-/).filter({ hasText: 'H-klass A' }),
-    ).toHaveAttribute('aria-current', 'page')
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('H-klass A')
+    await expect(page).toHaveURL(`/${SLUG}`)
+    await expect(page.getByTestId('class-dashboard')).toContainText('Spelare')
+    await expect(page.getByTestId('class-dashboard')).toContainText('Dashboardspelare 1')
   })
 })

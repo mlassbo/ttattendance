@@ -1,6 +1,7 @@
 // Shared database helpers for Playwright tests.
 // All test competitions must use slugs starting with "test-".
 
+import { randomUUID } from 'node:crypto'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
 import { encryptStoredPin } from '@/lib/pin-encryption'
@@ -543,6 +544,12 @@ export async function seedClassSettingsCompetition(
   }
 }
 
+export interface SeededCompetitionWithPools {
+  competitionId: string
+  classId: string
+  classWithoutPoolsId: string
+}
+
 export async function seedWaitingList(
   supabase: SupabaseClient,
   options: {
@@ -739,4 +746,306 @@ export async function seedClassDashboard(
   }
 
   return { competitionId, slug }
+}
+
+export async function seedCompetitionWithPools(
+  supabase: SupabaseClient,
+  slug: string,
+  options?: {
+    name?: string
+    playerPin?: string
+    adminPin?: string
+  },
+): Promise<SeededCompetitionWithPools> {
+  if (!slug.startsWith('test-player-clv-')) {
+    throw new Error('seedCompetitionWithPools requires a slug starting with "test-player-clv-"')
+  }
+
+  const name = options?.name ?? 'Liveklass Testtävling'
+  const playerPin = options?.playerPin ?? '1111'
+  const adminPin = options?.adminPin ?? '2222'
+
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash(playerPin, 4),
+    bcrypt.hash(adminPin, 4),
+  ])
+  const secret = process.env.COOKIE_SECRET!
+
+  const { data: competition, error: competitionError } = await supabase
+    .from('competitions')
+    .insert({
+      name,
+      slug,
+      player_pin_hash: playerPinHash,
+      admin_pin_hash: adminPinHash,
+      player_pin_ciphertext: encryptStoredPin(playerPin, secret),
+      admin_pin_ciphertext: encryptStoredPin(adminPin, secret),
+    })
+    .select('id')
+    .single()
+
+  if (competitionError || !competition) {
+    throw new Error(`Failed to seed competition with pools: ${competitionError?.message ?? 'Unknown error'}`)
+  }
+
+  const competitionId = competition.id
+
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .insert({
+      competition_id: competitionId,
+      name: 'Pass 1',
+      date: '2025-09-13',
+      session_order: 1,
+    })
+    .select('id')
+    .single()
+
+  if (sessionError || !session) {
+    throw new Error(`Failed to seed live-view session: ${sessionError?.message ?? 'Unknown error'}`)
+  }
+
+  const { data: classes, error: classError } = await supabase
+    .from('classes')
+    .insert([
+      {
+        session_id: session.id,
+        name: 'Liveklass A',
+        start_time: '2025-09-13T09:00:00+02:00',
+        attendance_deadline: '2099-09-13T08:15:00+02:00',
+        max_players: 8,
+      },
+      {
+        session_id: session.id,
+        name: 'Klass utan lottning',
+        start_time: '2025-09-13T11:00:00+02:00',
+        attendance_deadline: '2099-09-13T10:15:00+02:00',
+        max_players: 4,
+      },
+    ])
+    .select('id, name')
+
+  if (classError || !classes) {
+    throw new Error(`Failed to seed live-view classes: ${classError?.message ?? 'Unknown error'}`)
+  }
+
+  const classWithPools = classes.find(classRow => classRow.name === 'Liveklass A')
+  const classWithoutPools = classes.find(classRow => classRow.name === 'Klass utan lottning')
+
+  if (!classWithPools || !classWithoutPools) {
+    throw new Error('Failed to resolve live-view class ids')
+  }
+
+  const { data: players, error: playerError } = await supabase
+    .from('players')
+    .insert([
+      { competition_id: competitionId, name: 'Anna Andersson', club: 'BTK Mansen' },
+      { competition_id: competitionId, name: 'Björn Berg', club: 'IFK Umeå' },
+      { competition_id: competitionId, name: 'Clara Carlsson', club: 'Norrtulls SK' },
+      { competition_id: competitionId, name: 'David Dahl', club: 'Spårvägen BTK' },
+      { competition_id: competitionId, name: 'Erik Ek', club: 'Kvarnby AK' },
+    ])
+    .select('id, name')
+
+  if (playerError || !players) {
+    throw new Error(`Failed to seed live-view players: ${playerError?.message ?? 'Unknown error'}`)
+  }
+
+  const playerIdByName = new Map(players.map(player => [player.name, player.id]))
+
+  const { data: registrations, error: registrationError } = await supabase
+    .from('registrations')
+    .insert([
+      {
+        player_id: playerIdByName.get('Anna Andersson')!,
+        class_id: classWithPools.id,
+        status: 'registered',
+      },
+      {
+        player_id: playerIdByName.get('Björn Berg')!,
+        class_id: classWithPools.id,
+        status: 'registered',
+      },
+      {
+        player_id: playerIdByName.get('Clara Carlsson')!,
+        class_id: classWithoutPools.id,
+        status: 'registered',
+      },
+      {
+        player_id: playerIdByName.get('David Dahl')!,
+        class_id: classWithoutPools.id,
+        status: 'registered',
+      },
+      {
+        player_id: playerIdByName.get('Erik Ek')!,
+        class_id: classWithoutPools.id,
+        status: 'reserve',
+        reserve_joined_at: '2025-01-01T08:00:00.000Z',
+      },
+    ])
+    .select('id')
+
+  if (registrationError || !registrations) {
+    throw new Error(`Failed to seed live-view registrations: ${registrationError?.message ?? 'Unknown error'}`)
+  }
+
+  const timestamp = '2025-09-13T08:00:00.000Z'
+  const snapshotId = randomUUID()
+  const liveClassSnapshotId = randomUUID()
+  const fallbackClassSnapshotId = randomUUID()
+  const poolOneId = randomUUID()
+  const poolTwoId = randomUUID()
+
+  const { error: snapshotError } = await supabase
+    .from('ondata_integration_snapshots')
+    .insert({
+      id: snapshotId,
+      competition_id: competitionId,
+      schema_version: 1,
+      payload_hash: `seed-${snapshotId}`,
+      received_at: timestamp,
+      processed_at: timestamp,
+      processing_status: 'processed',
+      error_message: null,
+      source_file_name: 'seed-live.json',
+      source_file_path: 'tests/seed-live.json',
+      source_file_modified_at: timestamp,
+      source_copied_to_temp_at: timestamp,
+      source_processed_at: timestamp,
+      source_file_hash: `hash-${snapshotId}`,
+      summary_classes: 2,
+      summary_pools: 2,
+      summary_completed_matches: 0,
+      raw_payload: {
+        schemaVersion: 1,
+        source: {
+          fileName: 'seed-live.json',
+          filePath: 'tests/seed-live.json',
+          fileModifiedAt: timestamp,
+          copiedToTempAt: timestamp,
+          processedAt: timestamp,
+          fileHash: `hash-${snapshotId}`,
+        },
+        summary: {
+          classes: 2,
+          pools: 2,
+          completedMatches: 0,
+        },
+        classes: [],
+      },
+    })
+
+  if (snapshotError) {
+    throw new Error(`Failed to seed live snapshot: ${snapshotError.message}`)
+  }
+
+  const { error: snapshotClassesError } = await supabase
+    .from('ondata_integration_snapshot_classes')
+    .insert([
+      {
+        id: liveClassSnapshotId,
+        snapshot_id: snapshotId,
+        class_order: 0,
+        external_class_key: 'liveklass-a',
+        class_name: classWithPools.name,
+        class_date: '2025-09-13',
+        class_time: '09:00',
+      },
+      {
+        id: fallbackClassSnapshotId,
+        snapshot_id: snapshotId,
+        class_order: 1,
+        external_class_key: 'klass-utan-lottning',
+        class_name: classWithoutPools.name,
+        class_date: '2025-09-13',
+        class_time: '11:00',
+      },
+    ])
+
+  if (snapshotClassesError) {
+    throw new Error(`Failed to seed live snapshot classes: ${snapshotClassesError.message}`)
+  }
+
+  const { error: poolsError } = await supabase
+    .from('ondata_integration_snapshot_pools')
+    .insert([
+      {
+        id: poolOneId,
+        snapshot_class_id: liveClassSnapshotId,
+        pool_order: 0,
+        pool_number: 1,
+        completed_match_count: 0,
+      },
+      {
+        id: poolTwoId,
+        snapshot_class_id: liveClassSnapshotId,
+        pool_order: 1,
+        pool_number: 2,
+        completed_match_count: 0,
+      },
+    ])
+
+  if (poolsError) {
+    throw new Error(`Failed to seed live pools: ${poolsError.message}`)
+  }
+
+  const { error: snapshotPlayersError } = await supabase
+    .from('ondata_integration_snapshot_players')
+    .insert([
+      {
+        snapshot_pool_id: poolOneId,
+        player_order: 0,
+        name: 'Anna Andersson',
+        club: 'BTK Mansen',
+      },
+      {
+        snapshot_pool_id: poolOneId,
+        player_order: 1,
+        name: 'Björn Berg',
+        club: 'IFK Umeå',
+      },
+      {
+        snapshot_pool_id: poolTwoId,
+        player_order: 0,
+        name: 'Carin Cedersund',
+        club: 'Team Eken',
+      },
+      {
+        snapshot_pool_id: poolTwoId,
+        player_order: 1,
+        name: 'Doris Dahl',
+        club: 'Lunds BTK',
+      },
+    ])
+
+  if (snapshotPlayersError) {
+    throw new Error(`Failed to seed live snapshot players: ${snapshotPlayersError.message}`)
+  }
+
+  const { error: statusError } = await supabase
+    .from('ondata_integration_status')
+    .insert({
+      competition_id: competitionId,
+      current_snapshot_id: snapshotId,
+      last_received_at: timestamp,
+      last_processed_at: timestamp,
+      last_payload_hash: `seed-${snapshotId}`,
+      last_source_file_modified_at: timestamp,
+      last_source_processed_at: timestamp,
+      last_error: null,
+      last_summary_classes: 2,
+      last_summary_pools: 2,
+      last_summary_completed_matches: 0,
+      updated_at: timestamp,
+    })
+
+  if (statusError) {
+    throw new Error(`Failed to seed live integration status: ${statusError.message}`)
+  }
+
+  return {
+    competitionId,
+    classId: classWithPools.id,
+    classWithoutPoolsId: classWithoutPools.id,
+  }
 }

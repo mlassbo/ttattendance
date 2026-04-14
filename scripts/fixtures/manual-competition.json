@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "competition": {
+    "slug": "manual-2026",
+    "name": "Manuell testtävling",
+    "playerPin": "1111",
+    "adminPin": "2222"
+  },
+  "deadlineMinutesBeforeStart": 45,
+  "sessions": [
+    {
+      "key": "day1-pass1",
+      "name": "Dag 1 - Pass 1",
+      "dayOffsetDays": 0,
+      "sessionOrder": 1
+    },
+    {
+      "key": "day1-pass2",
+      "name": "Dag 1 - Pass 2",
+      "dayOffsetDays": 0,
+      "sessionOrder": 2
+    },
+    {
+      "key": "day2-pass1",
+      "name": "Dag 2 - Pass 1",
+      "dayOffsetDays": 2,
+      "sessionOrder": 1
+    },
+    {
+      "key": "day2-pass2",
+      "name": "Dag 2 - Pass 2",
+      "dayOffsetDays": 2,
+      "sessionOrder": 2
+    }
+  ],
+  "classes": [
+    {
+      "key": "pf11-day1-pass1",
+      "name": "PF11",
+      "sessionKey": "day1-pass1",
+      "startTime": "09:00",
+      "seedState": "awaiting_attendance",
+      "maxPlayers": 24,
+      "registeredPlayers": 20
+    },
+    {
+      "key": "pf13-day1-pass1",
+      "name": "PF13",
+      "sessionKey": "day1-pass1",
+      "startTime": "09:20",
+      "seedState": "full_attendance",
+      "maxPlayers": 18,
+      "registeredPlayers": 18,
+      "reservePlayers": 2,
+      "attendancePattern": "mixed"
+    },
+    {
+      "key": "max400-day1-pass1",
+      "name": "Max400",
+      "sessionKey": "day1-pass1",
+      "startTime": "09:40",
+      "seedState": "draw_available",
+      "maxPlayers": 28,
+      "registeredPlayers": 28,
+      "reservePlayers": 3,
+      "attendancePattern": "confirmed_only"
+    },
+    {
+      "key": "pf15-day1-pass1",
+      "name": "PF15",
+      "sessionKey": "day1-pass1",
+      "startTime": "10:00",
+      "seedState": "awaiting_attendance",
+      "maxPlayers": 16,
+      "registeredPlayers": 14
+    },
+    {
+      "key": "max600-day1-pass2",
+      "name": "Max600",
+      "sessionKey": "day1-pass2",
+      "startTime": "13:00",
+      "seedState": "awaiting_attendance",
+      "maxPlayers": 28,
+      "registeredPlayers": 24
+    },
+    {
+      "key": "max800-day1-pass2",
+      "name": "Max800",
+      "sessionKey": "day1-pass2",
+      "startTime": "13:20",
+      "seedState": "awaiting_attendance",
+      "maxPlayers": 20,
+      "registeredPlayers": 18
+    },
+    {
+      "key": "max1100-day1-pass2",
+      "name": "Max1100",
+      "sessionKey": "day1-pass2",
+      "startTime": "13:40",
+      "seedState": "awaiting_attendance",
+      "maxPlayers": 18,
+      "registeredPlayers": 16
+    },
+    {
+      "key": "oppen-day1-pass2",
+      "name": "Öppen",
+      "sessionKey": "day1-pass2",
+      "startTime": "14:00",
+      "seedState": "awaiting_attendance",
+      "maxPlayers": 24,
+      "registeredPlayers": 20
+    },
+    {
+      "key": "max750-day2-pass1",
+      "name": "Max750",
+      "sessionKey": "day2-pass1",
+      "startTime": "09:00",
+      "seedState": "not_open",
+      "maxPlayers": 18,
+      "registeredPlayers": 16
+    },
+    {
+      "key": "max950-day2-pass1",
+      "name": "Max950",
+      "sessionKey": "day2-pass1",
+      "startTime": "09:20",
+      "seedState": "not_open",
+      "maxPlayers": 16,
+      "registeredPlayers": 14
+    },
+    {
+      "key": "max1250-day2-pass1",
+      "name": "Max1250",
+      "sessionKey": "day2-pass1",
+      "startTime": "09:40",
+      "seedState": "not_open",
+      "maxPlayers": 14,
+      "registeredPlayers": 12
+    },
+    {
+      "key": "dubbel-under-2000-day2-pass1",
+      "name": "Dubbel <2000p",
+      "sessionKey": "day2-pass1",
+      "startTime": "10:00",
+      "seedState": "not_open",
+      "maxPlayers": 28,
+      "registeredPlayers": 26
+    },
+    {
+      "key": "max1500-day2-pass2",
+      "name": "Max1500",
+      "sessionKey": "day2-pass2",
+      "startTime": "13:00",
+      "seedState": "not_open",
+      "maxPlayers": 16,
+      "registeredPlayers": 14
+    },
+    {
+      "key": "max1750-day2-pass2",
+      "name": "Max1750",
+      "sessionKey": "day2-pass2",
+      "startTime": "13:20",
+      "seedState": "not_open",
+      "maxPlayers": 14,
+      "registeredPlayers": 12
+    },
+    {
+      "key": "dubbel-over-2000-day2-pass2",
+      "name": "Dubbel >2000p",
+      "sessionKey": "day2-pass2",
+      "startTime": "13:40",
+      "seedState": "not_open",
+      "maxPlayers": 26,
+      "registeredPlayers": 24
+    },
+    {
+      "key": "storpool-day2-pass2",
+      "name": "Storpool",
+      "sessionKey": "day2-pass2",
+      "startTime": "14:00",
+      "seedState": "not_open",
+      "maxPlayers": 20,
+      "registeredPlayers": 18
+    }
+  ]
+}
