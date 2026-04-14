@@ -19,5 +19,3 @@ tsconfig.tsbuildinfo
 
 # claude code local config and memory
 .claude/
-
-competition_registrations.txt
