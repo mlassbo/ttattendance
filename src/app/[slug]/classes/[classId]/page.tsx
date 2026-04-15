@@ -86,7 +86,7 @@ export default async function PublicClassPage({
               ← {backHref === `/${slug}` ? `Tillbaka till ${competition.name}` : 'Tillbaka till sök'}
             </Link>
 
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-3">
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">
                   {competition.name}
@@ -94,6 +94,9 @@ export default async function PublicClassPage({
                 <h1 className="text-3xl font-semibold tracking-tight text-ink">
                   {classDetails.name}
                 </h1>
+              </div>
+
+              <div className="space-y-2">
                 <p className="text-sm text-muted">
                   {classDetails.session?.name ?? 'Okänt pass'}
                   {classDetails.startTime ? ` · ${formatSwedishDateTime(classDetails.startTime)}` : ''}
@@ -110,11 +113,11 @@ export default async function PublicClassPage({
                 ) : null}
               </div>
 
-              <div className="flex shrink-0 flex-col gap-2 text-left sm:items-end sm:self-end sm:text-right">
+              <div className="flex flex-col items-end gap-2 pt-1 text-right">
                 <div className="text-sm font-medium text-muted">
                   {classDetails.playerCount} anmälda
                 </div>
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {liveData ? (
                     <span className="app-pill-success">Pooler lottade</span>
                   ) : null}
