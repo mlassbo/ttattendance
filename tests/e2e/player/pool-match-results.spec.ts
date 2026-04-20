@@ -138,6 +138,30 @@ test.describe('Public pool match results', () => {
     await expectPoolPlayers(page, 1, POOL_ONE_PLAYERS)
   })
 
+  test('walkover result shows a WO pill and counts as played', async ({ page }) => {
+    const slug = 'test-player-pmr-wo'
+    const supabase = testClient()
+    const seeded = await seedCompetitionWithPoolMatches(supabase, slug, {
+      matchesPerPool: [[
+        { playerAIndex: 0, playerBIndex: 1, result: 'WO' },
+        { playerAIndex: 2, playerBIndex: 3, result: '6, 3, 8' },
+      ]],
+    })
+
+    await openClassPage(page, slug, seeded.classId)
+
+    await expect(page.getByTestId('class-live-pool-progress-1')).toHaveText('2/6 matcher spelade')
+    await openPoolMatches(page, 1)
+
+    const woRow = page.getByTestId('class-live-match-1-0')
+    await expect(woRow).toContainText('WO')
+    await expect(woRow).not.toContainText('Ej spelad än')
+    await expect(woRow.locator('.font-semibold')).toHaveCount(0)
+
+    await expect(page.getByTestId('class-live-match-1-1')).toContainText('3–0')
+    await expectPoolPlayers(page, 1, POOL_ONE_PLAYERS)
+  })
+
   test('unparseable result falls back to an unplayed placeholder', async ({ page }) => {
     const slug = 'test-player-pmr-invalid'
     const supabase = testClient()

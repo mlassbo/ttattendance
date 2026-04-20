@@ -239,6 +239,7 @@ export interface ClassLiveMatch {
   playerA: { name: string; club: string | null }
   playerB: { name: string; club: string | null }
   isPlayed: boolean
+  isWalkover: boolean
   setScoreA: number | null
   setScoreB: number | null
 }
@@ -619,6 +620,27 @@ export async function getClassLiveData(
         },
         matchOrder: match.match_order,
         isPlayed: false,
+        isWalkover: false,
+        setScoreA: null,
+        setScoreB: null,
+      })
+      matchesByPoolId.set(match.snapshot_pool_id, poolMatches)
+      continue
+    }
+
+    if (parsedResult.kind === 'walkover') {
+      poolMatches.push({
+        playerA: {
+          name: match.player_a_name,
+          club: match.player_a_club,
+        },
+        playerB: {
+          name: match.player_b_name,
+          club: match.player_b_club,
+        },
+        matchOrder: match.match_order,
+        isPlayed: true,
+        isWalkover: true,
         setScoreA: null,
         setScoreB: null,
       })
@@ -637,6 +659,7 @@ export async function getClassLiveData(
       },
       matchOrder: match.match_order,
       isPlayed: true,
+      isWalkover: false,
       setScoreA: parsedResult.setScoreA,
       setScoreB: parsedResult.setScoreB,
     })
@@ -704,6 +727,7 @@ function buildCompletePoolMatches(
           playerB,
           sortOrder: reverseMatch.matchOrder,
           isPlayed: true,
+          isWalkover: reverseMatch.isWalkover,
           setScoreA: reverseMatch.setScoreB,
           setScoreB: reverseMatch.setScoreA,
         })
@@ -715,6 +739,7 @@ function buildCompletePoolMatches(
         playerB,
         sortOrder: fallbackSortOrder,
         isPlayed: false,
+        isWalkover: false,
         setScoreA: null,
         setScoreB: null,
       })

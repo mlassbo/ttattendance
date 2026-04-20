@@ -34,8 +34,8 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
             <ul className="mt-3 space-y-2">
               {pool.players.map((player, index) => (
                 <li key={`${pool.poolNumber}-${index}-${player.name}`} className="text-sm text-ink">
-                  <span className="font-medium">{player.name}</span>
-                  {player.club ? <span className="text-muted"> · {player.club}</span> : null}
+                  <span className="block font-medium">{player.name}</span>
+                  {player.club ? <span className="block text-xs text-muted">{player.club}</span> : null}
                 </li>
               ))}
             </ul>
@@ -77,14 +77,18 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
                       }`}
                     >
                       <div className="min-w-0">
-                        <p className={match.isPlayed && match.setScoreA! > match.setScoreB! ? 'font-semibold text-ink' : 'text-ink'}>
+                        <p className={match.isPlayed && !match.isWalkover && match.setScoreA! > match.setScoreB! ? 'font-semibold text-ink' : 'text-ink'}>
                           {match.playerA.name} -
                         </p>
-                        <p className={match.isPlayed && match.setScoreB! > match.setScoreA! ? 'font-semibold text-ink' : 'text-ink'}>
+                        <p className={match.isPlayed && !match.isWalkover && match.setScoreB! > match.setScoreA! ? 'font-semibold text-ink' : 'text-ink'}>
                           {match.playerB.name}
                         </p>
                       </div>
-                      {match.isPlayed ? (
+                      {match.isWalkover ? (
+                        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-ink">
+                          WO
+                        </span>
+                      ) : match.isPlayed ? (
                         <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium tabular-nums text-ink">
                           {match.setScoreA}&ndash;{match.setScoreB}
                         </span>

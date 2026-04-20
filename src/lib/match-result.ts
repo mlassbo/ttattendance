@@ -1,7 +1,6 @@
-export type ParsedMatchResult = {
-  setScoreA: number
-  setScoreB: number
-}
+export type ParsedMatchResult =
+  | { kind: 'score'; setScoreA: number; setScoreB: number }
+  | { kind: 'walkover' }
 
 const INTEGER_TOKEN_PATTERN = /^[+-]?\d+$/
 
@@ -11,7 +10,15 @@ export function parseMatchResult(raw: string | null): ParsedMatchResult | null {
   }
 
   const trimmed = raw.trim()
-  if (!trimmed || !/\d/.test(trimmed)) {
+  if (!trimmed) {
+    return null
+  }
+
+  if (trimmed.toUpperCase() === 'WO') {
+    return { kind: 'walkover' }
+  }
+
+  if (!/\d/.test(trimmed)) {
     return null
   }
 
@@ -43,8 +50,5 @@ export function parseMatchResult(raw: string | null): ParsedMatchResult | null {
     return null
   }
 
-  return {
-    setScoreA,
-    setScoreB,
-  }
+  return { kind: 'score', setScoreA, setScoreB }
 }
