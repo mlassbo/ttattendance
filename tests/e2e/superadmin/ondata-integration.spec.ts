@@ -193,6 +193,96 @@ function buildInvalidRegistrationSnapshotPayload(onDataSlug: string) {
   return payload
 }
 
+function buildPlayoffSnapshotPayload(onDataSlug: string) {
+  return {
+    schemaVersion: 1,
+    competitionSlug: onDataSlug,
+    source: {
+      sourceType: 'ondata-stage5-playoff',
+      competitionUrl: `https://resultat.ondata.se/${onDataSlug}/`,
+      sourceClassId: '31882',
+      stage5Path: `https://resultat.ondata.se/ViewClassPDF.php?classID=31882&stage=5`,
+      stage6Path: `https://resultat.ondata.se/ViewClassPDF.php?classID=31882&stage=6`,
+      processedAt: '2026-04-20T12:00:10.000Z',
+      fileHash: 'sha256:playoffhash',
+    },
+    class: {
+      sourceClassId: '31882',
+      externalClassKey: 'ondata::31882',
+      className: 'Max500',
+    },
+    summary: {
+      rounds: 2,
+      matches: 3,
+      completedMatches: 2,
+    },
+    rounds: [
+      {
+        name: 'Semifinaler',
+        matches: [
+          {
+            matchKey: '31882::Semifinaler::1',
+            playerA: 'Alva Alfredsson',
+            playerB: 'Bosse Berg',
+            winner: 'Alva Alfredsson',
+            result: '11,-8,9,7',
+          },
+          {
+            matchKey: '31882::Semifinaler::2',
+            playerA: 'Cia Carlsson',
+            playerB: 'Dana Dalen',
+            winner: null,
+            result: null,
+          },
+        ],
+      },
+      {
+        name: 'Final',
+        matches: [
+          {
+            matchKey: '31882::Final::1',
+            playerA: 'Alva Alfredsson',
+            playerB: 'Dana Dalen',
+            winner: 'Alva Alfredsson',
+            result: '8,9,-7,6',
+          },
+        ],
+      },
+    ],
+  }
+}
+
+function buildInvalidPlayoffSnapshotPayload(onDataSlug: string) {
+  const payload = buildPlayoffSnapshotPayload(onDataSlug)
+  payload.source = {
+    ...payload.source,
+    processedAt: '2026-04-20T12:05:10.000Z',
+    fileHash: 'sha256:playoffhash-broken',
+  }
+
+  payload.rounds = [
+    payload.rounds[0],
+    {
+      ...payload.rounds[1],
+      matches: [
+        payload.rounds[1].matches[0],
+        {
+          ...payload.rounds[1].matches[0],
+          playerB: 'Erik Ek',
+        },
+      ],
+    },
+  ]
+
+  payload.summary = {
+    rounds: 2,
+    matches: 4,
+    completedMatches: 3,
+  }
+
+  return payload
+}
+
 test.describe('OnData integration', () => {
   test.beforeEach(async () => {
     await cleanTestCompetitions(testClient(), `${TEST_PREFIX}%`)
@@ -369,6 +459,109 @@ test.describe('OnData integration', () => {
     })
 
     expect(response.status()).toBe(401)
+  })
+
+  test('playoff snapshot ingest stores class-level playoff data', async ({ page }) => {
+    const supabase = testClient()
+    const ttAttendanceSlug = `${TEST_PREFIX}playoff-ingest`
+    const onDataSlug = '001348'
+    const { competitionId } = await seedSuperadminCompetition(supabase, ttAttendanceSlug)
+
+    await loginAsSuperadmin(page)
+    await openIntegrationPage(page, ttAttendanceSlug)
+    await page.getByTestId('generate-api-key-button').click()
+
+    const apiKey = await page.getByTestId('generated-api-key-input').inputValue()
+    const response = await page.request.post(`/api/integrations/ondata/competitions/${ttAttendanceSlug}/playoff-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: buildPlayoffSnapshotPayload(onDataSlug),
+    })
+
+    expect(response.status()).toBe(202)
+
+    const { data: status } = await supabase
+      .from('ondata_playoff_status')
+      .select('last_summary_rounds, last_summary_matches, last_summary_completed_matches, current_snapshot_id')
+      .eq('competition_id', competitionId)
+      .eq('external_class_key', 'ondata::31882')
+      .single()
+
+    expect(status?.last_summary_rounds).toBe(2)
+    expect(status?.last_summary_matches).toBe(3)
+    expect(status?.last_summary_completed_matches).toBe(2)
+    expect(status?.current_snapshot_id).toBeTruthy()
+
+    const { data: snapshot } = await supabase
+      .from('ondata_playoff_snapshots')
+      .select('class_name, source_stage5_path')
+      .eq('competition_id', competitionId)
+      .single()
+
+    expect(snapshot?.class_name).toBe('Max500')
+    expect(snapshot?.source_stage5_path).toContain('stage=5')
+
+    const { data: matches } = await supabase
+      .from('ondata_playoff_snapshot_matches')
+      .select('match_key, winner_name, is_completed')
+      .eq('snapshot_id', status!.current_snapshot_id)
+      .order('match_order', { ascending: true })
+
+    expect(matches).toHaveLength(3)
+    expect(matches?.filter(match => match.is_completed)).toHaveLength(2)
+    expect(matches?.[0]?.match_key).toBe('31882::Semifinaler::1')
+  })
+
+  test('failed playoff ingest keeps the last successful class snapshot as current', async ({ page }) => {
+    const supabase = testClient()
+    const ttAttendanceSlug = `${TEST_PREFIX}playoff-failed-retry`
+    const onDataSlug = '001350'
+    const { competitionId } = await seedSuperadminCompetition(supabase, ttAttendanceSlug)
+
+    await loginAsSuperadmin(page)
+    await openIntegrationPage(page, ttAttendanceSlug)
+    await page.getByTestId('generate-api-key-button').click()
+
+    const apiKey = await page.getByTestId('generated-api-key-input').inputValue()
+
+    const successResponse = await page.request.post(`/api/integrations/ondata/competitions/${ttAttendanceSlug}/playoff-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: buildPlayoffSnapshotPayload(onDataSlug),
+    })
+
+    expect(successResponse.status()).toBe(202)
+
+    const { data: successStatus } = await supabase
+      .from('ondata_playoff_status')
+      .select('current_snapshot_id')
+      .eq('competition_id', competitionId)
+      .eq('external_class_key', 'ondata::31882')
+      .single()
+
+    const successfulSnapshotId = successStatus?.current_snapshot_id
+    expect(successfulSnapshotId).toBeTruthy()
+
+    const failedResponse = await page.request.post(`/api/integrations/ondata/competitions/${ttAttendanceSlug}/playoff-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: buildInvalidPlayoffSnapshotPayload(onDataSlug),
+    })
+
+    expect(failedResponse.status()).toBe(500)
+
+    const { data: failedStatus } = await supabase
+      .from('ondata_playoff_status')
+      .select('current_snapshot_id, last_error')
+      .eq('competition_id', competitionId)
+      .eq('external_class_key', 'ondata::31882')
+      .single()
+
+    expect(failedStatus?.current_snapshot_id).toBe(successfulSnapshotId)
+    expect(failedStatus?.last_error).toBeTruthy()
   })
 
   test('registration snapshot ingest updates the registration import status', async ({ page }) => {
