@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getClassLiveData, getPublicClassDetails } from '@/lib/public-competition'
+import { getClassLiveData, getClassLiveStatus, getPublicClassDetails } from '@/lib/public-competition'
 import { createServerClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
@@ -67,7 +67,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-      status: 'pools_available',
+      status: getClassLiveStatus(liveData),
       data: liveData,
       classDetails,
     })

@@ -20,10 +20,10 @@ test.describe('Public class live view', () => {
     seeded = await seedCompetitionWithPools(supabase, SLUG)
   })
 
-  test('dashboard card shows "Pooler lottade" when pool data exists', async ({ page }) => {
+  test('dashboard card shows "Poolspel startat" when pool matches exist', async ({ page }) => {
     await page.goto(`/${SLUG}`)
 
-    await expect(page.getByTestId(`class-live-pill-${seeded.classId}`)).toContainText('Pooler lottade')
+    await expect(page.getByTestId(`class-live-pill-${seeded.classId}`)).toContainText('Poolspel startat')
   })
 
   test('dashboard card keeps normal availability when no pool data exists', async ({ page }) => {
@@ -95,7 +95,7 @@ test.describe('Public class live view', () => {
     await expect(page.getByTestId('class-page-attendance-deadline')).toContainText(
       'Anmäl närvaro senast 2099-09-13 08:15',
     )
-    await expect(page.getByTestId('class-page-header')).toContainText('Pooler lottade')
+    await expect(page.getByTestId('class-page-header')).toContainText('Poolspel startat')
     await expect(page.getByRole('tab', { name: 'Spelare' })).toBeVisible()
     await expect(page.getByRole('tab', { name: 'Pooler' })).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByTestId('class-live-view')).toBeVisible()

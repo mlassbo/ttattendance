@@ -14,6 +14,14 @@ import type {
   PublicSearchClass,
 } from '@/lib/public-competition'
 
+function hasLivePools(status: ClassLiveStatus): boolean {
+  return status !== 'none'
+}
+
+function getLiveStatusLabel(status: ClassLiveStatus): string {
+  return status === 'pool_play_started' ? 'Poolspel startat' : 'Pooler lottade'
+}
+
 type ClassDashboardClientProps = {
   sessions: ClassDashboardSession[]
   slug: string
@@ -131,7 +139,7 @@ export default function ClassDashboardClient({
   const [activeTabByClassId, setActiveTabByClassId] = useState<Record<string, ExpandedTab>>({})
 
   function getDefaultTab(classId: string): ExpandedTab {
-    return liveStatusByClassId[classId] === 'pools_available' ? 'pools' : 'players'
+    return hasLivePools(liveStatusByClassId[classId]) ? 'pools' : 'players'
   }
 
   async function loadLiveState(classId: string) {
@@ -213,7 +221,7 @@ export default function ClassDashboardClient({
             {session.classes.map(classEntry => {
               const isExpanded = expandedClassId === classEntry.id
               const liveState = liveStateByClassId[classEntry.id]
-              const hasLivePools = liveStatusByClassId[classEntry.id] === 'pools_available'
+              const hasLiveClassState = hasLivePools(liveStatusByClassId[classEntry.id])
               const activeTab = activeTabByClassId[classEntry.id] ?? getDefaultTab(classEntry.id)
 
               return (
@@ -244,12 +252,12 @@ export default function ClassDashboardClient({
                           <div className="text-sm font-medium text-muted">
                             {classEntry.registeredCount} anmälda
                           </div>
-                          {hasLivePools ? (
+                          {hasLiveClassState ? (
                             <span
                               data-testid={`class-live-pill-${classEntry.id}`}
                               className="app-pill-success"
                             >
-                              Pooler lottade
+                              {getLiveStatusLabel(liveStatusByClassId[classEntry.id])}
                             </span>
                           ) : (
                             <AvailabilityIndicator entry={classEntry} />
@@ -286,8 +294,8 @@ export default function ClassDashboardClient({
                               type="button"
                               role="tab"
                               aria-selected={activeTab === 'pools'}
-                              aria-disabled={!hasLivePools}
-                              disabled={!hasLivePools}
+                              aria-disabled={!hasLiveClassState}
+                              disabled={!hasLiveClassState}
                               onClick={() => setActiveTabByClassId(previous => ({
                                 ...previous,
                                 [classEntry.id]: 'pools',
@@ -316,7 +324,7 @@ export default function ClassDashboardClient({
 
                         {liveState?.loading ? (
                           <LoadingSpinner />
-                        ) : activeTab === 'pools' && liveState?.status === 'pools_available' && liveState.data ? (
+                        ) : activeTab === 'pools' && liveState?.status !== 'none' && liveState.data ? (
                           <ClassLiveView pools={liveState.data.pools} />
                         ) : liveState?.classDetails ? (
                           <PublicClassRosterView

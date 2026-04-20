@@ -8,26 +8,99 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
   return (
     <div
       data-testid="class-live-view"
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+      className="grid items-start grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
     >
-      {pools.map(pool => (
-        <section
-          key={pool.poolNumber}
-          data-testid={`class-live-pool-${pool.poolNumber}`}
-          className="rounded-2xl border border-line/80 bg-stone-50/70 px-4 py-4"
-        >
-          <h2 className="text-base font-semibold text-ink">Pool {pool.poolNumber}</h2>
+      {pools.map(pool => {
+        const hasFixtures = pool.totalMatches > 0
 
-          <ul className="mt-3 space-y-2">
-            {pool.players.map((player, index) => (
-              <li key={`${pool.poolNumber}-${index}-${player.name}`} className="text-sm text-ink">
-                <span className="font-medium">{player.name}</span>
-                {player.club ? <span className="text-muted"> · {player.club}</span> : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+        return (
+          <section
+            key={pool.poolNumber}
+            data-testid={`class-live-pool-${pool.poolNumber}`}
+            className="rounded-2xl border border-line/80 bg-stone-50/70 px-4 py-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-base font-semibold text-ink">Pool {pool.poolNumber}</h2>
+              {hasFixtures ? (
+                <span
+                  data-testid={`class-live-pool-progress-${pool.poolNumber}`}
+                  className="app-pill-muted shrink-0"
+                >
+                  {pool.playedMatches}/{pool.totalMatches} matcher spelade
+                </span>
+              ) : null}
+            </div>
+
+            <ul className="mt-3 space-y-2">
+              {pool.players.map((player, index) => (
+                <li key={`${pool.poolNumber}-${index}-${player.name}`} className="text-sm text-ink">
+                  <span className="font-medium">{player.name}</span>
+                  {player.club ? <span className="text-muted"> · {player.club}</span> : null}
+                </li>
+              ))}
+            </ul>
+
+            {hasFixtures ? (
+              <details
+                data-testid={`class-live-pool-matches-${pool.poolNumber}`}
+                className="group mt-3 -mx-4 -mb-4 overflow-hidden rounded-b-2xl bg-stone-200/80 text-ink"
+              >
+                <summary
+                  data-testid={`class-live-pool-matches-toggle-${pool.poolNumber}`}
+                  className="flex w-full cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-ink"
+                >
+                  <span>
+                    <span className="group-open:hidden">Visa matcher</span>
+                    <span className="hidden group-open:inline">Dölj matcher</span>
+                  </span>
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    className="h-4 w-4 shrink-0 text-muted transition-transform duration-150 group-open:rotate-180"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M5 8l5 5 5-5" />
+                  </svg>
+                </summary>
+
+                <ul className="border-t border-stone-300/70">
+                  {pool.matches.map((match, matchIndex) => (
+                    <li
+                      key={`${pool.poolNumber}-${matchIndex}-${match.playerA.name}-${match.playerB.name}`}
+                      data-testid={`class-live-match-${pool.poolNumber}-${matchIndex}`}
+                      className={`flex items-start justify-between gap-3 px-4 py-3 text-sm text-ink ${
+                        matchIndex % 2 === 0 ? 'bg-stone-200/80' : 'bg-stone-100/70'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className={match.isPlayed && match.setScoreA! > match.setScoreB! ? 'font-semibold text-ink' : 'text-ink'}>
+                          {match.playerA.name} -
+                        </p>
+                        <p className={match.isPlayed && match.setScoreB! > match.setScoreA! ? 'font-semibold text-ink' : 'text-ink'}>
+                          {match.playerB.name}
+                        </p>
+                      </div>
+                      {match.isPlayed ? (
+                        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium tabular-nums text-ink">
+                          {match.setScoreA}&ndash;{match.setScoreB}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-xs font-medium text-muted">
+                          Ej spelad än
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </section>
+        )
+      })}
     </div>
   )
 }

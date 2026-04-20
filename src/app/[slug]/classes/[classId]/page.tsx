@@ -3,6 +3,7 @@ import PublicClassContentTabs from '@/components/PublicClassContentTabs'
 import type { PublicSearchClass } from '@/lib/public-competition'
 import {
   getClassLiveData,
+  getClassLiveStatus,
   getPublicClassDetails,
   getPublicCompetitionBySlug,
 } from '@/lib/public-competition'
@@ -73,6 +74,7 @@ export default async function PublicClassPage({
     }
 
     const showRegistrationStatusPills = !liveData
+  const liveStatus = getClassLiveStatus(liveData)
 
     return (
       <main className="app-shell">
@@ -119,7 +121,9 @@ export default async function PublicClassPage({
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {liveData ? (
-                    <span className="app-pill-success">Pooler lottade</span>
+                    <span className="app-pill-success">
+                      {liveStatus === 'pool_play_started' ? 'Poolspel startat' : 'Pooler lottade'}
+                    </span>
                   ) : null}
                   {showRegistrationStatusPills ? (
                     <span data-testid="class-page-availability">

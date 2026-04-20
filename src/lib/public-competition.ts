@@ -1,4 +1,5 @@
 import { buildDaySessionOrderMap } from './session-order'
+import { parseMatchResult } from './match-result'
 import {
   buildReserveListEntries,
   buildReservePositionMap,
@@ -119,8 +120,22 @@ type OnDataSnapshotPlayerRow = {
   club: string | null
 }
 
+type OnDataSnapshotMatchRow = {
+  snapshot_pool_id: string
+  match_order: number
+  player_a_name: string | null
+  player_a_club: string | null
+  player_b_name: string | null
+  player_b_club: string | null
+  result: string | null
+}
+
+type SnapshotPoolMatch = ClassLiveMatch & {
+  matchOrder: number
+}
+
 export type PublicSearchMode = 'all' | 'player' | 'club' | 'class'
-export type ClassLiveStatus = 'none' | 'pools_available'
+export type ClassLiveStatus = 'none' | 'pools_available' | 'pool_play_started'
 
 export interface PublicCompetition {
   id: string
@@ -215,10 +230,33 @@ export interface PublicSearchClassSuggestion {
 export interface ClassLivePool {
   poolNumber: number
   players: Array<{ name: string; club: string | null }>
+  matches: ClassLiveMatch[]
+  playedMatches: number
+  totalMatches: number
+}
+
+export interface ClassLiveMatch {
+  playerA: { name: string; club: string | null }
+  playerB: { name: string; club: string | null }
+  isPlayed: boolean
+  setScoreA: number | null
+  setScoreB: number | null
 }
 
 export interface ClassLiveData {
   pools: ClassLivePool[]
+}
+
+export function hasPoolMatchFixtures(liveData: ClassLiveData): boolean {
+  return liveData.pools.some(pool => pool.totalMatches > 0)
+}
+
+export function getClassLiveStatus(liveData: ClassLiveData | null): ClassLiveStatus {
+  if (!liveData) {
+    return 'none'
+  }
+
+  return hasPoolMatchFixtures(liveData) ? 'pool_play_started' : 'pools_available'
 }
 
 export interface PublicPlayerDetails {
@@ -524,6 +562,24 @@ export async function getClassLiveData(
     throw new Error(playersError.message)
   }
 
+  const { data: matches, error: matchesError } = await supabase
+    .from('ondata_integration_snapshot_matches')
+    .select([
+      'snapshot_pool_id',
+      'match_order',
+      'player_a_name',
+      'player_a_club',
+      'player_b_name',
+      'player_b_club',
+      'result',
+    ].join(', '))
+    .in('snapshot_pool_id', poolRows.map(pool => pool.id))
+    .order('match_order', { ascending: true })
+
+  if (matchesError) {
+    throw new Error(matchesError.message)
+  }
+
   const playersByPoolId = new Map<string, Array<{ name: string; club: string | null }>>()
   for (const player of (players ?? []) as OnDataSnapshotPlayerRow[]) {
     const poolPlayers = playersByPoolId.get(player.snapshot_pool_id) ?? []
@@ -534,10 +590,72 @@ export async function getClassLiveData(
     playersByPoolId.set(player.snapshot_pool_id, poolPlayers)
   }
 
-  const livePools = poolRows.map(pool => ({
-    poolNumber: pool.pool_number,
-    players: playersByPoolId.get(pool.id) ?? [],
-  }))
+  const matchRows = (matches ?? []) as unknown as OnDataSnapshotMatchRow[]
+
+  const matchesByPoolId = new Map<string, SnapshotPoolMatch[]>()
+  for (const match of matchRows) {
+    if (!match.player_a_name || !match.player_b_name) {
+      continue
+    }
+
+    const poolMatches = matchesByPoolId.get(match.snapshot_pool_id) ?? []
+    const parsedResult = parseMatchResult(match.result)
+    if (!parsedResult) {
+      if (match.result != null) {
+        console.warn('Skipping public pool match with invalid result string', {
+          rawResult: match.result,
+        })
+        continue
+      }
+
+      poolMatches.push({
+        playerA: {
+          name: match.player_a_name,
+          club: match.player_a_club,
+        },
+        playerB: {
+          name: match.player_b_name,
+          club: match.player_b_club,
+        },
+        matchOrder: match.match_order,
+        isPlayed: false,
+        setScoreA: null,
+        setScoreB: null,
+      })
+      matchesByPoolId.set(match.snapshot_pool_id, poolMatches)
+      continue
+    }
+
+    poolMatches.push({
+      playerA: {
+        name: match.player_a_name,
+        club: match.player_a_club,
+      },
+      playerB: {
+        name: match.player_b_name,
+        club: match.player_b_club,
+      },
+      matchOrder: match.match_order,
+      isPlayed: true,
+      setScoreA: parsedResult.setScoreA,
+      setScoreB: parsedResult.setScoreB,
+    })
+    matchesByPoolId.set(match.snapshot_pool_id, poolMatches)
+  }
+
+  const livePools = poolRows.map(pool => {
+    const poolPlayers = playersByPoolId.get(pool.id) ?? []
+    const snapshotPoolMatches = matchesByPoolId.get(pool.id) ?? []
+    const completePoolMatches = buildCompletePoolMatches(poolPlayers, snapshotPoolMatches)
+
+    return {
+      poolNumber: pool.pool_number,
+      players: poolPlayers,
+      matches: completePoolMatches,
+      playedMatches: completePoolMatches.filter(match => match.isPlayed).length,
+      totalMatches: (poolPlayers.length * (poolPlayers.length - 1)) / 2,
+    }
+  })
 
   if (livePools.every(pool => pool.players.length === 0)) {
     return null
@@ -546,6 +664,74 @@ export async function getClassLiveData(
   return {
     pools: livePools,
   }
+}
+
+function buildCompletePoolMatches(
+  players: Array<{ name: string; club: string | null }>,
+  snapshotMatches: SnapshotPoolMatch[],
+): ClassLiveMatch[] {
+  if (players.length < 2) {
+    return []
+  }
+
+  const playedMatchByKey = new Map<string, SnapshotPoolMatch>()
+  for (const match of snapshotMatches) {
+    playedMatchByKey.set(getPoolMatchKey(match.playerA, match.playerB), match)
+  }
+
+  const completeMatches: Array<ClassLiveMatch & { sortOrder: number }> = []
+  let fallbackSortOrder = players.length * players.length
+  for (let playerAIndex = 0; playerAIndex < players.length; playerAIndex += 1) {
+    for (let playerBIndex = playerAIndex + 1; playerBIndex < players.length; playerBIndex += 1) {
+      const playerA = players[playerAIndex]
+      const playerB = players[playerBIndex]
+      const directKey = getPoolMatchKey(playerA, playerB)
+      const reverseKey = getPoolMatchKey(playerB, playerA)
+      const directMatch = playedMatchByKey.get(directKey)
+
+      if (directMatch) {
+        completeMatches.push({
+          ...directMatch,
+          sortOrder: directMatch.matchOrder,
+        })
+        continue
+      }
+
+      const reverseMatch = playedMatchByKey.get(reverseKey)
+      if (reverseMatch) {
+        completeMatches.push({
+          playerA,
+          playerB,
+          sortOrder: reverseMatch.matchOrder,
+          isPlayed: true,
+          setScoreA: reverseMatch.setScoreB,
+          setScoreB: reverseMatch.setScoreA,
+        })
+        continue
+      }
+
+      completeMatches.push({
+        playerA,
+        playerB,
+        sortOrder: fallbackSortOrder,
+        isPlayed: false,
+        setScoreA: null,
+        setScoreB: null,
+      })
+      fallbackSortOrder += 1
+    }
+  }
+
+  return completeMatches
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map(({ sortOrder: _sortOrder, ...match }) => match)
+}
+
+function getPoolMatchKey(
+  playerA: { name: string; club: string | null },
+  playerB: { name: string; club: string | null },
+) {
+  return [playerA.name, playerA.club ?? '', playerB.name, playerB.club ?? ''].join('::')
 }
 
 export async function getClassDashboardLiveStatus(
@@ -622,11 +808,25 @@ export async function getClassDashboardLiveStatus(
     throw new Error(playersError.message)
   }
 
-  const snapshotClassIdsWithPlayers = new Set<string>()
+  const playerCountByPoolId = new Map<string, number>()
   for (const player of (players ?? []) as Array<Pick<OnDataSnapshotPlayerRow, 'snapshot_pool_id'>>) {
-    const snapshotClassId = poolClassIdByPoolId.get(player.snapshot_pool_id)
-    if (snapshotClassId) {
+    playerCountByPoolId.set(
+      player.snapshot_pool_id,
+      (playerCountByPoolId.get(player.snapshot_pool_id) ?? 0) + 1,
+    )
+  }
+
+  const snapshotClassIdsWithPlayers = new Set<string>()
+  const snapshotClassIdsWithPoolMatches = new Set<string>()
+  for (const poolEntry of poolRows) {
+    const snapshotClassId = poolEntry.snapshot_class_id
+    const poolId = poolEntry.id
+    const playerCount = playerCountByPoolId.get(poolId) ?? 0
+    if (playerCount > 0) {
       snapshotClassIdsWithPlayers.add(snapshotClassId)
+    }
+    if (playerCount > 1) {
+      snapshotClassIdsWithPoolMatches.add(snapshotClassId)
     }
   }
 
@@ -643,7 +843,10 @@ export async function getClassDashboardLiveStatus(
     }
 
     for (const classId of localClassIdsByName.get(snapshotClass.class_name) ?? []) {
-      liveStatus.set(classId, 'pools_available')
+      liveStatus.set(
+        classId,
+        snapshotClassIdsWithPoolMatches.has(snapshotClass.id) ? 'pool_play_started' : 'pools_available',
+      )
     }
   }
 

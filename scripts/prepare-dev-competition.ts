@@ -113,6 +113,18 @@ function getRequiredEnv(name: 'NEXT_PUBLIC_SUPABASE_URL' | 'SUPABASE_SERVICE_ROL
   return value
 }
 
+function formatOptionalSeedError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+
+  if (message.includes('fetch failed')) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    const location = supabaseUrl ? ` pa ${supabaseUrl}` : ''
+    return `Supabase svarar inte${location}. Starta Docker Desktop och kor sedan \`npx supabase start\`, eller uppdatera .env.local om URL:en ar fel.`
+  }
+
+  return message
+}
+
 function createSupabaseAdminClient() {
   return createClient(
     getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
@@ -685,14 +697,23 @@ function roundRobinPairs(size: number): Array<{ a: number; b: number }> {
 }
 
 function pickResult(a: PlayerSlot, b: PlayerSlot): string {
-  const scores = ['3-0', '3-1', '3-2', '2-3', '1-3', '0-3']
+  const scores = [
+    '6, 8, 4',
+    '6, -9, 7, 8',
+    '-7, 9, 8, -10, 7',
+    '8, -6, -7, 9, -8',
+    '-9, 7, -8, -6',
+    '-4, -7, -9',
+  ]
   return scores[hashString(`${a.name}|${b.name}`) % scores.length]
 }
 
-function determineProgress(classIndex: number): 'complete' | 'partial' | 'drawn' {
-  if (classIndex < 1) return 'complete'
-  if (classIndex < 2) return 'partial'
-  return 'drawn'
+function determinePoolProgress(classIndex: number, poolIndex: number): 'complete' | 'partial' | 'drawn' {
+  const variant = (classIndex + poolIndex) % 3
+
+  if (variant === 0) return 'partial'
+  if (variant === 1) return 'drawn'
+  return 'complete'
 }
 
 async function buildDrawPayload(
@@ -777,11 +798,11 @@ async function buildDrawPayload(
     const pools = partitionIntoPools(playersForClass)
     if (pools.length === 0) return
 
-    const progress = determineProgress(classIndex)
     let matchNumberCursor = 1
 
     const snapshotPools: OnDataSnapshotPool[] = pools.map((poolPlayers, poolIndex) => {
       const pairs = roundRobinPairs(poolPlayers.length)
+      const progress = determinePoolProgress(classIndex, poolIndex)
       const completedCount =
         progress === 'complete'
           ? pairs.length
@@ -789,14 +810,11 @@ async function buildDrawPayload(
             ? Math.ceil(pairs.length / 2)
             : 0
 
-      const matches = pairs.map((pair, matchIndex) => ({
+      const matches = pairs.slice(0, completedCount).map(pair => ({
         matchNumber: matchNumberCursor++,
         playerA: poolPlayers[pair.a],
         playerB: poolPlayers[pair.b],
-        result:
-          matchIndex < completedCount
-            ? pickResult(poolPlayers[pair.a], poolPlayers[pair.b])
-            : null,
+        result: pickResult(poolPlayers[pair.a], poolPlayers[pair.b]),
       }))
 
       totalCompletedMatches += completedCount
@@ -943,7 +961,11 @@ async function main() {
 }
 
 main().catch(error => {
-  const message = error instanceof Error ? error.message : String(error)
+  const message = isOptionalMode
+    ? formatOptionalSeedError(error)
+    : error instanceof Error
+      ? error.message
+      : String(error)
 
   if (isOptionalMode) {
     console.warn(`Varning: hoppade over fixture-seed for manual-2026: ${message}`)
