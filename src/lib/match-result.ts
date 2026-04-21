@@ -4,6 +4,10 @@ export type ParsedMatchResult =
 
 const INTEGER_TOKEN_PATTERN = /^[+-]?\d+$/
 
+function isNegativeIntegerToken(token: string): boolean {
+  return token.startsWith('-')
+}
+
 export function parseMatchResult(raw: string | null): ParsedMatchResult | null {
   if (!raw) {
     return null
@@ -33,16 +37,11 @@ export function parseMatchResult(raw: string | null): ParsedMatchResult | null {
       return null
     }
 
-    const parsedToken = Number(normalizedToken)
-    if (Object.is(parsedToken, 0) || Object.is(parsedToken, -0)) {
-      return null
-    }
-
     tokenCount += 1
-    if (parsedToken > 0) {
-      setScoreA += 1
-    } else {
+    if (isNegativeIntegerToken(normalizedToken)) {
       setScoreB += 1
+    } else {
+      setScoreA += 1
     }
   }
 

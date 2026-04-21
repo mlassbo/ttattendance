@@ -121,7 +121,8 @@ test.describe('Public pool match results', () => {
     const supabase = testClient()
     const seeded = await seedCompetitionWithPoolMatches(supabase, slug, {
       matchesPerPool: [[
-        { playerAIndex: 0, playerBIndex: 1, result: '6, 3, 8' },
+        { playerAIndex: 0, playerBIndex: 1, result: '0, 4, 2' },
+        { playerAIndex: 0, playerBIndex: 3, result: '6, 3, 8' },
         { playerAIndex: 0, playerBIndex: 2, result: '-4, 6, 4, 11' },
         { playerAIndex: 1, playerBIndex: 3, result: '-9, -7, 5, 3, -8' },
         { playerAIndex: 2, playerBIndex: 3, result: '11, -12, 10, -9, 11' },
@@ -132,9 +133,10 @@ test.describe('Public pool match results', () => {
 
   await openPoolMatches(page, 1)
     await expect(page.getByTestId('class-live-match-1-0')).toContainText('3–0')
-    await expect(page.getByTestId('class-live-match-1-1')).toContainText('3–1')
-    await expect(page.getByTestId('class-live-match-1-2')).toContainText('2–3')
-    await expect(page.getByTestId('class-live-match-1-3')).toContainText('3–2')
+    await expect(page.getByTestId('class-live-match-1-1')).toContainText('3–0')
+    await expect(page.getByTestId('class-live-match-1-2')).toContainText('3–1')
+    await expect(page.getByTestId('class-live-match-1-3')).toContainText('2–3')
+    await expect(page.getByTestId('class-live-match-1-4')).toContainText('3–2')
     await expectPoolPlayers(page, 1, POOL_ONE_PLAYERS)
   })
 

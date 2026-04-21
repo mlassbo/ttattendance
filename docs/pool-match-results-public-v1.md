@@ -128,8 +128,8 @@ Behavior:
 2. Split on `,`, trim each token.
 3. For each token:
    - Reject and return `null` if the token is not a signed or unsigned integer.
-   - Increment `setScoreA` if the token is positive, `setScoreB` if it is negative.
-   - A token equal to `0` or `-0` is invalid (games cannot end at 0); return `null`.
+  - Increment `setScoreA` if the token is unsigned or positive, `setScoreB` if it is negative.
+  - A token equal to `0` is valid and represents an 11-0 set win for player A.
 4. Require at least one valid token. If zero valid tokens, return `null`.
 5. Return `{ setScoreA, setScoreB }`.
 
