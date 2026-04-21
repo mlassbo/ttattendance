@@ -75,6 +75,16 @@
       "registeredPlayers": 14
     },
     {
+      "key": "max300-day1-pass1",
+      "name": "Max300",
+      "sessionKey": "day1-pass1",
+      "startTime": "09:30",
+      "seedState": "pool_play_complete",
+      "maxPlayers": 16,
+      "registeredPlayers": 16,
+      "attendancePattern": "confirmed_only"
+    },
+    {
       "key": "max600-day1-pass2",
       "name": "Max600",
       "sessionKey": "day1-pass2",

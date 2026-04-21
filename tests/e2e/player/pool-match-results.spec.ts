@@ -198,7 +198,7 @@ test.describe('Public pool match results', () => {
 
   await openPoolMatches(page, 1)
     const rows = page.locator('[data-testid^="class-live-match-1-"]')
-    await expect(rows).toHaveCount(3)
+    await expect(rows).toHaveCount(6)
     await expect(page.getByTestId('class-live-match-1-0')).toContainText('Carin Cedersund')
     await expect(page.getByTestId('class-live-match-1-0')).toContainText('Doris Dahl')
     await expect(page.getByTestId('class-live-match-1-1')).toContainText('Anna Andersson')

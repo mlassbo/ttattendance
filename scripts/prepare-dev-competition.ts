@@ -19,7 +19,12 @@ dotenv.config({ path: '.env.local' })
 const isOptionalMode = process.argv.includes('--optional')
 const MANUAL_FIXTURE_PATH = path.resolve(process.cwd(), 'scripts/fixtures/manual-competition.json')
 
-type ManualClassSeedState = 'not_open' | 'awaiting_attendance' | 'full_attendance' | 'draw_available'
+type ManualClassSeedState =
+  | 'not_open'
+  | 'awaiting_attendance'
+  | 'full_attendance'
+  | 'draw_available'
+  | 'pool_play_complete'
 type ManualAttendancePattern = 'mixed' | 'confirmed_only'
 
 type ManualCompetitionFixture = {
@@ -252,7 +257,11 @@ function loadManualFixture(): ManualCompetitionFixture {
       throw new Error(`Klassnamn maste vara unika i fixture: ${classEntry.name}`)
     }
 
-    if (!['not_open', 'awaiting_attendance', 'full_attendance', 'draw_available'].includes(classEntry.seedState)) {
+    if (
+      !['not_open', 'awaiting_attendance', 'full_attendance', 'draw_available', 'pool_play_complete'].includes(
+        classEntry.seedState,
+      )
+    ) {
       throw new Error(`Ogiltigt seedState for ${classEntry.name}: ${classEntry.seedState}`)
     }
 
@@ -580,7 +589,11 @@ async function seedAttendance(
   }> = []
 
   for (const classEntry of fixture.classes) {
-    if (classEntry.seedState !== 'full_attendance' && classEntry.seedState !== 'draw_available') {
+    if (
+      classEntry.seedState !== 'full_attendance'
+      && classEntry.seedState !== 'draw_available'
+      && classEntry.seedState !== 'pool_play_complete'
+    ) {
       continue
     }
 
@@ -591,7 +604,7 @@ async function seedAttendance(
 
     const classRegistrations = registrationsByClassId.get(classId) ?? []
     const attendancePattern = classEntry.attendancePattern
-      ?? (classEntry.seedState === 'draw_available' ? 'confirmed_only' : 'mixed')
+      ?? (classEntry.seedState === 'full_attendance' ? 'mixed' : 'confirmed_only')
 
     for (let index = 0; index < classRegistrations.length; index += 1) {
       const registration = classRegistrations[index]
@@ -619,6 +632,48 @@ async function seedAttendance(
   }
 }
 
+async function seedPoolPlayWorkflow(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  fixture: ManualCompetitionFixture,
+  classIdByKey: Map<string, string>,
+) {
+  const now = new Date().toISOString()
+  const rows: Array<{
+    class_id: string
+    step_key: string
+    status: 'not_started' | 'active' | 'done' | 'skipped'
+    updated_at: string
+  }> = []
+
+  for (const classEntry of fixture.classes) {
+    if (classEntry.seedState !== 'draw_available' && classEntry.seedState !== 'pool_play_complete') {
+      continue
+    }
+
+    const classId = classIdByKey.get(classEntry.key)
+    if (!classId) continue
+
+    const registerMatchResultsStatus: 'active' | 'done' =
+      classEntry.seedState === 'pool_play_complete' ? 'done' : 'active'
+
+    rows.push(
+      { class_id: classId, step_key: 'seed_class', status: 'skipped', updated_at: now },
+      { class_id: classId, step_key: 'publish_pools', status: 'done', updated_at: now },
+      { class_id: classId, step_key: 'register_match_results', status: registerMatchResultsStatus, updated_at: now },
+    )
+  }
+
+  if (rows.length === 0) return
+
+  const { error } = await supabase
+    .from('class_workflow_steps')
+    .upsert(rows, { onConflict: 'class_id,step_key' })
+
+  if (error) {
+    throw new Error(`Kunde inte uppdatera klassarbetsflode: ${error.message}`)
+  }
+}
+
 function countStates(fixture: ManualCompetitionFixture) {
   return fixture.classes.reduce(
     (counts, classEntry) => {
@@ -630,13 +685,17 @@ function countStates(fixture: ManualCompetitionFixture) {
       awaiting_attendance: 0,
       full_attendance: 0,
       draw_available: 0,
+      pool_play_complete: 0,
     } satisfies Record<ManualClassSeedState, number>,
   )
 }
 
 function getDrawClassIds(fixture: ManualCompetitionFixture, classIdByKey: Map<string, string>) {
   return fixture.classes
-    .filter(classEntry => classEntry.seedState === 'draw_available')
+    .filter(
+      classEntry =>
+        classEntry.seedState === 'draw_available' || classEntry.seedState === 'pool_play_complete',
+    )
     .map(classEntry => classIdByKey.get(classEntry.key))
     .filter((value): value is string => Boolean(value))
 }
@@ -716,11 +775,14 @@ function determinePoolProgress(classIndex: number, poolIndex: number): 'complete
   return 'complete'
 }
 
+type PoolProgressProfile = 'mixed' | 'all_complete'
+
 async function buildDrawPayload(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   competitionId: string,
   competitionSlug: string,
   includedClassIds: ReadonlySet<string> | null = null,
+  poolProgressProfileByClassId: Map<string, PoolProgressProfile> = new Map(),
 ): Promise<OnDataSnapshotPayload | null> {
   const { data: sessions, error: sessionsError } = await supabase
     .from('sessions')
@@ -800,9 +862,11 @@ async function buildDrawPayload(
 
     let matchNumberCursor = 1
 
+    const profile = poolProgressProfileByClassId.get(classRow.id) ?? 'mixed'
+
     const snapshotPools: OnDataSnapshotPool[] = pools.map((poolPlayers, poolIndex) => {
       const pairs = roundRobinPairs(poolPlayers.length)
-      const progress = determinePoolProgress(classIndex, poolIndex)
+      const progress = profile === 'all_complete' ? 'complete' : determinePoolProgress(classIndex, poolIndex)
       const completedCount =
         progress === 'complete'
           ? pairs.length
@@ -866,6 +930,7 @@ async function seedDrawData(
   competitionId: string,
   competitionSlug: string,
   includedClassIds: ReadonlySet<string> | null = null,
+  poolProgressProfileByClassId: Map<string, PoolProgressProfile> = new Map(),
 ) {
   const { error: deleteSnapshotsError } = await supabase
     .from('ondata_integration_snapshots')
@@ -901,7 +966,13 @@ async function seedDrawData(
     throw new Error(`Kunde inte skapa integrationssettings: ${settingsError.message}`)
   }
 
-  const payload = await buildDrawPayload(supabase, competitionId, competitionSlug, includedClassIds)
+  const payload = await buildDrawPayload(
+    supabase,
+    competitionId,
+    competitionSlug,
+    includedClassIds,
+    poolProgressProfileByClassId,
+  )
   if (!payload) return null
 
   const payloadHash = hashOnDataSnapshotPayload(payload)
@@ -921,10 +992,20 @@ async function seedManualCompetition(
   const classIdByKey = await insertClasses(supabase, fixture, resolvedSessions, sessionIdByKey)
   const registrations = await insertPlayersAndRegistrations(supabase, competitionId, fixture, classIdByKey)
   await seedAttendance(supabase, fixture, classIdByKey, registrations)
+  await seedPoolPlayWorkflow(supabase, fixture, classIdByKey)
+
+  const poolProgressProfileByClassId = new Map<string, PoolProgressProfile>()
+  for (const classEntry of fixture.classes) {
+    if (classEntry.seedState === 'pool_play_complete') {
+      const classId = classIdByKey.get(classEntry.key)
+      if (classId) poolProgressProfileByClassId.set(classId, 'all_complete')
+    }
+  }
 
   return {
     counts: countStates(fixture),
     drawClassIds: getDrawClassIds(fixture, classIdByKey),
+    poolProgressProfileByClassId,
   }
 }
 
@@ -938,6 +1019,7 @@ async function main() {
     competitionId,
     fixture.competition.slug,
     new Set(manualStateSummary.drawClassIds),
+    manualStateSummary.poolProgressProfileByClassId,
   )
 
   console.log(`Manuell testtavling klar: http://localhost:3000/${fixture.competition.slug}`)
@@ -953,7 +1035,7 @@ async function main() {
   }
 
   console.log(
-    `  Manuella testlagen: ${manualStateSummary.counts.awaiting_attendance} invantar narvaro, ${manualStateSummary.counts.full_attendance} fullstandigt rapporterade, ${manualStateSummary.counts.draw_available} med pooldata, ${manualStateSummary.counts.not_open} ej oppna`,
+    `  Manuella testlagen: ${manualStateSummary.counts.awaiting_attendance} invantar narvaro, ${manualStateSummary.counts.full_attendance} fullstandigt rapporterade, ${manualStateSummary.counts.draw_available} poolspel pagar, ${manualStateSummary.counts.pool_play_complete} poolspel klart, ${manualStateSummary.counts.not_open} ej oppna`,
   )
   console.log(
     `  Fixture: ${fixture.sessions.length} pass och ${fixture.classes.length} klasser fran scripts/fixtures/manual-competition.json`,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getScopedCompetitionAuth } from '@/lib/scoped-competition-auth'
 import { getClassWorkflowSummaryMap } from '@/lib/class-workflow-server'
 import { getClassWorkflowActionHelper } from '@/lib/class-workflow'
+import { getPoolProgressByClassId } from '@/lib/pool-progress'
 import { createServerClient } from '@/lib/supabase'
 import { getAttendanceField } from '../lib'
 
@@ -41,8 +42,14 @@ export async function GET(req: NextRequest) {
     const classIds = classSummaries.map(classRow => classRow.id)
 
     if (classIds.length === 0) {
-      return NextResponse.json({ sessions: [] })
+      return NextResponse.json({ sessions: [], lastSyncAt: null })
     }
+
+    const poolProgress = await getPoolProgressByClassId(
+      supabase,
+      auth.competitionId,
+      classSummaries.map(classRow => ({ id: classRow.id, name: classRow.name })),
+    )
 
     // Step 2 — registrations + attendance for all classes (2-level nesting).
     // Doing this as a separate query avoids the 4-level nesting
@@ -125,6 +132,7 @@ export async function GET(req: NextRequest) {
             .filter(Boolean)
             .sort((left, right) => left.localeCompare(right, 'sv'))
           const workflow = workflowByClassId.get(cls.id)
+          const classPoolProgress = poolProgress.byClassId.get(cls.id) ?? null
 
           return {
             id: cls.id,
@@ -132,6 +140,7 @@ export async function GET(req: NextRequest) {
             startTime: cls.start_time,
             attendanceDeadline: cls.attendance_deadline,
             counts: { confirmed, absent, noResponse, total: regs.length },
+            poolProgress: classPoolProgress,
             workflow: workflow
               ? {
                   currentPhaseKey: workflow.currentPhaseKey,
@@ -161,7 +170,7 @@ export async function GET(req: NextRequest) {
         }),
     }))
 
-    return NextResponse.json({ sessions: result })
+    return NextResponse.json({ sessions: result, lastSyncAt: poolProgress.lastSyncAt })
   } catch {
     return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
   }

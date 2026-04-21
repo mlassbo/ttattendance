@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { formatSwedishWeekdayTime } from '@/lib/attendance-window'
 import AutoRefreshStatus from '../AutoRefreshStatus'
 import { formatTime } from '../format'
+import PoolProgressStrip from './PoolProgressStrip'
 
 const REFRESH_INTERVAL_MS = 30_000
 const REFRESH_INTERVAL_SECONDS = REFRESH_INTERVAL_MS / 1000
@@ -17,12 +18,25 @@ interface ClassCounts {
   total: number
 }
 
+interface ClassPoolProgressPool {
+  poolNumber: number
+  playerCount: number
+  completedMatchCount: number
+}
+
+interface ClassPoolProgressPayload {
+  pools: ClassPoolProgressPool[]
+  totalMatches: number
+  completedMatches: number
+}
+
 interface ClassSummary {
   id: string
   name: string
   startTime: string
   attendanceDeadline: string
   counts: ClassCounts
+  poolProgress: ClassPoolProgressPayload | null
   workflow: {
     currentPhaseKey: string | null
     currentPhaseLabel: string | null
@@ -92,12 +106,14 @@ export default function AdminDashboard({
 }) {
   const router = useRouter()
   const [sessions, setSessions] = useState<Session[]>([])
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [secondsUntilNextRefresh, setSecondsUntilNextRefresh] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dashboardMutation, setDashboardMutation] = useState<string | null>(null)
+  const [renderNow, setRenderNow] = useState<Date>(() => new Date())
   const refreshInFlightRef = useRef(false)
 
   const fetchData = useCallback(async () => {
@@ -121,7 +137,9 @@ export default function AdminDashboard({
       if (res.ok) {
         const data = await res.json()
         setSessions(data.sessions)
+        setLastSyncAt(data.lastSyncAt ?? null)
         setUpdatedAt(new Date())
+        setRenderNow(new Date())
         setSecondsUntilNextRefresh(REFRESH_INTERVAL_SECONDS)
         setError(null)
       } else {
@@ -167,6 +185,13 @@ export default function AdminDashboard({
 
     return () => clearInterval(countdown)
   }, [isRefreshing, secondsUntilNextRefresh])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRenderNow(new Date())
+    }, 30_000)
+    return () => clearInterval(timer)
+  }, [])
 
   async function mutateDashboardStep(classId: string, stepKey: string, status: 'done' | 'skipped') {
     if (refreshInFlightRef.current || dashboardMutation) return
@@ -320,6 +345,9 @@ export default function AdminDashboard({
                   const isMutatingSkip = dashboardMutation === `${cls.id}:${cls.workflow.nextActionKey}:skipped`
                   const isMutatingCallout = dashboardMutation === `${cls.id}:missing_players_callout`
                   const showWorkflowPanel = cls.workflow.currentPhaseKey !== 'finished'
+                  const showPoolProgress =
+                    cls.workflow.currentPhaseKey === 'pool_play_in_progress'
+                    || cls.workflow.currentPhaseKey === 'pool_play_complete'
                   const cardTone = needsAnnouncement
                     ? 'border-amber-300 bg-amber-50/85'
                     : cls.workflow.currentPhaseKey === 'finished'
@@ -500,6 +528,16 @@ export default function AdminDashboard({
                               )}
                             </div>
                           </div>
+                        )}
+
+                        {showPoolProgress && (
+                          <PoolProgressStrip
+                            classId={cls.id}
+                            startTime={cls.startTime}
+                            poolProgress={cls.poolProgress}
+                            lastSyncAt={lastSyncAt}
+                            now={renderNow}
+                          />
                         )}
                       </div>
                     </div>

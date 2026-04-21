@@ -1350,3 +1350,332 @@ export async function seedCompetitionWithPoolMatches(
     poolIds,
   }
 }
+
+export type SeededAdminPoolProgressClass = {
+  id: string
+  name: string
+  startTime: string
+}
+
+export type SeededAdminPoolProgressCompetition = {
+  competitionId: string
+  classes: SeededAdminPoolProgressClass[]
+}
+
+type AdminPoolProgressClassSeed = {
+  name: string
+  /** ISO timestamp — used as classes.start_time. Controls delay calculations. */
+  startTime: string
+  /** Skip the workflow changes so the class stays in "awaiting_attendance". */
+  phase?: 'pool_play_in_progress' | 'pool_play_complete' | 'awaiting_attendance'
+  /** Number of registered players (also confirmed attendance). Defaults to 4. */
+  registeredPlayers?: number
+}
+
+async function seedClassPoolPlayWorkflow(
+  supabase: SupabaseClient,
+  classId: string,
+  phase: 'pool_play_in_progress' | 'pool_play_complete',
+  now: string,
+) {
+  const statuses: Array<{ step_key: string; status: 'not_started' | 'active' | 'done' | 'skipped' }> = [
+    { step_key: 'seed_class', status: 'skipped' },
+    { step_key: 'publish_pools', status: 'done' },
+    { step_key: 'register_match_results', status: phase === 'pool_play_complete' ? 'done' : 'active' },
+    { step_key: 'publish_pool_results', status: 'not_started' },
+    { step_key: 'a_playoff', status: 'not_started' },
+    { step_key: 'b_playoff', status: 'not_started' },
+    { step_key: 'prize_ceremony', status: 'not_started' },
+  ]
+
+  const { error } = await supabase
+    .from('class_workflow_steps')
+    .upsert(
+      statuses.map(status => ({
+        class_id: classId,
+        step_key: status.step_key,
+        status: status.status,
+        updated_at: now,
+      })),
+      { onConflict: 'class_id,step_key' },
+    )
+
+  if (error) {
+    throw new Error(`Failed to seed class workflow: ${error.message}`)
+  }
+}
+
+export async function seedAdminPoolProgressCompetition(
+  supabase: SupabaseClient,
+  slug: string,
+  classSeeds: AdminPoolProgressClassSeed[],
+  options?: { adminPin?: string; playerPin?: string },
+): Promise<SeededAdminPoolProgressCompetition> {
+  if (classSeeds.length === 0) {
+    throw new Error('seedAdminPoolProgressCompetition requires at least one class')
+  }
+
+  const adminPin = options?.adminPin ?? '2222'
+  const playerPin = options?.playerPin ?? '1111'
+
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash(playerPin, 4),
+    bcrypt.hash(adminPin, 4),
+  ])
+
+  const { data: competition, error: competitionError } = await supabase
+    .from('competitions')
+    .insert({
+      name: 'Pool Progress Testtävling',
+      slug,
+      player_pin_hash: playerPinHash,
+      admin_pin_hash: adminPinHash,
+    })
+    .select('id')
+    .single()
+
+  if (competitionError || !competition) {
+    throw new Error(`Failed to seed pool-progress competition: ${competitionError?.message ?? 'Unknown error'}`)
+  }
+
+  const competitionId = competition.id
+
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .insert({
+      competition_id: competitionId,
+      name: 'Pass 1',
+      date: '2025-09-13',
+      session_order: 1,
+    })
+    .select('id')
+    .single()
+
+  if (sessionError || !session) {
+    throw new Error(`Failed to seed pool-progress session: ${sessionError?.message ?? 'Unknown error'}`)
+  }
+
+  const seenNames = new Set<string>()
+  for (const classSeed of classSeeds) {
+    if (seenNames.has(classSeed.name)) {
+      throw new Error(`Duplicate class name in seed: ${classSeed.name}`)
+    }
+    seenNames.add(classSeed.name)
+  }
+
+  const pastDeadline = '2020-01-01T00:00:00Z'
+  const futureDeadline = '2099-01-01T00:00:00Z'
+  const { data: insertedClasses, error: classError } = await supabase
+    .from('classes')
+    .insert(
+      classSeeds.map(classSeed => ({
+        session_id: session.id,
+        name: classSeed.name,
+        start_time: classSeed.startTime,
+        attendance_deadline:
+          classSeed.phase === 'awaiting_attendance' ? futureDeadline : pastDeadline,
+      })),
+    )
+    .select('id, name, start_time')
+
+  if (classError || !insertedClasses) {
+    throw new Error(`Failed to seed pool-progress classes: ${classError?.message ?? 'Unknown error'}`)
+  }
+
+  const classesById = new Map<string, { id: string; name: string; start_time: string }>()
+  for (const row of insertedClasses) {
+    classesById.set(row.name, row)
+  }
+
+  const now = new Date().toISOString()
+  let playerIndex = 0
+
+  for (const classSeed of classSeeds) {
+    const classRow = classesById.get(classSeed.name)!
+    const registeredPlayers = classSeed.registeredPlayers ?? 4
+
+    const playerRows = Array.from({ length: registeredPlayers }, () => {
+      playerIndex += 1
+      return {
+        competition_id: competitionId,
+        name: `Poolspelare ${playerIndex}`,
+        club: 'Poolklubb',
+      }
+    })
+
+    const { data: insertedPlayers, error: playerError } = await supabase
+      .from('players')
+      .insert(playerRows)
+      .select('id')
+
+    if (playerError || !insertedPlayers) {
+      throw new Error(`Failed to seed pool-progress players: ${playerError?.message ?? 'Unknown error'}`)
+    }
+
+    const { data: regs, error: regError } = await supabase
+      .from('registrations')
+      .insert(
+        insertedPlayers.map(player => ({
+          player_id: player.id,
+          class_id: classRow.id,
+          status: 'registered' as const,
+        })),
+      )
+      .select('id')
+
+    if (regError || !regs) {
+      throw new Error(`Failed to seed pool-progress registrations: ${regError?.message ?? 'Unknown error'}`)
+    }
+
+    const phase = classSeed.phase ?? 'pool_play_in_progress'
+
+    if (phase !== 'awaiting_attendance') {
+      const { error: attendanceError } = await supabase.from('attendance').insert(
+        regs.map(reg => ({
+          registration_id: reg.id,
+          status: 'confirmed' as const,
+          reported_at: now,
+          reported_by: 'admin' as const,
+          idempotency_key: `pool-progress-seed-${reg.id}`,
+        })),
+      )
+
+      if (attendanceError) {
+        throw new Error(`Failed to seed pool-progress attendance: ${attendanceError.message}`)
+      }
+
+      await seedClassPoolPlayWorkflow(supabase, classRow.id, phase, now)
+    }
+  }
+
+  return {
+    competitionId,
+    classes: classSeeds.map(classSeed => {
+      const row = classesById.get(classSeed.name)!
+      return { id: row.id, name: row.name, startTime: row.start_time }
+    }),
+  }
+}
+
+export type OnDataSnapshotPoolSeed = {
+  poolNumber: number
+  playerCount: number
+  completedMatchCount: number
+}
+
+export async function seedOnDataSnapshotForClasses(
+  supabase: SupabaseClient,
+  input: {
+    competitionId: string
+    receivedAt: string
+    classes: Array<{ className: string; pools: OnDataSnapshotPoolSeed[] }>
+  },
+): Promise<{ snapshotId: string }> {
+  await supabase.from('ondata_integration_snapshots').delete().eq('competition_id', input.competitionId)
+  await supabase.from('ondata_integration_status').delete().eq('competition_id', input.competitionId)
+
+  const snapshotId = randomUUID()
+  const totalPools = input.classes.reduce((sum, cls) => sum + cls.pools.length, 0)
+  const totalCompleted = input.classes.reduce(
+    (sum, cls) => sum + cls.pools.reduce((acc, pool) => acc + pool.completedMatchCount, 0),
+    0,
+  )
+
+  const { error: snapshotError } = await supabase.from('ondata_integration_snapshots').insert({
+    id: snapshotId,
+    competition_id: input.competitionId,
+    schema_version: 1,
+    payload_hash: `seed-${snapshotId}`,
+    received_at: input.receivedAt,
+    processed_at: input.receivedAt,
+    processing_status: 'processed',
+    error_message: null,
+    source_file_name: 'pool-progress-seed.json',
+    source_file_path: 'tests/pool-progress-seed.json',
+    source_file_modified_at: input.receivedAt,
+    source_copied_to_temp_at: input.receivedAt,
+    source_processed_at: input.receivedAt,
+    source_file_hash: `hash-${snapshotId}`,
+    summary_classes: input.classes.length,
+    summary_pools: totalPools,
+    summary_completed_matches: totalCompleted,
+    raw_payload: { schemaVersion: 1, source: {}, summary: {}, classes: [] },
+  })
+
+  if (snapshotError) {
+    throw new Error(`Failed to seed pool-progress snapshot: ${snapshotError.message}`)
+  }
+
+  let classOrder = 0
+  for (const cls of input.classes) {
+    const snapshotClassId = randomUUID()
+
+    const { error: classError } = await supabase.from('ondata_integration_snapshot_classes').insert({
+      id: snapshotClassId,
+      snapshot_id: snapshotId,
+      class_order: classOrder,
+      external_class_key: `seed-${classOrder}`,
+      class_name: cls.className,
+      class_date: '2025-09-13',
+      class_time: '09:00',
+    })
+    classOrder += 1
+
+    if (classError) {
+      throw new Error(`Failed to seed pool-progress snapshot class: ${classError.message}`)
+    }
+
+    for (let poolIndex = 0; poolIndex < cls.pools.length; poolIndex += 1) {
+      const poolSeed = cls.pools[poolIndex]
+      const poolId = randomUUID()
+
+      const { error: poolError } = await supabase.from('ondata_integration_snapshot_pools').insert({
+        id: poolId,
+        snapshot_class_id: snapshotClassId,
+        pool_order: poolIndex,
+        pool_number: poolSeed.poolNumber,
+        completed_match_count: poolSeed.completedMatchCount,
+      })
+
+      if (poolError) {
+        throw new Error(`Failed to seed pool-progress snapshot pool: ${poolError.message}`)
+      }
+
+      if (poolSeed.playerCount > 0) {
+        const { error: playerError } = await supabase.from('ondata_integration_snapshot_players').insert(
+          Array.from({ length: poolSeed.playerCount }, (_, i) => ({
+            snapshot_pool_id: poolId,
+            player_order: i,
+            name: `Pool ${poolSeed.poolNumber} spelare ${i + 1}`,
+            club: 'Snapshotklubb',
+          })),
+        )
+
+        if (playerError) {
+          throw new Error(`Failed to seed pool-progress snapshot players: ${playerError.message}`)
+        }
+      }
+    }
+  }
+
+  const { error: statusError } = await supabase.from('ondata_integration_status').insert({
+    competition_id: input.competitionId,
+    current_snapshot_id: snapshotId,
+    last_received_at: input.receivedAt,
+    last_processed_at: input.receivedAt,
+    last_payload_hash: `seed-${snapshotId}`,
+    last_source_file_modified_at: input.receivedAt,
+    last_source_processed_at: input.receivedAt,
+    last_error: null,
+    last_summary_classes: input.classes.length,
+    last_summary_pools: totalPools,
+    last_summary_completed_matches: totalCompleted,
+    updated_at: input.receivedAt,
+  })
+
+  if (statusError) {
+    throw new Error(`Failed to seed pool-progress integration status: ${statusError.message}`)
+  }
+
+  return { snapshotId }
+}
