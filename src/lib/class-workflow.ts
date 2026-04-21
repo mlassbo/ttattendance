@@ -201,7 +201,7 @@ const CLASS_WORKFLOW_STEP_DEFINITION_BY_KEY = new Map(
 const CLASS_WORKFLOW_PHASE_LABELS: Record<ClassWorkflowPhaseKey, string> = {
   awaiting_attendance: 'Inväntar närvaro',
   callout_needed: 'Ropa upp saknade spelare',
-  attendance_complete: 'Närvaro klar',
+  attendance_complete: 'Alla har rapporterat närvaro',
   seeding_in_progress: 'Seedning pågår',
   pool_draw_in_progress: 'Pooler lottas',
   pool_play_in_progress: 'Poolspel pågår',

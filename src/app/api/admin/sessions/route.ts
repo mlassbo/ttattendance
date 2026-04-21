@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
       .from('sessions')
       .select('id, name, date, session_order, classes(id, name, start_time, attendance_deadline)')
       .eq('competition_id', auth.competitionId)
+      .order('date')
       .order('session_order')
 
     if (sessError) {
