@@ -1,6 +1,6 @@
 import { expect, Page, test } from '@playwright/test'
 import { config } from 'dotenv'
-import { applyRosterImport } from '@/lib/roster-import/planner'
+import { applyRosterImport, buildClassIdentityKey } from '@/lib/roster-import/planner'
 import { parseCompetitionImportSource } from '@/lib/roster-import/ttcoordinator-source'
 import {
   cleanTestCompetitions,
@@ -249,3 +249,96 @@ test.describe('Admin waiting list', () => {
     expect(registration?.reserve_joined_at).toBeNull()
   })
 })
+
+test('OnData re-import with changed class time reuses the existing class and updates start time', async () => {
+    const supabase = testClient()
+    const slug = 'test-admin-waiting-ondata-time-change'
+    const { competitionId } = await seedSuperadminCompetition(supabase, slug)
+
+    const { data: session } = await supabase
+      .from('sessions')
+      .insert({
+        competition_id: competitionId,
+        name: 'Pass 1',
+        date: '2025-09-13',
+        session_order: 1,
+      })
+      .select('id')
+      .single()
+
+    const { data: cls } = await supabase
+      .from('classes')
+      .insert({
+        session_id: session!.id,
+        name: 'Reservklass',
+        start_time: '2025-09-13T09:00:00+02:00',
+        attendance_deadline: '2099-09-13T08:15:00+02:00',
+      })
+      .select('id')
+      .single()
+
+    const seededReserve = await seedWaitingList(supabase, {
+      slug,
+      classId: cls!.id,
+      playerName: 'Rasmus Reserv',
+      clubName: 'Test BTK',
+      joinedAt: '2025-01-01T08:00:00.000Z',
+    })
+
+    const result = await applyRosterImport(
+      supabase,
+      competitionId,
+      {
+        sourceType: 'ondata-stage1',
+        competitionTitleFromSource: 'Import Reserv Cup',
+        errors: [],
+        summary: {
+          classesParsed: 1,
+          playersParsed: 1,
+          registrationsParsed: 1,
+        },
+        classes: [
+          {
+            externalClassKey: 'reservklass::2025-09-13::11:00',
+            identityKey: buildClassIdentityKey('Reservklass', '2025-09-13', '11:00'),
+            className: 'Reservklass',
+            startAt: '2025-09-13T11:00:00+02:00',
+            classDate: '2025-09-13',
+            classTime: '11:00',
+            registrations: [
+              {
+                playerName: 'Rasmus Reserv',
+                clubName: 'Test BTK',
+                playerKey: 'rasmus reserv::test btk',
+              },
+            ],
+          },
+        ],
+      },
+      true,
+      [{ classKey: 'reservklass::2025-09-13::11:00', sessionNumber: 1 }],
+    )
+
+    expect(result.result).toBeDefined()
+    expect(result.result?.summary.classesUpdated).toBe(1)
+    expect(result.result?.summary.classesCreated).toBe(0)
+
+    const { data: registration } = await supabase
+      .from('registrations')
+      .select('id, class_id, status, reserve_joined_at')
+      .eq('id', seededReserve.registrationId)
+      .single()
+
+    expect(registration?.class_id).toBe(cls!.id)
+    expect(registration?.status).toBe('registered')
+    expect(registration?.reserve_joined_at).toBeNull()
+
+    const { data: classes } = await supabase
+      .from('classes')
+      .select('id, start_time')
+      .eq('session_id', session!.id)
+
+    expect(classes).toHaveLength(1)
+    expect(classes?.[0]?.id).toBe(cls!.id)
+    expect(new Date(classes?.[0]?.start_time ?? '').toISOString()).toBe('2025-09-13T09:00:00.000Z')
+  })

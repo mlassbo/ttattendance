@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { ONDATA_ROSTER_SOURCE_TYPE } from '@/lib/roster-import/ondata-roster-contract'
 
 export const STOCKHOLM_TIME_ZONE = 'Europe/Stockholm'
 const ATTENDANCE_DEADLINE_MINUTES = 45
@@ -220,6 +221,19 @@ export function buildPlayerKey(playerName: string, clubName: string): string {
 
 export function buildClassIdentityKey(className: string, classDate: string, classTime: string): string {
   return `${normalizeIdentityPart(className)}::${classDate}::${classTime}`
+}
+
+function buildClassMatchKey(
+  sourceType: string,
+  className: string,
+  classDate: string,
+  classTime: string,
+): string {
+  if (sourceType === ONDATA_ROSTER_SOURCE_TYPE) {
+    return normalizeIdentityPart(className)
+  }
+
+  return buildClassIdentityKey(className, classDate, classTime)
 }
 
 function buildRegistrationKey(classIdentityKey: string, playerKey: string): string {
@@ -628,12 +642,18 @@ async function prepareRosterImport(
     state.classes.map(classRow => {
       const classDate = isoToStockholmDate(classRow.start_time)
       const classTime = isoToStockholmTime(classRow.start_time)
-      return [buildClassIdentityKey(classRow.name, classDate, classTime), classRow] as const
+      return [buildClassMatchKey(dataset.sourceType, classRow.name, classDate, classTime), classRow] as const
     }),
   )
 
   const classSessionPrompts = dataset.classes.map(classRow => {
-    const existingClass = existingClassMap.get(classRow.identityKey) ?? null
+    const classMatchKey = buildClassMatchKey(
+      dataset.sourceType,
+      classRow.className,
+      classRow.classDate,
+      classRow.classTime,
+    )
+    const existingClass = existingClassMap.get(classMatchKey) ?? null
     const currentSessionNumber = existingClass ? (sessionNumberById.get(existingClass.session_id) ?? null) : null
     const suggestedSessionNumber = suggestSessionNumber(classRow.classTime)
     const savedOverride = sessionOverrides.get(classRow.externalClassKey) ?? null
@@ -651,19 +671,37 @@ async function prepareRosterImport(
     } satisfies CompetitionImportClassSessionPrompt
   })
 
-  const existingRegistrationMap = new Map(state.registrations.map(registration => [registration.key, registration] as const))
+  const existingRegistrationMap = new Map(
+    state.registrations.map(registration => {
+      const classMatchKey = buildClassMatchKey(
+        dataset.sourceType,
+        registration.className,
+        registration.classDate,
+        registration.classTime,
+      )
+      const playerKey = buildPlayerKey(registration.playerName, registration.clubName)
+      return [buildRegistrationKey(classMatchKey, playerKey), registration] as const
+    }),
+  )
 
   const importedRegistrationKeys = new Set<string>()
   const toAdd: ImportPlanAddRow[] = []
 
   for (const classRow of dataset.classes) {
+    const classMatchKey = buildClassMatchKey(
+      dataset.sourceType,
+      classRow.className,
+      classRow.classDate,
+      classRow.classTime,
+    )
+
     for (const registration of classRow.registrations) {
-      const registrationKey = buildRegistrationKey(classRow.identityKey, registration.playerKey)
+      const registrationKey = buildRegistrationKey(classMatchKey, registration.playerKey)
       importedRegistrationKeys.add(registrationKey)
 
       if (!existingRegistrationMap.has(registrationKey)) {
         toAdd.push({
-          classIdentityKey: classRow.identityKey,
+          classIdentityKey: classMatchKey,
           playerKey: registration.playerKey,
           className: classRow.className,
           classDate: classRow.classDate,
@@ -676,11 +714,25 @@ async function prepareRosterImport(
   }
 
   const toRemove: ImportPlanRemoveRow[] = state.registrations
-    .filter(registration => !importedRegistrationKeys.has(registration.key))
+    .filter(registration => {
+      const classMatchKey = buildClassMatchKey(
+        dataset.sourceType,
+        registration.className,
+        registration.classDate,
+        registration.classTime,
+      )
+      const playerKey = buildPlayerKey(registration.playerName, registration.clubName)
+      return !importedRegistrationKeys.has(buildRegistrationKey(classMatchKey, playerKey))
+    })
     .map(registration => ({
       registrationId: registration.id,
       playerId: registration.playerId,
-      classIdentityKey: buildClassIdentityKey(registration.className, registration.classDate, registration.classTime),
+      classIdentityKey: buildClassMatchKey(
+        dataset.sourceType,
+        registration.className,
+        registration.classDate,
+        registration.classTime,
+      ),
       playerKey: buildPlayerKey(registration.playerName, registration.clubName),
       className: registration.className,
       classDate: registration.classDate,
@@ -734,7 +786,7 @@ function buildApplyPlan(
     prepared.state.classes.map(classRow => {
       const classDate = isoToStockholmDate(classRow.start_time)
       const classTime = isoToStockholmTime(classRow.start_time)
-      return [buildClassIdentityKey(classRow.name, classDate, classTime), classRow] as const
+      return [buildClassMatchKey(prepared.dataset.sourceType, classRow.name, classDate, classTime), classRow] as const
     }),
   )
 
@@ -755,7 +807,13 @@ function buildApplyPlan(
       knownSessionSlotKeys.add(sessionSlotKey)
     }
 
-    const existingClass = classesByIdentityKey.get(classRow.identityKey) ?? null
+    const classMatchKey = buildClassMatchKey(
+      prepared.dataset.sourceType,
+      classRow.className,
+      classRow.classDate,
+      classRow.classTime,
+    )
+    const existingClass = classesByIdentityKey.get(classMatchKey) ?? null
 
     // Preserve manually edited attendance_deadline and session assignment for existing classes
     const attendanceDeadline = existingClass
@@ -779,7 +837,7 @@ function buildApplyPlan(
       : sessionSlotKey
 
     return {
-      class_key: classRow.identityKey,
+      class_key: classMatchKey,
       existing_class_id: existingClass?.id ?? null,
       class_name: classRow.className,
       start_time: classRow.startAt,
