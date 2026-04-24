@@ -23,7 +23,7 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
           <section
             key={pool.poolNumber}
             data-testid={`class-live-pool-${pool.poolNumber}`}
-            className="rounded-2xl border border-line/80 bg-stone-50/70 px-4 py-4"
+            className="rounded-2xl border border-stone-300 bg-stone-50/70 px-4 py-4"
           >
             <div className="flex items-start justify-between gap-3">
               <h2 className="text-base font-semibold text-ink">Pool {pool.poolNumber}</h2>
@@ -90,11 +90,11 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
             {hasFixtures ? (
               <details
                 data-testid={`class-live-pool-matches-${pool.poolNumber}`}
-                className="group mt-3 -mx-4 -mb-4 overflow-hidden rounded-b-2xl bg-stone-200/80 text-ink"
+                className="group mt-3 -mx-4 -mb-4 overflow-hidden rounded-b-2xl bg-slate-800 text-slate-100"
               >
                 <summary
                   data-testid={`class-live-pool-matches-toggle-${pool.poolNumber}`}
-                  className="flex w-full cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-ink"
+                  className="flex w-full cursor-pointer list-none items-center justify-between gap-3 bg-slate-700/70 px-4 py-3 text-sm font-medium text-slate-100"
                 >
                   <span>
                     <span className="group-open:hidden">Visa matcher</span>
@@ -104,7 +104,7 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
                     aria-hidden="true"
                     viewBox="0 0 20 20"
                     fill="none"
-                    className="h-4 w-4 shrink-0 text-muted transition-transform duration-150 group-open:rotate-180"
+                    className="h-4 w-4 shrink-0 text-slate-300 transition-transform duration-150 group-open:rotate-180"
                     stroke="currentColor"
                     strokeWidth="1.8"
                     strokeLinecap="round"
@@ -114,33 +114,33 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
                   </svg>
                 </summary>
 
-                <ul className="border-t border-stone-300/70">
+                <ul className="border-t border-slate-700">
                   {pool.matches.map((match, matchIndex) => (
                     <li
                       key={`${pool.poolNumber}-${matchIndex}-${match.playerA.name}-${match.playerB.name}`}
                       data-testid={`class-live-match-${pool.poolNumber}-${matchIndex}`}
-                      className={`flex items-start justify-between gap-3 px-4 py-3 text-sm text-ink ${
-                        matchIndex % 2 === 0 ? 'bg-stone-200/80' : 'bg-stone-100/70'
+                      className={`flex items-start justify-between gap-3 px-4 py-3 text-sm text-slate-100 ${
+                        matchIndex % 2 === 0 ? 'bg-slate-800' : 'bg-slate-900/40'
                       }`}
                     >
                       <div className="min-w-0">
-                        <p className={match.isPlayed && !match.isWalkover && match.setScoreA! > match.setScoreB! ? 'font-semibold text-ink' : 'text-ink'}>
+                        <p className={match.isPlayed && !match.isWalkover && match.setScoreA! > match.setScoreB! ? 'font-semibold text-white' : 'text-slate-100'}>
                           {match.playerA.name} -
                         </p>
-                        <p className={match.isPlayed && !match.isWalkover && match.setScoreB! > match.setScoreA! ? 'font-semibold text-ink' : 'text-ink'}>
+                        <p className={match.isPlayed && !match.isWalkover && match.setScoreB! > match.setScoreA! ? 'font-semibold text-white' : 'text-slate-100'}>
                           {match.playerB.name}
                         </p>
                       </div>
                       {match.isWalkover ? (
-                        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-ink">
+                        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-900">
                           WO
                         </span>
                       ) : match.isPlayed ? (
-                        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-medium tabular-nums text-ink">
+                        <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold tabular-nums text-slate-900">
                           {match.setScoreA}&ndash;{match.setScoreB}
                         </span>
                       ) : (
-                        <span className="shrink-0 text-xs font-medium text-muted">
+                        <span className="shrink-0 text-xs font-medium text-slate-400">
                           Ej spelad än
                         </span>
                       )}
