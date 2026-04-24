@@ -18,12 +18,16 @@ export async function persistOnDataPlayoffSnapshot(
   payloadHash: string,
 ) {
   const receivedAt = new Date().toISOString()
+  const statusIdentity = {
+    competition_id: competitionId,
+    parent_external_class_key: payload.parentClass.externalClassKey,
+    playoff_bracket: payload.playoff.bracket,
+  }
 
   const { data: previousStatus, error: previousStatusError } = await supabase
     .from('ondata_playoff_status')
-    .select('current_snapshot_id, last_processed_at')
-    .eq('competition_id', competitionId)
-    .eq('external_class_key', payload.class.externalClassKey)
+    .select('current_snapshot_id, last_processed_at, last_payload_hash, last_source_processed_at, last_summary_rounds, last_summary_matches, last_summary_completed_matches')
+    .match(statusIdentity)
     .maybeSingle()
 
   if (previousStatusError) {
@@ -50,6 +54,12 @@ export async function persistOnDataPlayoffSnapshot(
       class_source_class_id: payload.class.sourceClassId,
       external_class_key: payload.class.externalClassKey,
       class_name: payload.class.className,
+      playoff_bracket: payload.playoff.bracket,
+      parent_source_class_id: payload.parentClass.sourceClassId,
+      parent_external_class_key: payload.parentClass.externalClassKey,
+      parent_class_name: payload.parentClass.className,
+      parent_class_date: payload.parentClass.classDate,
+      parent_class_time: payload.parentClass.classTime,
       summary_rounds: payload.summary.rounds,
       summary_matches: payload.summary.matches,
       summary_completed_matches: payload.summary.completedMatches,
@@ -126,8 +136,7 @@ export async function persistOnDataPlayoffSnapshot(
     const { error: statusError } = await supabase
       .from('ondata_playoff_status')
       .upsert({
-        competition_id: competitionId,
-        external_class_key: payload.class.externalClassKey,
+        ...statusIdentity,
         current_snapshot_id: snapshot.id,
         last_received_at: receivedAt,
         last_processed_at: processedAt,
@@ -138,7 +147,7 @@ export async function persistOnDataPlayoffSnapshot(
         last_summary_matches: payload.summary.matches,
         last_summary_completed_matches: payload.summary.completedMatches,
         updated_at: processedAt,
-      }, { onConflict: 'competition_id,external_class_key' })
+      }, { onConflict: 'competition_id,parent_external_class_key,playoff_bracket' })
 
     if (statusError) {
       throw new Error(statusError.message)
@@ -163,19 +172,18 @@ export async function persistOnDataPlayoffSnapshot(
     await supabase
       .from('ondata_playoff_status')
       .upsert({
-        competition_id: competitionId,
-        external_class_key: payload.class.externalClassKey,
+        ...statusIdentity,
         current_snapshot_id: previousStatus?.current_snapshot_id ?? null,
         last_received_at: receivedAt,
         last_processed_at: previousStatus?.last_processed_at ?? null,
-        last_payload_hash: payloadHash,
-        last_source_processed_at: payload.source.processedAt,
+        last_payload_hash: previousStatus?.last_payload_hash ?? null,
+        last_source_processed_at: previousStatus?.last_source_processed_at ?? null,
         last_error: errorMessage,
-        last_summary_rounds: payload.summary.rounds,
-        last_summary_matches: payload.summary.matches,
-        last_summary_completed_matches: payload.summary.completedMatches,
+        last_summary_rounds: previousStatus?.last_summary_rounds ?? 0,
+        last_summary_matches: previousStatus?.last_summary_matches ?? 0,
+        last_summary_completed_matches: previousStatus?.last_summary_completed_matches ?? 0,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'competition_id,external_class_key' })
+      }, { onConflict: 'competition_id,parent_external_class_key,playoff_bracket' })
 
     throw error
   }

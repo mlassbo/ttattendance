@@ -1,13 +1,16 @@
-export const ONDATA_PLAYOFF_SNAPSHOT_SCHEMA_VERSION = 1
+export const ONDATA_PLAYOFF_SNAPSHOT_SCHEMA_VERSION = 2
 export const ONDATA_PLAYOFF_SOURCE_TYPE = 'ondata-stage5-playoff'
 
 type JsonObject = Record<string, unknown>
+type OnDataPlayoffBracket = 'A' | 'B'
 
 export type OnDataPlayoffSnapshotPayload = {
   schemaVersion: number
   competitionSlug: string
   source: OnDataPlayoffSnapshotSource
+  playoff: OnDataPlayoffSnapshotInfo
   class: OnDataPlayoffSnapshotClass
+  parentClass: OnDataPlayoffSnapshotParentClass
   summary: OnDataPlayoffSnapshotSummary
   rounds: OnDataPlayoffSnapshotRound[]
 }
@@ -26,6 +29,18 @@ export type OnDataPlayoffSnapshotClass = {
   sourceClassId: string
   externalClassKey: string
   className: string
+}
+
+export type OnDataPlayoffSnapshotInfo = {
+  bracket: OnDataPlayoffBracket
+}
+
+export type OnDataPlayoffSnapshotParentClass = {
+  sourceClassId: string
+  externalClassKey: string
+  className: string
+  classDate: string
+  classTime: string
 }
 
 export type OnDataPlayoffSnapshotSummary = {
@@ -54,7 +69,9 @@ export function parseOnDataPlayoffSnapshotPayload(value: unknown): OnDataPlayoff
     schemaVersion: expectNumber(root.schemaVersion, 'schemaVersion'),
     competitionSlug: expectString(root.competitionSlug, 'competitionSlug'),
     source: parseSource(root.source, 'source'),
+    playoff: parsePlayoff(root.playoff, 'playoff'),
     class: parseClass(root.class, 'class'),
+    parentClass: parseParentClass(root.parentClass, 'parentClass'),
     summary: parseSummary(root.summary, 'summary'),
     rounds: expectArray(root.rounds, 'rounds').map((entry, index) => parseRound(entry, `rounds[${index}]`)),
   }
@@ -65,6 +82,20 @@ export function parseOnDataPlayoffSnapshotPayload(value: unknown): OnDataPlayoff
 
   if (payload.source.sourceType !== ONDATA_PLAYOFF_SOURCE_TYPE) {
     throw new Error(`source.sourceType måste vara ${ONDATA_PLAYOFF_SOURCE_TYPE}.`)
+  }
+
+  const allMatches = payload.rounds.flatMap(round => round.matches)
+  if (payload.summary.rounds !== payload.rounds.length) {
+    throw new Error('summary.rounds måste matcha antalet rounds.')
+  }
+
+  if (payload.summary.matches !== allMatches.length) {
+    throw new Error('summary.matches måste matcha antalet matches.')
+  }
+
+  const completedMatches = allMatches.filter(isCompletedMatch).length
+  if (payload.summary.completedMatches !== completedMatches) {
+    throw new Error('summary.completedMatches måste matcha antalet färdigspelade matcher.')
   }
 
   return payload
@@ -89,6 +120,24 @@ function parseClass(value: unknown, path: string): OnDataPlayoffSnapshotClass {
     sourceClassId: expectString(entry.sourceClassId, `${path}.sourceClassId`),
     externalClassKey: expectString(entry.externalClassKey, `${path}.externalClassKey`),
     className: expectString(entry.className, `${path}.className`),
+  }
+}
+
+function parsePlayoff(value: unknown, path: string): OnDataPlayoffSnapshotInfo {
+  const playoff = expectObject(value, path)
+  return {
+    bracket: expectBracket(playoff.bracket, `${path}.bracket`),
+  }
+}
+
+function parseParentClass(value: unknown, path: string): OnDataPlayoffSnapshotParentClass {
+  const parentClass = expectObject(value, path)
+  return {
+    sourceClassId: expectString(parentClass.sourceClassId, `${path}.sourceClassId`),
+    externalClassKey: expectString(parentClass.externalClassKey, `${path}.externalClassKey`),
+    className: expectString(parentClass.className, `${path}.className`),
+    classDate: expectString(parentClass.classDate, `${path}.classDate`),
+    classTime: expectString(parentClass.classTime, `${path}.classTime`),
   }
 }
 
@@ -118,6 +167,15 @@ function parseMatch(value: unknown, path: string): OnDataPlayoffSnapshotMatch {
     winner: expectOptionalString(match.winner, `${path}.winner`),
     result: expectOptionalString(match.result, `${path}.result`),
   }
+}
+
+function expectBracket(value: unknown, path: string): OnDataPlayoffBracket {
+  const bracket = expectString(value, path)
+  if (bracket !== 'A' && bracket !== 'B') {
+    throw new Error(`${path} måste vara A eller B.`)
+  }
+
+  return bracket
 }
 
 function expectObject(value: unknown, path: string): JsonObject {
@@ -172,4 +230,8 @@ function expectIsoDate(value: unknown, path: string): string {
   }
 
   return stringValue
+}
+
+function isCompletedMatch(match: OnDataPlayoffSnapshotMatch): boolean {
+  return match.winner != null || match.result != null
 }

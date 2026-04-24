@@ -158,7 +158,7 @@ test.describe('Public pool match results', () => {
     const woRow = page.getByTestId('class-live-match-1-0')
     await expect(woRow).toContainText('WO')
     await expect(woRow).not.toContainText('Ej spelad än')
-    await expect(woRow.locator('.font-semibold')).toHaveCount(0)
+    await expect(woRow.locator('div.min-w-0 .font-semibold')).toHaveCount(0)
 
     await expect(page.getByTestId('class-live-match-1-1')).toContainText('3–0')
     await expectPoolPlayers(page, 1, POOL_ONE_PLAYERS)

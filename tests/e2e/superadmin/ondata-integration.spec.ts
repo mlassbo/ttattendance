@@ -194,22 +194,39 @@ function buildInvalidRegistrationSnapshotPayload(onDataSlug: string) {
 }
 
 function buildPlayoffSnapshotPayload(onDataSlug: string) {
+  return buildPlayoffSnapshotPayloadForBracket(onDataSlug, 'A')
+}
+
+function buildPlayoffSnapshotPayloadForBracket(onDataSlug: string, bracket: 'A' | 'B') {
+  const sourceClassId = bracket === 'A' ? '31882' : '32168'
+  const className = bracket === 'A' ? 'Max500' : 'Max500 B'
+
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     competitionSlug: onDataSlug,
     source: {
       sourceType: 'ondata-stage5-playoff',
       competitionUrl: `https://resultat.ondata.se/${onDataSlug}/`,
-      sourceClassId: '31882',
-      stage5Path: `https://resultat.ondata.se/ViewClassPDF.php?classID=31882&stage=5`,
-      stage6Path: `https://resultat.ondata.se/ViewClassPDF.php?classID=31882&stage=6`,
+      sourceClassId,
+      stage5Path: `https://resultat.ondata.se/ViewClassPDF.php?classID=${sourceClassId}&stage=5`,
+      stage6Path: `https://resultat.ondata.se/ViewClassPDF.php?classID=${sourceClassId}&stage=6`,
       processedAt: '2026-04-20T12:00:10.000Z',
-      fileHash: 'sha256:playoffhash',
+      fileHash: `sha256:playoffhash-${bracket.toLowerCase()}`,
+    },
+    playoff: {
+      bracket,
     },
     class: {
-      sourceClassId: '31882',
-      externalClassKey: 'ondata::31882',
+      sourceClassId,
+      externalClassKey: `ondata::${sourceClassId}`,
+      className,
+    },
+    parentClass: {
+      sourceClassId: '31879',
+      externalClassKey: 'max500::Lör 28::13:00',
       className: 'Max500',
+      classDate: 'Lör 28',
+      classTime: '13:00',
     },
     summary: {
       rounds: 2,
@@ -221,14 +238,14 @@ function buildPlayoffSnapshotPayload(onDataSlug: string) {
         name: 'Semifinaler',
         matches: [
           {
-            matchKey: '31882::Semifinaler::1',
+            matchKey: `${sourceClassId}::${bracket}::Semifinaler::1`,
             playerA: 'Alva Alfredsson',
             playerB: 'Bosse Berg',
             winner: 'Alva Alfredsson',
             result: '11,-8,9,7',
           },
           {
-            matchKey: '31882::Semifinaler::2',
+            matchKey: `${sourceClassId}::${bracket}::Semifinaler::2`,
             playerA: 'Cia Carlsson',
             playerB: 'Dana Dalen',
             winner: null,
@@ -240,7 +257,7 @@ function buildPlayoffSnapshotPayload(onDataSlug: string) {
         name: 'Final',
         matches: [
           {
-            matchKey: '31882::Final::1',
+            matchKey: `${sourceClassId}::${bracket}::Final::1`,
             playerA: 'Alva Alfredsson',
             playerB: 'Dana Dalen',
             winner: 'Alva Alfredsson',
@@ -253,11 +270,15 @@ function buildPlayoffSnapshotPayload(onDataSlug: string) {
 }
 
 function buildInvalidPlayoffSnapshotPayload(onDataSlug: string) {
-  const payload = buildPlayoffSnapshotPayload(onDataSlug)
+  return buildInvalidPlayoffSnapshotPayloadForBracket(onDataSlug, 'A')
+}
+
+function buildInvalidPlayoffSnapshotPayloadForBracket(onDataSlug: string, bracket: 'A' | 'B') {
+  const payload = buildPlayoffSnapshotPayloadForBracket(onDataSlug, bracket)
   payload.source = {
     ...payload.source,
     processedAt: '2026-04-20T12:05:10.000Z',
-    fileHash: 'sha256:playoffhash-broken',
+    fileHash: `sha256:playoffhash-${bracket.toLowerCase()}-broken`,
   }
 
   payload.rounds = [
@@ -485,7 +506,8 @@ test.describe('OnData integration', () => {
       .from('ondata_playoff_status')
       .select('last_summary_rounds, last_summary_matches, last_summary_completed_matches, current_snapshot_id')
       .eq('competition_id', competitionId)
-      .eq('external_class_key', 'ondata::31882')
+      .eq('parent_external_class_key', 'max500::Lör 28::13:00')
+      .eq('playoff_bracket', 'A')
       .single()
 
     expect(status?.last_summary_rounds).toBe(2)
@@ -495,12 +517,14 @@ test.describe('OnData integration', () => {
 
     const { data: snapshot } = await supabase
       .from('ondata_playoff_snapshots')
-      .select('class_name, source_stage5_path')
+      .select('class_name, source_stage5_path, playoff_bracket, parent_external_class_key')
       .eq('competition_id', competitionId)
       .single()
 
     expect(snapshot?.class_name).toBe('Max500')
     expect(snapshot?.source_stage5_path).toContain('stage=5')
+    expect(snapshot?.playoff_bracket).toBe('A')
+    expect(snapshot?.parent_external_class_key).toBe('max500::Lör 28::13:00')
 
     const { data: rounds } = await supabase
       .from('ondata_playoff_snapshot_rounds')
@@ -522,7 +546,7 @@ test.describe('OnData integration', () => {
 
     expect(matches).toHaveLength(3)
     expect(matches.filter(match => match.is_completed)).toHaveLength(2)
-    expect(matches[0]?.match_key).toBe('31882::Semifinaler::1')
+    expect(matches[0]?.match_key).toBe('31882::A::Semifinaler::1')
   })
 
   test('failed playoff ingest keeps the last successful class snapshot as current', async ({ page }) => {
@@ -550,7 +574,8 @@ test.describe('OnData integration', () => {
       .from('ondata_playoff_status')
       .select('current_snapshot_id')
       .eq('competition_id', competitionId)
-      .eq('external_class_key', 'ondata::31882')
+      .eq('parent_external_class_key', 'max500::Lör 28::13:00')
+      .eq('playoff_bracket', 'A')
       .single()
 
     const successfulSnapshotId = successStatus?.current_snapshot_id
@@ -569,11 +594,123 @@ test.describe('OnData integration', () => {
       .from('ondata_playoff_status')
       .select('current_snapshot_id, last_error')
       .eq('competition_id', competitionId)
-      .eq('external_class_key', 'ondata::31882')
+      .eq('parent_external_class_key', 'max500::Lör 28::13:00')
+      .eq('playoff_bracket', 'A')
       .single()
 
     expect(failedStatus?.current_snapshot_id).toBe(successfulSnapshotId)
     expect(failedStatus?.last_error).toBeTruthy()
+  })
+
+  test('playoff snapshot ingest rejects payload without playoff bracket metadata', async ({ page }) => {
+    const slug = `${TEST_PREFIX}playoff-missing-bracket`
+    await seedSuperadminCompetition(testClient(), slug)
+
+    await loginAsSuperadmin(page)
+    await openIntegrationPage(page, slug)
+    await page.getByTestId('generate-api-key-button').click()
+
+    const apiKey = await page.getByTestId('generated-api-key-input').inputValue()
+    const payload = buildPlayoffSnapshotPayload('001270') as Record<string, unknown>
+    delete payload.playoff
+
+    const response = await page.request.post(`/api/integrations/ondata/competitions/${slug}/playoff-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: payload,
+    })
+
+    expect(response.status()).toBe(400)
+  })
+
+  test('playoff snapshot ingest rejects payload without parent class metadata', async ({ page }) => {
+    const slug = `${TEST_PREFIX}playoff-missing-parent`
+    await seedSuperadminCompetition(testClient(), slug)
+
+    await loginAsSuperadmin(page)
+    await openIntegrationPage(page, slug)
+    await page.getByTestId('generate-api-key-button').click()
+
+    const apiKey = await page.getByTestId('generated-api-key-input').inputValue()
+    const payload = buildPlayoffSnapshotPayload('001270') as Record<string, unknown>
+    delete payload.parentClass
+
+    const response = await page.request.post(`/api/integrations/ondata/competitions/${slug}/playoff-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: payload,
+    })
+
+    expect(response.status()).toBe(400)
+  })
+
+  test('A and B playoff snapshots are stored independently for the same parent class', async ({ page }) => {
+    const supabase = testClient()
+    const ttAttendanceSlug = `${TEST_PREFIX}playoff-brackets`
+    const onDataSlug = '001356'
+    const { competitionId } = await seedSuperadminCompetition(supabase, ttAttendanceSlug)
+
+    await loginAsSuperadmin(page)
+    await openIntegrationPage(page, ttAttendanceSlug)
+    await page.getByTestId('generate-api-key-button').click()
+
+    const apiKey = await page.getByTestId('generated-api-key-input').inputValue()
+
+    const aResponse = await page.request.post(`/api/integrations/ondata/competitions/${ttAttendanceSlug}/playoff-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: buildPlayoffSnapshotPayloadForBracket(onDataSlug, 'A'),
+    })
+    const bResponse = await page.request.post(`/api/integrations/ondata/competitions/${ttAttendanceSlug}/playoff-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: buildPlayoffSnapshotPayloadForBracket(onDataSlug, 'B'),
+    })
+
+    expect(aResponse.status()).toBe(202)
+    expect(bResponse.status()).toBe(202)
+
+    const { data: statuses } = await supabase
+      .from('ondata_playoff_status')
+      .select('playoff_bracket, current_snapshot_id, parent_external_class_key')
+      .eq('competition_id', competitionId)
+      .order('playoff_bracket', { ascending: true })
+
+    expect(statuses).toHaveLength(2)
+    expect(statuses?.map(status => status.playoff_bracket)).toEqual(['A', 'B'])
+    expect(statuses?.every(status => status.parent_external_class_key === 'max500::Lör 28::13:00')).toBe(true)
+
+    const aStatus = statuses?.find(status => status.playoff_bracket === 'A')
+    const bStatus = statuses?.find(status => status.playoff_bracket === 'B')
+
+    expect(aStatus?.current_snapshot_id).toBeTruthy()
+    expect(bStatus?.current_snapshot_id).toBeTruthy()
+
+    const failedBResponse = await page.request.post(`/api/integrations/ondata/competitions/${ttAttendanceSlug}/playoff-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: buildInvalidPlayoffSnapshotPayloadForBracket(onDataSlug, 'B'),
+    })
+
+    expect(failedBResponse.status()).toBe(500)
+
+    const { data: afterFailureStatuses } = await supabase
+      .from('ondata_playoff_status')
+      .select('playoff_bracket, current_snapshot_id, last_error')
+      .eq('competition_id', competitionId)
+
+    const aStatusAfterFailure = afterFailureStatuses?.find(status => status.playoff_bracket === 'A')
+    const bStatusAfterFailure = afterFailureStatuses?.find(status => status.playoff_bracket === 'B')
+
+    expect(aStatusAfterFailure?.current_snapshot_id).toBe(aStatus?.current_snapshot_id)
+    expect(aStatusAfterFailure?.last_error).toBeNull()
+    expect(bStatusAfterFailure?.current_snapshot_id).toBe(bStatus?.current_snapshot_id)
+    expect(bStatusAfterFailure?.last_error).toBeTruthy()
   })
 
   test('registration snapshot ingest updates the registration import status', async ({ page }) => {
