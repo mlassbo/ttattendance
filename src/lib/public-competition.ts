@@ -104,6 +104,7 @@ type OnDataIntegrationStatusRow = {
 type OnDataSnapshotClassRow = {
   id: string
   class_name: string
+  external_class_key: string
 }
 
 type OnDataSnapshotPoolRow = {
@@ -130,12 +131,28 @@ type OnDataSnapshotMatchRow = {
   result: string | null
 }
 
+type OnDataPoolResultStatusRow = {
+  current_snapshot_id: string | null
+}
+
+type OnDataPoolResultSnapshotPoolRow = {
+  id: string
+  pool_number: number
+}
+
+type OnDataPoolResultStandingRow = {
+  pool_id: string
+  placement: number
+  player_name: string
+  club_name: string | null
+}
+
 type SnapshotPoolMatch = ClassLiveMatch & {
   matchOrder: number
 }
 
 export type PublicSearchMode = 'all' | 'player' | 'club' | 'class'
-export type ClassLiveStatus = 'none' | 'pools_available' | 'pool_play_started'
+export type ClassLiveStatus = 'none' | 'pools_available' | 'pool_play_started' | 'pool_play_complete'
 
 export interface PublicCompetition {
   id: string
@@ -227,12 +244,19 @@ export interface PublicSearchClassSuggestion {
   name: string
 }
 
+export interface ClassLivePoolStanding {
+  placement: number
+  playerName: string
+  clubName: string | null
+}
+
 export interface ClassLivePool {
   poolNumber: number
   players: Array<{ name: string; club: string | null }>
   matches: ClassLiveMatch[]
   playedMatches: number
   totalMatches: number
+  standings: ClassLivePoolStanding[] | null
 }
 
 export interface ClassLiveMatch {
@@ -252,12 +276,40 @@ export function hasPoolMatchFixtures(liveData: ClassLiveData): boolean {
   return liveData.pools.some(pool => pool.totalMatches > 0)
 }
 
+export function hasPublishedPoolResults(liveData: ClassLiveData): boolean {
+  return liveData.pools.length > 0 && liveData.pools.every(pool => pool.standings !== null)
+}
+
 export function getClassLiveStatus(liveData: ClassLiveData | null): ClassLiveStatus {
   if (!liveData) {
     return 'none'
   }
 
+  if (hasPublishedPoolResults(liveData)) {
+    return 'pool_play_complete'
+  }
+
   return hasPoolMatchFixtures(liveData) ? 'pool_play_started' : 'pools_available'
+}
+
+export function getClassLiveStatusLabel(status: ClassLiveStatus): string {
+  if (status === 'pool_play_complete') {
+    return 'Poolspel klart'
+  }
+
+  return status === 'pool_play_started' ? 'Poolspel startat' : 'Pooler lottade'
+}
+
+export function getClassLiveStatusPillClass(status: ClassLiveStatus): string {
+  if (status === 'pool_play_complete') {
+    return 'app-pill-success'
+  }
+
+  if (status === 'pool_play_started') {
+    return 'app-pill-info'
+  }
+
+  return 'app-pill-warning'
 }
 
 export interface PublicPlayerDetails {
@@ -525,7 +577,7 @@ export async function getClassLiveData(
 
   const { data: snapshotClass, error: snapshotClassError } = await supabase
     .from('ondata_integration_snapshot_classes')
-    .select('id')
+    .select('id, external_class_key')
     .eq('snapshot_id', currentSnapshotId)
     .eq('class_name', classRow.name)
     .maybeSingle()
@@ -666,7 +718,7 @@ export async function getClassLiveData(
     matchesByPoolId.set(match.snapshot_pool_id, poolMatches)
   }
 
-  const livePools = poolRows.map(pool => {
+  const livePools: ClassLivePool[] = poolRows.map(pool => {
     const poolPlayers = playersByPoolId.get(pool.id) ?? []
     const snapshotPoolMatches = matchesByPoolId.get(pool.id) ?? []
     const completePoolMatches = buildCompletePoolMatches(poolPlayers, snapshotPoolMatches)
@@ -677,8 +729,63 @@ export async function getClassLiveData(
       matches: completePoolMatches,
       playedMatches: completePoolMatches.filter(match => match.isPlayed).length,
       totalMatches: (poolPlayers.length * (poolPlayers.length - 1)) / 2,
+      standings: null,
     }
   })
+
+  const poolResultSnapshotId = await getCurrentPoolResultSnapshotId(
+    supabase,
+    competitionId,
+    snapshotClass.external_class_key,
+  )
+
+  if (poolResultSnapshotId) {
+    const { data: resultPools, error: resultPoolsError } = await supabase
+      .from('ondata_pool_result_snapshot_pools')
+      .select('id, pool_number')
+      .eq('snapshot_id', poolResultSnapshotId)
+
+    if (resultPoolsError) {
+      throw new Error(resultPoolsError.message)
+    }
+
+    const resultPoolRows = (resultPools ?? []) as OnDataPoolResultSnapshotPoolRow[]
+    if (resultPoolRows.length > 0) {
+      const poolNumberById = new Map(
+        resultPoolRows.map(pool => [pool.id, pool.pool_number]),
+      )
+
+      const { data: standings, error: standingsError } = await supabase
+        .from('ondata_pool_result_snapshot_standings')
+        .select('pool_id, placement, player_name, club_name')
+        .in('pool_id', resultPoolRows.map(pool => pool.id))
+        .order('placement', { ascending: true })
+
+      if (standingsError) {
+        throw new Error(standingsError.message)
+      }
+
+      const standingsByPoolNumber = new Map<number, ClassLivePoolStanding[]>()
+      for (const standing of (standings ?? []) as OnDataPoolResultStandingRow[]) {
+        const poolNumber = poolNumberById.get(standing.pool_id)
+        if (!poolNumber) {
+          continue
+        }
+
+        const poolStandings = standingsByPoolNumber.get(poolNumber) ?? []
+        poolStandings.push({
+          placement: standing.placement,
+          playerName: standing.player_name,
+          clubName: standing.club_name,
+        })
+        standingsByPoolNumber.set(poolNumber, poolStandings)
+      }
+
+      for (const pool of livePools) {
+        pool.standings = standingsByPoolNumber.get(pool.poolNumber) ?? null
+      }
+    }
+  }
 
   if (livePools.every(pool => pool.players.length === 0)) {
     return null
@@ -794,7 +901,7 @@ export async function getClassDashboardLiveStatus(
 
   const { data: snapshotClasses, error: snapshotClassesError } = await supabase
     .from('ondata_integration_snapshot_classes')
-    .select('id, class_name')
+    .select('id, class_name, external_class_key')
     .eq('snapshot_id', currentSnapshotId)
 
   if (snapshotClassesError) {
@@ -843,9 +950,14 @@ export async function getClassDashboardLiveStatus(
 
   const snapshotClassIdsWithPlayers = new Set<string>()
   const snapshotClassIdsWithPoolMatches = new Set<string>()
+  const poolCountBySnapshotClassId = new Map<string, number>()
   for (const poolEntry of poolRows) {
     const snapshotClassId = poolEntry.snapshot_class_id
     const poolId = poolEntry.id
+    poolCountBySnapshotClassId.set(
+      snapshotClassId,
+      (poolCountBySnapshotClassId.get(snapshotClassId) ?? 0) + 1,
+    )
     const playerCount = playerCountByPoolId.get(poolId) ?? 0
     if (playerCount > 0) {
       snapshotClassIdsWithPlayers.add(snapshotClassId)
@@ -862,15 +974,68 @@ export async function getClassDashboardLiveStatus(
     localClassIdsByName.set(classRow.name, classIds)
   }
 
+  const snapshotIdByExternalClassKey = new Map<string, string>()
+  const currentPoolResultSnapshotIds: string[] = []
+  const { data: poolResultStatuses, error: poolResultStatusesError } = await supabase
+    .from('ondata_pool_result_status')
+    .select('external_class_key, current_snapshot_id')
+    .eq('competition_id', competitionId)
+    .in('external_class_key', snapshotClassRows.map(snapshotClass => snapshotClass.external_class_key))
+
+  if (poolResultStatusesError) {
+    throw new Error(poolResultStatusesError.message)
+  }
+
+  for (const status of (poolResultStatuses ?? []) as Array<{
+    external_class_key: string
+    current_snapshot_id: string | null
+  }>) {
+    if (!status.current_snapshot_id) {
+      continue
+    }
+
+    snapshotIdByExternalClassKey.set(status.external_class_key, status.current_snapshot_id)
+    currentPoolResultSnapshotIds.push(status.current_snapshot_id)
+  }
+
+  const resultPoolCountBySnapshotId = new Map<string, number>()
+  if (currentPoolResultSnapshotIds.length > 0) {
+    const { data: resultPools, error: resultPoolsError } = await supabase
+      .from('ondata_pool_result_snapshot_pools')
+      .select('snapshot_id')
+      .in('snapshot_id', currentPoolResultSnapshotIds)
+
+    if (resultPoolsError) {
+      throw new Error(resultPoolsError.message)
+    }
+
+    for (const pool of (resultPools ?? []) as Array<{ snapshot_id: string }>) {
+      resultPoolCountBySnapshotId.set(
+        pool.snapshot_id,
+        (resultPoolCountBySnapshotId.get(pool.snapshot_id) ?? 0) + 1,
+      )
+    }
+  }
+
   for (const snapshotClass of snapshotClassRows) {
     if (!snapshotClassIdsWithPlayers.has(snapshotClass.id)) {
       continue
     }
 
+    const poolResultSnapshotId = snapshotIdByExternalClassKey.get(snapshotClass.external_class_key)
+    const hasPublishedResultsForEveryPool =
+      Boolean(poolResultSnapshotId) &&
+      (resultPoolCountBySnapshotId.get(poolResultSnapshotId!) ?? 0) >=
+        (poolCountBySnapshotClassId.get(snapshotClass.id) ?? 0)
+
     for (const classId of localClassIdsByName.get(snapshotClass.class_name) ?? []) {
       liveStatus.set(
         classId,
-        snapshotClassIdsWithPoolMatches.has(snapshotClass.id) ? 'pool_play_started' : 'pools_available',
+        hasPublishedResultsForEveryPool
+          ? 'pool_play_complete'
+          : snapshotClassIdsWithPoolMatches.has(snapshotClass.id)
+            ? 'pool_play_started'
+            : 'pools_available',
       )
     }
   }
@@ -1120,6 +1285,25 @@ async function getCurrentOnDataSnapshotId(
   }
 
   return ((integrationStatus ?? null) as OnDataIntegrationStatusRow | null)?.current_snapshot_id ?? null
+}
+
+async function getCurrentPoolResultSnapshotId(
+  supabase: ServerClient,
+  competitionId: string,
+  externalClassKey: string,
+): Promise<string | null> {
+  const { data: poolResultStatus, error } = await supabase
+    .from('ondata_pool_result_status')
+    .select('current_snapshot_id')
+    .eq('competition_id', competitionId)
+    .eq('external_class_key', externalClassKey)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return ((poolResultStatus ?? null) as OnDataPoolResultStatusRow | null)?.current_snapshot_id ?? null
 }
 
 async function buildPublicSearchClasses(

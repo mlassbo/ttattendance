@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { sv } from 'date-fns/locale'
 import { useState } from 'react'
+import ClassLiveStatusPill from '@/components/ClassLiveStatusPill'
 import ClassLiveView from '@/components/ClassLiveView'
 import PublicClassRosterView from '@/components/PublicClassRosterView'
 import type {
@@ -16,10 +17,6 @@ import type {
 
 function hasLivePools(status: ClassLiveStatus): boolean {
   return status !== 'none'
-}
-
-function getLiveStatusLabel(status: ClassLiveStatus): string {
-  return status === 'pool_play_started' ? 'Poolspel startat' : 'Pooler lottade'
 }
 
 type ClassDashboardClientProps = {
@@ -253,12 +250,10 @@ export default function ClassDashboardClient({
                             {classEntry.registeredCount} anmälda
                           </div>
                           {hasLiveClassState ? (
-                            <span
-                              data-testid={`class-live-pill-${classEntry.id}`}
-                              className="app-pill-success"
-                            >
-                              {getLiveStatusLabel(liveStatusByClassId[classEntry.id])}
-                            </span>
+                            <ClassLiveStatusPill
+                              status={liveStatusByClassId[classEntry.id]}
+                              testId={`class-live-pill-${classEntry.id}`}
+                            />
                           ) : (
                             <AvailabilityIndicator entry={classEntry} />
                           )}

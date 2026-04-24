@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import ClassLiveStatusPill from '@/components/ClassLiveStatusPill'
 import PublicClassContentTabs from '@/components/PublicClassContentTabs'
 import type { PublicSearchClass } from '@/lib/public-competition'
 import {
@@ -74,7 +75,7 @@ export default async function PublicClassPage({
     }
 
     const showRegistrationStatusPills = !liveData
-  const liveStatus = getClassLiveStatus(liveData)
+    const liveStatus = getClassLiveStatus(liveData)
 
     return (
       <main className="app-shell">
@@ -120,11 +121,7 @@ export default async function PublicClassPage({
                   {classDetails.playerCount} anmälda
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  {liveData ? (
-                    <span className="app-pill-success">
-                      {liveStatus === 'pool_play_started' ? 'Poolspel startat' : 'Pooler lottade'}
-                    </span>
-                  ) : null}
+                  {liveData ? <ClassLiveStatusPill status={liveStatus} /> : null}
                   {showRegistrationStatusPills ? (
                     <span data-testid="class-page-availability">
                       <ClassAvailabilityBadge classDetails={classDetails} />

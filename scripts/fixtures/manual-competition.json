@@ -80,6 +80,7 @@
       "sessionKey": "day1-pass1",
       "startTime": "09:30",
       "seedState": "pool_play_complete",
+      "publishPoolResults": true,
       "maxPlayers": 16,
       "registeredPlayers": 16,
       "attendancePattern": "confirmed_only"

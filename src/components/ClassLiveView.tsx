@@ -12,6 +12,12 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
     >
       {pools.map(pool => {
         const hasFixtures = pool.totalMatches > 0
+        const standings = pool.standings ?? []
+        const hasPublishedStandings = pool.standings !== null
+        const isAwaitingResults =
+          !hasPublishedStandings &&
+          hasFixtures &&
+          pool.playedMatches === pool.totalMatches
 
         return (
           <section
@@ -21,7 +27,14 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
           >
             <div className="flex items-start justify-between gap-3">
               <h2 className="text-base font-semibold text-ink">Pool {pool.poolNumber}</h2>
-              {hasFixtures ? (
+              {hasPublishedStandings ? (
+                <span
+                  data-testid={`class-live-pool-final-pill-${pool.poolNumber}`}
+                  className="app-pill-success shrink-0"
+                >
+                  Klar
+                </span>
+              ) : hasFixtures ? (
                 <span
                   data-testid={`class-live-pool-progress-${pool.poolNumber}`}
                   className="app-pill-muted shrink-0"
@@ -31,14 +44,48 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
               ) : null}
             </div>
 
-            <ul className="mt-3 space-y-2">
-              {pool.players.map((player, index) => (
-                <li key={`${pool.poolNumber}-${index}-${player.name}`} className="text-sm text-ink">
-                  <span className="block font-medium">{player.name}</span>
-                  {player.club ? <span className="block text-xs text-muted">{player.club}</span> : null}
-                </li>
-              ))}
-            </ul>
+            {hasPublishedStandings ? (
+              <ol
+                data-testid={`class-live-pool-standings-${pool.poolNumber}`}
+                className="mt-3 space-y-2"
+              >
+                {standings.map(standing => (
+                  <li
+                    key={`${pool.poolNumber}-${standing.placement}-${standing.playerName}`}
+                    data-testid={`class-live-pool-standing-${pool.poolNumber}-${standing.placement}`}
+                    className="flex items-start gap-3 text-sm text-ink"
+                  >
+                    <span className="w-5 shrink-0 text-right font-medium tabular-nums">
+                      {standing.placement}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-medium">{standing.playerName}</span>
+                      {standing.clubName ? (
+                        <span className="block text-xs text-muted">{standing.clubName}</span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {pool.players.map((player, index) => (
+                  <li key={`${pool.poolNumber}-${index}-${player.name}`} className="text-sm text-ink">
+                    <span className="block font-medium">{player.name}</span>
+                    {player.club ? <span className="block text-xs text-muted">{player.club}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {isAwaitingResults ? (
+              <p
+                data-testid={`class-live-pool-awaiting-results-${pool.poolNumber}`}
+                className="mt-3 text-xs font-semibold text-amber-800"
+              >
+                OBS. Alla matcher är klara men poolresultatet är inte publicerat ännu
+              </p>
+            ) : null}
 
             {hasFixtures ? (
               <details

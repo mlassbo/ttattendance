@@ -502,15 +502,27 @@ test.describe('OnData integration', () => {
     expect(snapshot?.class_name).toBe('Max500')
     expect(snapshot?.source_stage5_path).toContain('stage=5')
 
-    const { data: matches } = await supabase
-      .from('ondata_playoff_snapshot_matches')
-      .select('match_key, winner_name, is_completed')
+    const { data: rounds } = await supabase
+      .from('ondata_playoff_snapshot_rounds')
+      .select('id, round_order')
       .eq('snapshot_id', status!.current_snapshot_id)
-      .order('match_order', { ascending: true })
+
+    const roundOrderById = new Map((rounds ?? []).map(round => [round.id, round.round_order]))
+
+    const { data: rawMatches } = await supabase
+      .from('ondata_playoff_snapshot_matches')
+      .select('match_key, winner_name, is_completed, match_order, snapshot_round_id')
+      .eq('snapshot_id', status!.current_snapshot_id)
+
+    const matches = [...(rawMatches ?? [])].sort((a, b) => {
+      const roundA = roundOrderById.get(a.snapshot_round_id) ?? 0
+      const roundB = roundOrderById.get(b.snapshot_round_id) ?? 0
+      return roundA - roundB || a.match_order - b.match_order
+    })
 
     expect(matches).toHaveLength(3)
-    expect(matches?.filter(match => match.is_completed)).toHaveLength(2)
-    expect(matches?.[0]?.match_key).toBe('31882::Semifinaler::1')
+    expect(matches.filter(match => match.is_completed)).toHaveLength(2)
+    expect(matches[0]?.match_key).toBe('31882::Semifinaler::1')
   })
 
   test('failed playoff ingest keeps the last successful class snapshot as current', async ({ page }) => {

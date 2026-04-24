@@ -560,6 +560,8 @@ type SeedPoolMatch = {
 export interface SeededCompetitionWithPoolMatches {
   competitionId: string
   classId: string
+  className: string
+  externalClassKey: string
   poolIds: string[]
 }
 
@@ -1101,13 +1103,14 @@ export async function seedCompetitionWithPoolMatches(
     matchesPerPool?: SeedPoolMatch[][]
   },
 ): Promise<SeededCompetitionWithPoolMatches> {
-  if (!slug.startsWith('test-player-pmr-')) {
-    throw new Error('seedCompetitionWithPoolMatches requires a slug starting with "test-player-pmr-"')
+  if (!slug.startsWith('test-player-pmr-') && !slug.startsWith('test-player-pres-')) {
+    throw new Error('seedCompetitionWithPoolMatches requires a slug starting with "test-player-pmr-" or "test-player-pres-"')
   }
 
   const poolCount = options?.poolCount ?? 1
   const playersPerPool = options?.playersPerPool ?? 4
   const matchesPerPool = options?.matchesPerPool ?? []
+  const externalClassKey = 'poolmatch-liveklass-a'
 
   const [playerPinHash, adminPinHash] = await Promise.all([
     bcrypt.hash('1111', 4),
@@ -1252,7 +1255,7 @@ export async function seedCompetitionWithPoolMatches(
       id: snapshotClassId,
       snapshot_id: snapshotId,
       class_order: 0,
-      external_class_key: 'poolmatch-liveklass-a',
+      external_class_key: externalClassKey,
       class_name: classRow.name,
       class_date: '2025-09-13',
       class_time: '09:00',
@@ -1347,6 +1350,8 @@ export async function seedCompetitionWithPoolMatches(
   return {
     competitionId,
     classId: classRow.id,
+    className: classRow.name,
+    externalClassKey,
     poolIds,
   }
 }
@@ -1563,12 +1568,20 @@ export type OnDataSnapshotPoolSeed = {
   completedMatchCount: number
 }
 
+export type OnDataSnapshotClassSeed = {
+  className: string
+  externalClassKey?: string
+  classDate?: string
+  classTime?: string
+  pools: OnDataSnapshotPoolSeed[]
+}
+
 export async function seedOnDataSnapshotForClasses(
   supabase: SupabaseClient,
   input: {
     competitionId: string
     receivedAt: string
-    classes: Array<{ className: string; pools: OnDataSnapshotPoolSeed[] }>
+    classes: OnDataSnapshotClassSeed[]
   },
 ): Promise<{ snapshotId: string }> {
   await supabase.from('ondata_integration_snapshots').delete().eq('competition_id', input.competitionId)
@@ -1614,10 +1627,10 @@ export async function seedOnDataSnapshotForClasses(
       id: snapshotClassId,
       snapshot_id: snapshotId,
       class_order: classOrder,
-      external_class_key: `seed-${classOrder}`,
+      external_class_key: cls.externalClassKey ?? `seed-${classOrder}`,
       class_name: cls.className,
-      class_date: '2025-09-13',
-      class_time: '09:00',
+      class_date: cls.classDate ?? '2025-09-13',
+      class_time: cls.classTime ?? '09:00',
     })
     classOrder += 1
 
@@ -1678,4 +1691,140 @@ export async function seedOnDataSnapshotForClasses(
   }
 
   return { snapshotId }
+}
+
+export async function seedPoolResultSnapshots(
+  supabase: SupabaseClient,
+  input: {
+    competitionId: string
+    classes: Array<{
+      externalClassKey: string
+      className: string
+      classDate: string
+      classTime: string
+      pools: Array<{
+        poolNumber: number
+        standings: Array<{
+          placement: number
+          playerName: string
+          clubName: string | null
+        }>
+      }>
+    }>
+  },
+): Promise<{ snapshotIds: Record<string, string> }> {
+  const snapshotIds: Record<string, string> = {}
+  const processedAt = new Date().toISOString()
+
+  for (const classSeed of input.classes) {
+    const snapshotId = randomUUID()
+    snapshotIds[classSeed.externalClassKey] = snapshotId
+
+    const { error: snapshotError } = await supabase
+      .from('ondata_pool_result_snapshots')
+      .insert({
+        id: snapshotId,
+        competition_id: input.competitionId,
+        external_class_key: classSeed.externalClassKey,
+        source_class_id: classSeed.externalClassKey,
+        class_name: classSeed.className,
+        class_date: classSeed.classDate,
+        class_time: classSeed.classTime,
+        source_file_name: `pool-results-${classSeed.externalClassKey}.json`,
+        source_file_path: `tests/pool-results-${classSeed.externalClassKey}.json`,
+        source_file_modified_at: processedAt,
+        source_processed_at: processedAt,
+        source_file_hash: `hash-${snapshotId}`,
+        payload_hash: `seed-${snapshotId}`,
+        processing_status: 'processed',
+        last_error: null,
+        raw_payload: {
+          schemaVersion: 1,
+          competitionSlug: 'test-seed',
+          source: {
+            sourceType: 'ondata-stage4',
+            fileName: `pool-results-${classSeed.externalClassKey}.json`,
+            filePath: `tests/pool-results-${classSeed.externalClassKey}.json`,
+            fileModifiedAt: processedAt,
+            processedAt,
+            fileHash: `hash-${snapshotId}`,
+          },
+          class: {
+            externalClassKey: classSeed.externalClassKey,
+            sourceClassId: classSeed.externalClassKey,
+            className: classSeed.className,
+            classDate: classSeed.classDate,
+            classTime: classSeed.classTime,
+            pools: [],
+          },
+        },
+        received_at: processedAt,
+        processed_at: processedAt,
+      })
+
+    if (snapshotError) {
+      throw new Error(`Failed to seed pool-result snapshot: ${snapshotError.message}`)
+    }
+
+    const poolRows = classSeed.pools.map(pool => ({
+      id: randomUUID(),
+      snapshot_id: snapshotId,
+      pool_number: pool.poolNumber,
+    }))
+
+    if (poolRows.length > 0) {
+      const { error: poolError } = await supabase
+        .from('ondata_pool_result_snapshot_pools')
+        .insert(poolRows)
+
+      if (poolError) {
+        throw new Error(`Failed to seed pool-result pools: ${poolError.message}`)
+      }
+    }
+
+    const poolIdByNumber = new Map(poolRows.map(pool => [pool.pool_number, pool.id]))
+    const standingRows = classSeed.pools.flatMap(pool =>
+      pool.standings.map(standing => ({
+        id: randomUUID(),
+        pool_id: poolIdByNumber.get(pool.poolNumber)!,
+        placement: standing.placement,
+        player_name: standing.playerName,
+        club_name: standing.clubName,
+        matches_won: 0,
+        matches_lost: 0,
+        sets_won: 0,
+        sets_lost: 0,
+        points_for: 0,
+        points_against: 0,
+      })),
+    )
+
+    if (standingRows.length > 0) {
+      const { error: standingError } = await supabase
+        .from('ondata_pool_result_snapshot_standings')
+        .insert(standingRows)
+
+      if (standingError) {
+        throw new Error(`Failed to seed pool-result standings: ${standingError.message}`)
+      }
+    }
+
+    const { error: statusError } = await supabase
+      .from('ondata_pool_result_status')
+      .upsert({
+        competition_id: input.competitionId,
+        external_class_key: classSeed.externalClassKey,
+        current_snapshot_id: snapshotId,
+        last_payload_hash: `seed-${snapshotId}`,
+        last_processed_at: processedAt,
+        last_error: null,
+        updated_at: processedAt,
+      }, { onConflict: 'competition_id,external_class_key' })
+
+    if (statusError) {
+      throw new Error(`Failed to seed pool-result status: ${statusError.message}`)
+    }
+  }
+
+  return { snapshotIds }
 }

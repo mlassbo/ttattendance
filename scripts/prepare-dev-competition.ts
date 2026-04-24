@@ -13,6 +13,15 @@ import {
   hashOnDataSnapshotPayload,
   persistOnDataSnapshot,
 } from '../src/lib/ondata-integration-server'
+import {
+  ONDATA_POOL_RESULTS_SCHEMA_VERSION,
+  ONDATA_POOL_RESULTS_SOURCE_TYPE,
+  type OnDataPoolResultsPayload,
+} from '../src/lib/ondata-pool-results-contract'
+import {
+  hashOnDataPoolResultsPayload,
+  persistOnDataPoolResults,
+} from '../src/lib/ondata-pool-results-server'
 
 dotenv.config({ path: '.env.local' })
 
@@ -53,6 +62,7 @@ type ManualFixtureClass = {
   sessionKey: string
   startTime: string
   seedState: ManualClassSeedState
+  publishPoolResults?: boolean
   maxPlayers: number
   registeredPlayers: number
   reservePlayers?: number
@@ -90,6 +100,17 @@ type InsertedRegistrationRow = {
 type PlayerSlot = {
   name: string
   club: string | null
+}
+
+type DrawSeedSummary = {
+  classes: number
+  pools: number
+  completedMatches: number
+}
+
+type DrawSeedResult = {
+  payload: OnDataSnapshotPayload
+  summary: DrawSeedSummary
 }
 
 const FIRST_NAMES = [
@@ -263,6 +284,14 @@ function loadManualFixture(): ManualCompetitionFixture {
       )
     ) {
       throw new Error(`Ogiltigt seedState for ${classEntry.name}: ${classEntry.seedState}`)
+    }
+
+    if (classEntry.publishPoolResults != null && typeof classEntry.publishPoolResults !== 'boolean') {
+      throw new Error(`publishPoolResults maste vara true eller false for ${classEntry.name}`)
+    }
+
+    if (classEntry.publishPoolResults && classEntry.seedState !== 'pool_play_complete') {
+      throw new Error(`Klassen ${classEntry.name} kan bara publicera poolresultat nar seedState ar pool_play_complete.`)
     }
 
     if (classEntry.registeredPlayers > classEntry.maxPlayers) {
@@ -690,6 +719,10 @@ function countStates(fixture: ManualCompetitionFixture) {
   )
 }
 
+function countPublishedPoolResults(fixture: ManualCompetitionFixture) {
+  return fixture.classes.filter(classEntry => classEntry.publishPoolResults).length
+}
+
 function getDrawClassIds(fixture: ManualCompetitionFixture, classIdByKey: Map<string, string>) {
   return fixture.classes
     .filter(
@@ -776,6 +809,20 @@ function determinePoolProgress(classIndex: number, poolIndex: number): 'complete
 }
 
 type PoolProgressProfile = 'mixed' | 'all_complete'
+
+function buildPoolResultStandings(players: PlayerSlot[]) {
+  return players.map((player, index) => ({
+    placement: index + 1,
+    playerName: player.name,
+    clubName: player.club,
+    matchesWon: Math.max(players.length - index - 1, 0),
+    matchesLost: index,
+    setsWon: Math.max((players.length - index) * 3, 0),
+    setsLost: index,
+    pointsFor: 33 - index * 3,
+    pointsAgainst: 18 + index * 3,
+  }))
+}
 
 async function buildDrawPayload(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
@@ -931,7 +978,7 @@ async function seedDrawData(
   competitionSlug: string,
   includedClassIds: ReadonlySet<string> | null = null,
   poolProgressProfileByClassId: Map<string, PoolProgressProfile> = new Map(),
-) {
+): Promise<DrawSeedResult | null> {
   const { error: deleteSnapshotsError } = await supabase
     .from('ondata_integration_snapshots')
     .delete()
@@ -977,7 +1024,87 @@ async function seedDrawData(
 
   const payloadHash = hashOnDataSnapshotPayload(payload)
   await persistOnDataSnapshot(supabase, competitionId, payload, payloadHash)
-  return payload.summary
+  return {
+    payload,
+    summary: payload.summary,
+  }
+}
+
+async function seedPoolResultsData(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  competitionId: string,
+  fixture: ManualCompetitionFixture,
+  drawPayload: OnDataSnapshotPayload | null,
+) {
+  const { error: deleteStatusError } = await supabase
+    .from('ondata_pool_result_status')
+    .delete()
+    .eq('competition_id', competitionId)
+
+  if (deleteStatusError) {
+    throw new Error(`Kunde inte rensa gammal poolresultatstatus: ${deleteStatusError.message}`)
+  }
+
+  const { error: deleteSnapshotsError } = await supabase
+    .from('ondata_pool_result_snapshots')
+    .delete()
+    .eq('competition_id', competitionId)
+
+  if (deleteSnapshotsError) {
+    throw new Error(`Kunde inte rensa gamla poolresultat-snapshots: ${deleteSnapshotsError.message}`)
+  }
+
+  if (!drawPayload) {
+    return 0
+  }
+
+  const publishedClassNames = new Set(
+    fixture.classes
+      .filter(classEntry => classEntry.publishPoolResults)
+      .map(classEntry => classEntry.name),
+  )
+
+  if (publishedClassNames.size === 0) {
+    return 0
+  }
+
+  let publishedClassCount = 0
+
+  for (const snapshotClass of drawPayload.classes) {
+    if (!publishedClassNames.has(snapshotClass.className)) {
+      continue
+    }
+
+    const payload: OnDataPoolResultsPayload = {
+      schemaVersion: ONDATA_POOL_RESULTS_SCHEMA_VERSION,
+      competitionSlug: drawPayload.competitionSlug,
+      source: {
+        sourceType: ONDATA_POOL_RESULTS_SOURCE_TYPE,
+        fileName: 'manual-fixture-pool-results.json',
+        filePath: MANUAL_FIXTURE_PATH,
+        fileModifiedAt: drawPayload.source.fileModifiedAt,
+        processedAt: drawPayload.source.processedAt,
+        fileHash: `${drawPayload.source.fileHash}-pool-results`,
+      },
+      class: {
+        externalClassKey: snapshotClass.externalClassKey,
+        sourceClassId: snapshotClass.externalClassKey,
+        className: snapshotClass.className,
+        classDate: snapshotClass.classDate,
+        classTime: snapshotClass.classTime,
+        pools: snapshotClass.pools.map(pool => ({
+          poolNumber: pool.poolNumber,
+          standings: buildPoolResultStandings(pool.players),
+        })),
+      },
+    }
+
+    const payloadHash = hashOnDataPoolResultsPayload(payload)
+    await persistOnDataPoolResults(supabase, competitionId, payload, payloadHash)
+    publishedClassCount += 1
+  }
+
+  return publishedClassCount
 }
 
 async function seedManualCompetition(
@@ -1004,6 +1131,7 @@ async function seedManualCompetition(
 
   return {
     counts: countStates(fixture),
+    publishedPoolResults: countPublishedPoolResults(fixture),
     drawClassIds: getDrawClassIds(fixture, classIdByKey),
     poolProgressProfileByClassId,
   }
@@ -1014,25 +1142,33 @@ async function main() {
   const supabase = createSupabaseAdminClient()
   const competitionId = await ensureCompetition(supabase, fixture.competition)
   const manualStateSummary = await seedManualCompetition(supabase, competitionId, fixture)
-  const drawSummary = await seedDrawData(
+  const drawSeed = await seedDrawData(
     supabase,
     competitionId,
     fixture.competition.slug,
     new Set(manualStateSummary.drawClassIds),
     manualStateSummary.poolProgressProfileByClassId,
   )
+  const publishedPoolResults = await seedPoolResultsData(
+    supabase,
+    competitionId,
+    fixture,
+    drawSeed?.payload ?? null,
+  )
 
   console.log(`Manuell testtavling klar: http://localhost:3000/${fixture.competition.slug}`)
   console.log(`  Player PIN: ${fixture.competition.playerPin}`)
   console.log(`  Admin PIN:  ${fixture.competition.adminPin}`)
 
-  if (drawSummary) {
+  if (drawSeed) {
     console.log(
-      `  Lottning: ${drawSummary.classes} klasser, ${drawSummary.pools} pools, ${drawSummary.completedMatches} spelade matcher`,
+      `  Lottning: ${drawSeed.summary.classes} klasser, ${drawSeed.summary.pools} pools, ${drawSeed.summary.completedMatches} spelade matcher`,
     )
   } else {
     console.log('  Lottning: hoppade over (inga klasser markerade med pooldata).')
   }
+
+  console.log(`  Poolresultat: ${publishedPoolResults} klass(er) publicerade via fixture`)
 
   console.log(
     `  Manuella testlagen: ${manualStateSummary.counts.awaiting_attendance} invantar narvaro, ${manualStateSummary.counts.full_attendance} fullstandigt rapporterade, ${manualStateSummary.counts.draw_available} poolspel pagar, ${manualStateSummary.counts.pool_play_complete} poolspel klart, ${manualStateSummary.counts.not_open} ej oppna`,
