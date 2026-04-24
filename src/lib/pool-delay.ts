@@ -1,10 +1,15 @@
+import { SYNC_STALENESS_THRESHOLDS } from './sync-staleness'
+
+export { computeSyncStaleness, formatStockholmHourMinute } from './sync-staleness'
+export type { SyncStaleness } from './sync-staleness'
+
 export const POOL_DELAY_CONSTANTS = {
   ROUND_DURATION_MIN: 20,
   GRACE_MIN: 20,
   YELLOW_THRESHOLD_MIN: 5,
   RED_THRESHOLD_MIN: 15,
-  SYNC_SOFT_MIN: 5,
-  SYNC_HARD_MIN: 15,
+  SYNC_SOFT_MIN: SYNC_STALENESS_THRESHOLDS.SOFT_MIN,
+  SYNC_HARD_MIN: SYNC_STALENESS_THRESHOLDS.HARD_MIN,
 } as const
 
 export type PoolDelayState =
@@ -43,12 +48,6 @@ export type ClassPoolProgressResult = {
   totalMatches: number
   completedMatches: number
   pools: PoolDelayResult[]
-}
-
-export type SyncStaleness = {
-  level: 'fresh' | 'soft' | 'hard'
-  ageMin: number
-  lastSyncAt: Date | null
 }
 
 const STATE_PRIORITY: Record<PoolDelayState, number> = {
@@ -170,37 +169,3 @@ export function computeClassPoolProgress(input: ClassPoolProgressInput): ClassPo
   }
 }
 
-export function computeSyncStaleness(input: {
-  lastSyncAt: string | null
-  now: Date
-}): SyncStaleness {
-  if (!input.lastSyncAt) {
-    return { level: 'fresh', ageMin: 0, lastSyncAt: null }
-  }
-
-  const syncDate = new Date(input.lastSyncAt)
-  if (Number.isNaN(syncDate.getTime())) {
-    return { level: 'fresh', ageMin: 0, lastSyncAt: null }
-  }
-
-  const ageMin = Math.max(0, (input.now.getTime() - syncDate.getTime()) / 60_000)
-
-  if (ageMin < POOL_DELAY_CONSTANTS.SYNC_SOFT_MIN) {
-    return { level: 'fresh', ageMin, lastSyncAt: syncDate }
-  }
-
-  if (ageMin < POOL_DELAY_CONSTANTS.SYNC_HARD_MIN) {
-    return { level: 'soft', ageMin, lastSyncAt: syncDate }
-  }
-
-  return { level: 'hard', ageMin, lastSyncAt: syncDate }
-}
-
-export function formatStockholmHourMinute(value: Date): string {
-  return new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Europe/Stockholm',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(value)
-}

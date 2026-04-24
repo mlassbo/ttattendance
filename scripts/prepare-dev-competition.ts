@@ -22,6 +22,15 @@ import {
   hashOnDataPoolResultsPayload,
   persistOnDataPoolResults,
 } from '../src/lib/ondata-pool-results-server'
+import {
+  ONDATA_PLAYOFF_SNAPSHOT_SCHEMA_VERSION,
+  ONDATA_PLAYOFF_SOURCE_TYPE,
+  type OnDataPlayoffSnapshotPayload,
+} from '../src/lib/ondata-playoff-contract'
+import {
+  hashOnDataPlayoffSnapshotPayload,
+  persistOnDataPlayoffSnapshot,
+} from '../src/lib/ondata-playoff-server'
 
 dotenv.config({ path: '.env.local' })
 
@@ -34,7 +43,32 @@ type ManualClassSeedState =
   | 'full_attendance'
   | 'draw_available'
   | 'pool_play_complete'
+  | 'a_playoff_in_progress'
+  | 'playoff_a_and_b_in_progress'
+  | 'a_playoff_with_byes'
+  | 'playoffs_complete'
 type ManualAttendancePattern = 'mixed' | 'confirmed_only'
+type ManualPlayoffProgress =
+  | 'first_round_live'
+  | 'quarterfinals_live'
+  | 'semifinals_live'
+  | 'finals_live'
+  | 'complete'
+
+const MANUAL_PLAYOFF_SEED_STATES = new Set<ManualClassSeedState>([
+  'a_playoff_in_progress',
+  'playoff_a_and_b_in_progress',
+  'a_playoff_with_byes',
+  'playoffs_complete',
+])
+
+const MANUAL_PLAYOFF_PROGRESS_VALUES: ReadonlyArray<ManualPlayoffProgress> = [
+  'first_round_live',
+  'quarterfinals_live',
+  'semifinals_live',
+  'finals_live',
+  'complete',
+]
 
 type ManualCompetitionFixture = {
   version: 1
@@ -67,6 +101,10 @@ type ManualFixtureClass = {
   registeredPlayers: number
   reservePlayers?: number
   attendancePattern?: ManualAttendancePattern
+  playoffBracketSize?: number
+  playoffBBracket?: boolean
+  playoffStalenessMinutes?: number
+  playoffProgress?: ManualPlayoffProgress
 }
 
 type ResolvedFixtureSession = ManualFixtureSession & {
@@ -279,9 +317,17 @@ function loadManualFixture(): ManualCompetitionFixture {
     }
 
     if (
-      !['not_open', 'awaiting_attendance', 'full_attendance', 'draw_available', 'pool_play_complete'].includes(
-        classEntry.seedState,
-      )
+      ![
+        'not_open',
+        'awaiting_attendance',
+        'full_attendance',
+        'draw_available',
+        'pool_play_complete',
+        'a_playoff_in_progress',
+        'playoff_a_and_b_in_progress',
+        'a_playoff_with_byes',
+        'playoffs_complete',
+      ].includes(classEntry.seedState)
     ) {
       throw new Error(`Ogiltigt seedState for ${classEntry.name}: ${classEntry.seedState}`)
     }
@@ -292,6 +338,32 @@ function loadManualFixture(): ManualCompetitionFixture {
 
     if (classEntry.publishPoolResults && classEntry.seedState !== 'pool_play_complete') {
       throw new Error(`Klassen ${classEntry.name} kan bara publicera poolresultat nar seedState ar pool_play_complete.`)
+    }
+
+    const isPlayoffState = MANUAL_PLAYOFF_SEED_STATES.has(classEntry.seedState)
+
+    if (classEntry.publishPoolResults && isPlayoffState) {
+      throw new Error(`Klassen ${classEntry.name} kan inte kombinera publishPoolResults med slutspelsstatus.`)
+    }
+
+    if (classEntry.playoffBracketSize != null) {
+      if (!Number.isInteger(classEntry.playoffBracketSize) || classEntry.playoffBracketSize < 2) {
+        throw new Error(`playoffBracketSize maste vara ett heltal >= 2 for ${classEntry.name}`)
+      }
+    }
+
+    if (classEntry.playoffBBracket != null && typeof classEntry.playoffBBracket !== 'boolean') {
+      throw new Error(`playoffBBracket maste vara true eller false for ${classEntry.name}`)
+    }
+
+    if (classEntry.playoffStalenessMinutes != null) {
+      if (!Number.isFinite(classEntry.playoffStalenessMinutes) || classEntry.playoffStalenessMinutes < 0) {
+        throw new Error(`playoffStalenessMinutes maste vara >= 0 for ${classEntry.name}`)
+      }
+    }
+
+    if (classEntry.playoffProgress != null && !MANUAL_PLAYOFF_PROGRESS_VALUES.includes(classEntry.playoffProgress)) {
+      throw new Error(`Ogiltigt playoffProgress for ${classEntry.name}: ${classEntry.playoffProgress}`)
     }
 
     if (classEntry.registeredPlayers > classEntry.maxPlayers) {
@@ -622,6 +694,7 @@ async function seedAttendance(
       classEntry.seedState !== 'full_attendance'
       && classEntry.seedState !== 'draw_available'
       && classEntry.seedState !== 'pool_play_complete'
+      && !MANUAL_PLAYOFF_SEED_STATES.has(classEntry.seedState)
     ) {
       continue
     }
@@ -675,21 +748,44 @@ async function seedPoolPlayWorkflow(
   }> = []
 
   for (const classEntry of fixture.classes) {
-    if (classEntry.seedState !== 'draw_available' && classEntry.seedState !== 'pool_play_complete') {
-      continue
-    }
-
     const classId = classIdByKey.get(classEntry.key)
     if (!classId) continue
 
-    const registerMatchResultsStatus: 'active' | 'done' =
-      classEntry.seedState === 'pool_play_complete' ? 'done' : 'active'
+    if (classEntry.seedState === 'draw_available' || classEntry.seedState === 'pool_play_complete') {
+      const registerMatchResultsStatus: 'active' | 'done' =
+        classEntry.seedState === 'pool_play_complete' ? 'done' : 'active'
+
+      rows.push(
+        { class_id: classId, step_key: 'seed_class', status: 'skipped', updated_at: now },
+        { class_id: classId, step_key: 'publish_pools', status: 'done', updated_at: now },
+        { class_id: classId, step_key: 'register_match_results', status: registerMatchResultsStatus, updated_at: now },
+      )
+      continue
+    }
+
+    if (!MANUAL_PLAYOFF_SEED_STATES.has(classEntry.seedState)) continue
 
     rows.push(
       { class_id: classId, step_key: 'seed_class', status: 'skipped', updated_at: now },
       { class_id: classId, step_key: 'publish_pools', status: 'done', updated_at: now },
-      { class_id: classId, step_key: 'register_match_results', status: registerMatchResultsStatus, updated_at: now },
+      { class_id: classId, step_key: 'register_match_results', status: 'done', updated_at: now },
+      { class_id: classId, step_key: 'publish_pool_results', status: 'done', updated_at: now },
     )
+
+    if (classEntry.seedState === 'playoff_a_and_b_in_progress') {
+      rows.push(
+        { class_id: classId, step_key: 'a_playoff', status: 'active', updated_at: now },
+        { class_id: classId, step_key: 'b_playoff', status: 'active', updated_at: now },
+      )
+    } else if (classEntry.seedState === 'playoffs_complete') {
+      rows.push(
+        { class_id: classId, step_key: 'a_playoff', status: 'done', updated_at: now },
+        { class_id: classId, step_key: 'b_playoff', status: 'skipped', updated_at: now },
+        { class_id: classId, step_key: 'register_playoff_match_results', status: 'done', updated_at: now },
+      )
+    } else {
+      rows.push({ class_id: classId, step_key: 'a_playoff', status: 'active', updated_at: now })
+    }
   }
 
   if (rows.length === 0) return
@@ -715,6 +811,10 @@ function countStates(fixture: ManualCompetitionFixture) {
       full_attendance: 0,
       draw_available: 0,
       pool_play_complete: 0,
+      a_playoff_in_progress: 0,
+      playoff_a_and_b_in_progress: 0,
+      a_playoff_with_byes: 0,
+      playoffs_complete: 0,
     } satisfies Record<ManualClassSeedState, number>,
   )
 }
@@ -731,6 +831,10 @@ function getDrawClassIds(fixture: ManualCompetitionFixture, classIdByKey: Map<st
     )
     .map(classEntry => classIdByKey.get(classEntry.key))
     .filter((value): value is string => Boolean(value))
+}
+
+function getPlayoffFixtureClasses(fixture: ManualCompetitionFixture) {
+  return fixture.classes.filter(classEntry => MANUAL_PLAYOFF_SEED_STATES.has(classEntry.seedState))
 }
 
 function formatStockholmDateTime(iso: string): { date: string; time: string } {
@@ -1107,6 +1211,317 @@ async function seedPoolResultsData(
   return publishedClassCount
 }
 
+type PlayoffClassQualifiers = {
+  a: PlayerSlot[]
+  b: PlayerSlot[]
+}
+
+async function loadPlayoffQualifiers(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  competitionId: string,
+  classIdByKey: Map<string, string>,
+  playoffClasses: ManualFixtureClass[],
+): Promise<Map<string, PlayoffClassQualifiers>> {
+  const result = new Map<string, PlayoffClassQualifiers>()
+  if (playoffClasses.length === 0) return result
+
+  const classIdsInOrder = playoffClasses
+    .map(classEntry => ({ key: classEntry.key, id: classIdByKey.get(classEntry.key) }))
+    .filter((row): row is { key: string; id: string } => Boolean(row.id))
+
+  if (classIdsInOrder.length === 0) return result
+
+  const classIds = classIdsInOrder.map(row => row.id)
+
+  const { data: registrations, error: registrationsError } = await supabase
+    .from('registrations')
+    .select('class_id, player_id, status')
+    .in('class_id', classIds)
+
+  if (registrationsError) {
+    throw new Error(`Kunde inte lasa registreringar for slutspel: ${registrationsError.message}`)
+  }
+
+  const { data: players, error: playersError } = await supabase
+    .from('players')
+    .select('id, name, club')
+    .eq('competition_id', competitionId)
+
+  if (playersError) {
+    throw new Error(`Kunde inte lasa spelare for slutspel: ${playersError.message}`)
+  }
+
+  const playerById = new Map<string, PlayerSlot>()
+  for (const player of players ?? []) {
+    playerById.set(player.id, { name: player.name, club: player.club })
+  }
+
+  const playersByClassId = new Map<string, PlayerSlot[]>()
+  for (const registration of registrations ?? []) {
+    if (registration.status === 'reserve') continue
+    const player = playerById.get(registration.player_id)
+    if (!player) continue
+    const list = playersByClassId.get(registration.class_id) ?? []
+    list.push(player)
+    playersByClassId.set(registration.class_id, list)
+  }
+
+  for (const { key, id } of classIdsInOrder) {
+    const classEntry = playoffClasses.find(entry => entry.key === key)
+    if (!classEntry) continue
+
+    const pool = (playersByClassId.get(id) ?? []).slice()
+    pool.sort((left, right) => left.name.localeCompare(right.name, 'sv'))
+
+    const aCount = classEntry.seedState === 'a_playoff_with_byes'
+      ? 6
+      : (classEntry.playoffBracketSize ?? 8)
+    const aQualifiers = pool.slice(0, aCount)
+    const bQualifiers = classEntry.playoffBBracket
+      ? pool.slice(aCount, aCount + (classEntry.playoffBracketSize ?? 8))
+      : []
+
+    result.set(key, { a: aQualifiers, b: bQualifiers })
+  }
+
+  return result
+}
+
+function buildPlayoffRoundSizes(classEntry: ManualFixtureClass): number[] {
+  if (classEntry.seedState === 'a_playoff_with_byes') {
+    return [2, 2, 1]
+  }
+
+  const size = classEntry.playoffBracketSize ?? 8
+  const roundSizes: number[] = []
+  let currentSize = Math.floor(size / 2)
+
+  while (currentSize >= 1) {
+    roundSizes.push(currentSize)
+    if (currentSize === 1) break
+    currentSize = Math.floor(currentSize / 2)
+  }
+
+  return roundSizes
+}
+
+function resolvePlayoffProgress(classEntry: ManualFixtureClass): ManualPlayoffProgress {
+  if (classEntry.playoffProgress) return classEntry.playoffProgress
+  if (classEntry.seedState === 'playoffs_complete') return 'complete'
+  if (classEntry.seedState === 'a_playoff_with_byes') return 'first_round_live'
+  return 'quarterfinals_live'
+}
+
+function activeRoundIndexForProgress(
+  progress: ManualPlayoffProgress,
+  totalRounds: number,
+): number {
+  if (progress === 'complete') return totalRounds
+  if (progress === 'finals_live') return totalRounds - 1
+  if (progress === 'semifinals_live') return Math.max(0, totalRounds - 2)
+  if (progress === 'quarterfinals_live') return Math.max(0, totalRounds - 3)
+  return 0
+}
+
+function buildPlayoffSnapshotPayload(params: {
+  competitionSlug: string
+  classEntry: ManualFixtureClass
+  parentClassStartTimeIso: string
+  parentExternalClassKey: string
+  bracket: 'A' | 'B'
+  qualifiers: PlayerSlot[]
+  classIndex: number
+}): OnDataPlayoffSnapshotPayload | null {
+  const { classEntry, qualifiers } = params
+  if (qualifiers.length === 0) return null
+
+  const roundSizes = buildPlayoffRoundSizes(classEntry)
+  if (roundSizes.length === 0) return null
+
+  const progress = resolvePlayoffProgress(classEntry)
+  const activeIndex = activeRoundIndexForProgress(progress, roundSizes.length)
+
+  const rounds = roundSizes.map((roundMatches, roundIndex) => {
+    const isComplete = roundIndex < activeIndex
+    const isActive = roundIndex === activeIndex && activeIndex < roundSizes.length
+    const matches = Array.from({ length: roundMatches }, (_, matchIndex) => {
+      const playerA = qualifiers[(matchIndex * 2) % qualifiers.length] ?? qualifiers[0]
+      const playerB = qualifiers[(matchIndex * 2 + 1) % qualifiers.length] ?? qualifiers[0]
+      const completedInActiveRound = Math.floor(roundMatches / 2)
+      const shouldComplete = isComplete || (isActive && matchIndex < completedInActiveRound)
+
+      return {
+        matchKey: `${params.bracket}-r${roundIndex}-m${matchIndex}`,
+        playerA: playerA.name,
+        playerB: playerB.name,
+        winner: shouldComplete ? playerA.name : null,
+        result: shouldComplete ? pickResult(playerA, playerB) : null,
+      }
+    })
+
+    const roundLabel = roundIndex === 0 ? 'Round 1' : `Round ${roundIndex + 1}`
+    return { name: roundLabel, matches }
+  })
+
+  const allMatches = rounds.flatMap(round => round.matches)
+  const completedMatches = allMatches.filter(match => match.winner != null || match.result != null).length
+
+  const local = formatStockholmDateTime(params.parentClassStartTimeIso)
+  const bracketSuffix = params.bracket === 'B' ? '~B' : ''
+  const baseExternalKey = params.parentExternalClassKey
+  const sourceClassId = `${baseExternalKey}${bracketSuffix}`
+  const nowIso = new Date().toISOString()
+  const processedAt = classEntry.playoffStalenessMinutes != null
+    ? new Date(Date.now() - classEntry.playoffStalenessMinutes * 60_000).toISOString()
+    : nowIso
+
+  return {
+    schemaVersion: ONDATA_PLAYOFF_SNAPSHOT_SCHEMA_VERSION,
+    competitionSlug: params.competitionSlug,
+    source: {
+      sourceType: ONDATA_PLAYOFF_SOURCE_TYPE,
+      competitionUrl: `https://example.test/${params.competitionSlug}`,
+      sourceClassId,
+      stage5Path: `manual-fixture/playoff-${baseExternalKey}${bracketSuffix}-stage5.pdf`,
+      stage6Path: null,
+      processedAt,
+      fileHash: `manual-fixture-playoff-${baseExternalKey}-${params.bracket}-${Date.now()}`,
+    },
+    playoff: { bracket: params.bracket },
+    class: {
+      sourceClassId,
+      externalClassKey: sourceClassId,
+      className: `${classEntry.name}${bracketSuffix}`,
+    },
+    parentClass: {
+      sourceClassId: baseExternalKey,
+      externalClassKey: baseExternalKey,
+      className: classEntry.name,
+      classDate: local.date,
+      classTime: local.time,
+    },
+    summary: {
+      rounds: rounds.length,
+      matches: allMatches.length,
+      completedMatches,
+    },
+    rounds,
+  }
+}
+
+async function seedPlayoffData(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  competitionId: string,
+  competitionSlug: string,
+  fixture: ManualCompetitionFixture,
+  classIdByKey: Map<string, string>,
+) {
+  const { error: deleteSnapshotsError } = await supabase
+    .from('ondata_playoff_snapshots')
+    .delete()
+    .eq('competition_id', competitionId)
+
+  if (deleteSnapshotsError) {
+    throw new Error(`Kunde inte rensa gamla slutspels-snapshots: ${deleteSnapshotsError.message}`)
+  }
+
+  const { error: deleteStatusError } = await supabase
+    .from('ondata_playoff_status')
+    .delete()
+    .eq('competition_id', competitionId)
+
+  if (deleteStatusError) {
+    throw new Error(`Kunde inte rensa gammal slutspelsstatus: ${deleteStatusError.message}`)
+  }
+
+  const playoffClasses = getPlayoffFixtureClasses(fixture)
+  if (playoffClasses.length === 0) {
+    return { classCount: 0, bracketCount: 0, byesClassCount: 0 }
+  }
+
+  const qualifiersByKey = await loadPlayoffQualifiers(supabase, competitionId, classIdByKey, playoffClasses)
+
+  const { data: classRows, error: classRowsError } = await supabase
+    .from('classes')
+    .select('id, start_time')
+    .in(
+      'id',
+      playoffClasses
+        .map(entry => classIdByKey.get(entry.key))
+        .filter((value): value is string => Boolean(value)),
+    )
+
+  if (classRowsError) {
+    throw new Error(`Kunde inte lasa klasser for slutspel: ${classRowsError.message}`)
+  }
+
+  const startTimeByClassId = new Map<string, string>()
+  for (const row of classRows ?? []) {
+    startTimeByClassId.set(row.id, row.start_time)
+  }
+
+  let bracketCount = 0
+  let byesClassCount = 0
+
+  for (let index = 0; index < playoffClasses.length; index += 1) {
+    const classEntry = playoffClasses[index]
+    const classId = classIdByKey.get(classEntry.key)
+    if (!classId) continue
+
+    const qualifiers = qualifiersByKey.get(classEntry.key)
+    if (!qualifiers) continue
+
+    const startTimeIso = startTimeByClassId.get(classId)
+    if (!startTimeIso) continue
+
+    const parentExternalClassKey = `${slugifyClassName(classEntry.name)}-playoff-${index + 1}`
+
+    if (classEntry.seedState === 'a_playoff_with_byes') {
+      byesClassCount += 1
+    }
+
+    const aPayload = buildPlayoffSnapshotPayload({
+      competitionSlug,
+      classEntry,
+      parentClassStartTimeIso: startTimeIso,
+      parentExternalClassKey,
+      bracket: 'A',
+      qualifiers: qualifiers.a,
+      classIndex: index,
+    })
+
+    if (aPayload) {
+      const hash = hashOnDataPlayoffSnapshotPayload(aPayload)
+      await persistOnDataPlayoffSnapshot(supabase, competitionId, aPayload, hash)
+      bracketCount += 1
+    }
+
+    if (classEntry.playoffBBracket && qualifiers.b.length > 0) {
+      const bPayload = buildPlayoffSnapshotPayload({
+        competitionSlug,
+        classEntry,
+        parentClassStartTimeIso: startTimeIso,
+        parentExternalClassKey,
+        bracket: 'B',
+        qualifiers: qualifiers.b,
+        classIndex: index,
+      })
+
+      if (bPayload) {
+        const hash = hashOnDataPlayoffSnapshotPayload(bPayload)
+        await persistOnDataPlayoffSnapshot(supabase, competitionId, bPayload, hash)
+        bracketCount += 1
+      }
+    }
+  }
+
+  return {
+    classCount: playoffClasses.length,
+    bracketCount,
+    byesClassCount,
+  }
+}
+
 async function seedManualCompetition(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   competitionId: string,
@@ -1134,6 +1549,7 @@ async function seedManualCompetition(
     publishedPoolResults: countPublishedPoolResults(fixture),
     drawClassIds: getDrawClassIds(fixture, classIdByKey),
     poolProgressProfileByClassId,
+    classIdByKey,
   }
 }
 
@@ -1155,6 +1571,13 @@ async function main() {
     fixture,
     drawSeed?.payload ?? null,
   )
+  const playoffSummary = await seedPlayoffData(
+    supabase,
+    competitionId,
+    fixture.competition.slug,
+    fixture,
+    manualStateSummary.classIdByKey,
+  )
 
   console.log(`Manuell testtavling klar: http://localhost:3000/${fixture.competition.slug}`)
   console.log(`  Player PIN: ${fixture.competition.playerPin}`)
@@ -1169,6 +1592,11 @@ async function main() {
   }
 
   console.log(`  Poolresultat: ${publishedPoolResults} klass(er) publicerade via fixture`)
+
+  const abClassCount = fixture.classes.filter(classEntry => classEntry.playoffBBracket).length
+  console.log(
+    `  Slutspel: ${playoffSummary.classCount} klass(er), ${abClassCount} med A+B, ${playoffSummary.byesClassCount} med frilotter`,
+  )
 
   console.log(
     `  Manuella testlagen: ${manualStateSummary.counts.awaiting_attendance} invantar narvaro, ${manualStateSummary.counts.full_attendance} fullstandigt rapporterade, ${manualStateSummary.counts.draw_available} poolspel pagar, ${manualStateSummary.counts.pool_play_complete} poolspel klart, ${manualStateSummary.counts.not_open} ej oppna`,

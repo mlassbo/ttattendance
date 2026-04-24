@@ -3,6 +3,7 @@ import { getScopedCompetitionAuth } from '@/lib/scoped-competition-auth'
 import { getClassWorkflowSummaryMap } from '@/lib/class-workflow-server'
 import { getClassWorkflowActionHelper } from '@/lib/class-workflow'
 import { getPoolProgressByClassId } from '@/lib/pool-progress'
+import { getPlayoffProgressByClassId } from '@/lib/playoff-progress'
 import { createServerClient } from '@/lib/supabase'
 import { getAttendanceField } from '../lib'
 
@@ -46,11 +47,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ sessions: [], lastSyncAt: null })
     }
 
-    const poolProgress = await getPoolProgressByClassId(
-      supabase,
-      auth.competitionId,
-      classSummaries.map(classRow => ({ id: classRow.id, name: classRow.name })),
-    )
+    const classKeyRows = classSummaries.map(classRow => ({ id: classRow.id, name: classRow.name }))
+
+    const [poolProgress, playoffProgress] = await Promise.all([
+      getPoolProgressByClassId(supabase, auth.competitionId, classKeyRows),
+      getPlayoffProgressByClassId(supabase, auth.competitionId, classKeyRows),
+    ])
 
     // Step 2 — registrations + attendance for all classes (2-level nesting).
     // Doing this as a separate query avoids the 4-level nesting
@@ -134,6 +136,7 @@ export async function GET(req: NextRequest) {
             .sort((left, right) => left.localeCompare(right, 'sv'))
           const workflow = workflowByClassId.get(cls.id)
           const classPoolProgress = poolProgress.byClassId.get(cls.id) ?? null
+          const classPlayoffProgress = playoffProgress.byClassId.get(cls.id) ?? null
 
           return {
             id: cls.id,
@@ -142,6 +145,7 @@ export async function GET(req: NextRequest) {
             attendanceDeadline: cls.attendance_deadline,
             counts: { confirmed, absent, noResponse, total: regs.length },
             poolProgress: classPoolProgress,
+            playoffProgress: classPlayoffProgress,
             workflow: workflow
               ? {
                   currentPhaseKey: workflow.currentPhaseKey,

@@ -126,36 +126,48 @@
       "name": "Max750",
       "sessionKey": "day2-pass1",
       "startTime": "09:00",
-      "seedState": "not_open",
+      "seedState": "playoff_a_and_b_in_progress",
       "maxPlayers": 18,
-      "registeredPlayers": 16
+      "registeredPlayers": 16,
+      "attendancePattern": "confirmed_only",
+      "playoffBracketSize": 8,
+      "playoffBBracket": true,
+      "playoffProgress": "quarterfinals_live"
     },
     {
       "key": "max950-day2-pass1",
       "name": "Max950",
       "sessionKey": "day2-pass1",
       "startTime": "09:20",
-      "seedState": "not_open",
+      "seedState": "a_playoff_with_byes",
       "maxPlayers": 16,
-      "registeredPlayers": 14
+      "registeredPlayers": 14,
+      "attendancePattern": "confirmed_only",
+      "playoffBracketSize": 8,
+      "playoffProgress": "first_round_live"
     },
     {
       "key": "max1250-day2-pass1",
       "name": "Max1250",
       "sessionKey": "day2-pass1",
       "startTime": "09:40",
-      "seedState": "not_open",
+      "seedState": "playoffs_complete",
       "maxPlayers": 14,
-      "registeredPlayers": 12
+      "registeredPlayers": 12,
+      "attendancePattern": "confirmed_only",
+      "playoffBracketSize": 4
     },
     {
       "key": "dubbel-under-2000-day2-pass1",
       "name": "Dubbel <2000p",
       "sessionKey": "day2-pass1",
       "startTime": "10:00",
-      "seedState": "not_open",
+      "seedState": "a_playoff_in_progress",
       "maxPlayers": 28,
-      "registeredPlayers": 26
+      "registeredPlayers": 26,
+      "attendancePattern": "confirmed_only",
+      "playoffBracketSize": 8,
+      "playoffProgress": "quarterfinals_live"
     },
     {
       "key": "max1500-day2-pass2",

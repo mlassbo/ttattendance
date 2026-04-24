@@ -1828,3 +1828,410 @@ export async function seedPoolResultSnapshots(
 
   return { snapshotIds }
 }
+
+export type SeededAdminPlayoffClass = {
+  id: string
+  name: string
+  startTime: string
+  externalClassKey: string
+}
+
+export type SeededAdminPlayoffCompetition = {
+  competitionId: string
+  classes: SeededAdminPlayoffClass[]
+}
+
+export type AdminPlayoffPhase =
+  | 'awaiting_attendance'
+  | 'pool_play_in_progress'
+  | 'a_playoff_in_progress'
+  | 'playoffs_in_progress'
+  | 'playoffs_complete'
+
+type AdminPlayoffClassSeed = {
+  name: string
+  startTime: string
+  phase?: AdminPlayoffPhase
+  registeredPlayers?: number
+  externalClassKey?: string
+}
+
+async function seedClassPlayoffWorkflow(
+  supabase: SupabaseClient,
+  classId: string,
+  phase: AdminPlayoffPhase,
+  now: string,
+) {
+  if (phase === 'awaiting_attendance') {
+    return
+  }
+
+  const rows: Array<{ step_key: string; status: 'not_started' | 'active' | 'done' | 'skipped' }> = [
+    { step_key: 'seed_class', status: 'skipped' },
+    { step_key: 'publish_pools', status: 'done' },
+    { step_key: 'register_match_results', status: phase === 'pool_play_in_progress' ? 'active' : 'done' },
+  ]
+
+  if (phase === 'pool_play_in_progress') {
+    // leave remaining steps at their default (not_started)
+  } else {
+    rows.push({ step_key: 'publish_pool_results', status: 'done' })
+
+    if (phase === 'a_playoff_in_progress') {
+      rows.push({ step_key: 'a_playoff', status: 'active' })
+    } else if (phase === 'playoffs_in_progress') {
+      rows.push({ step_key: 'a_playoff', status: 'active' })
+      rows.push({ step_key: 'b_playoff', status: 'active' })
+    } else if (phase === 'playoffs_complete') {
+      rows.push({ step_key: 'a_playoff', status: 'done' })
+      rows.push({ step_key: 'b_playoff', status: 'done' })
+      rows.push({ step_key: 'register_playoff_match_results', status: 'done' })
+    }
+  }
+
+  const { error } = await supabase
+    .from('class_workflow_steps')
+    .upsert(
+      rows.map(row => ({
+        class_id: classId,
+        step_key: row.step_key,
+        status: row.status,
+        updated_at: now,
+      })),
+      { onConflict: 'class_id,step_key' },
+    )
+
+  if (error) {
+    throw new Error(`Failed to seed class playoff workflow: ${error.message}`)
+  }
+}
+
+export async function seedAdminPlayoffCompetition(
+  supabase: SupabaseClient,
+  slug: string,
+  classSeeds: AdminPlayoffClassSeed[],
+  options?: { adminPin?: string; playerPin?: string },
+): Promise<SeededAdminPlayoffCompetition> {
+  if (classSeeds.length === 0) {
+    throw new Error('seedAdminPlayoffCompetition requires at least one class')
+  }
+
+  const adminPin = options?.adminPin ?? '2222'
+  const playerPin = options?.playerPin ?? '1111'
+
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash(playerPin, 4),
+    bcrypt.hash(adminPin, 4),
+  ])
+
+  const { data: competition, error: competitionError } = await supabase
+    .from('competitions')
+    .insert({
+      name: 'Playoff Progress Testtävling',
+      slug,
+      player_pin_hash: playerPinHash,
+      admin_pin_hash: adminPinHash,
+    })
+    .select('id')
+    .single()
+
+  if (competitionError || !competition) {
+    throw new Error(`Failed to seed playoff-progress competition: ${competitionError?.message ?? 'Unknown error'}`)
+  }
+
+  const competitionId = competition.id
+
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .insert({
+      competition_id: competitionId,
+      name: 'Pass 1',
+      date: '2025-09-13',
+      session_order: 1,
+    })
+    .select('id')
+    .single()
+
+  if (sessionError || !session) {
+    throw new Error(`Failed to seed playoff-progress session: ${sessionError?.message ?? 'Unknown error'}`)
+  }
+
+  const seenNames = new Set<string>()
+  for (const classSeed of classSeeds) {
+    if (seenNames.has(classSeed.name)) {
+      throw new Error(`Duplicate class name in seed: ${classSeed.name}`)
+    }
+    seenNames.add(classSeed.name)
+  }
+
+  const pastDeadline = '2020-01-01T00:00:00Z'
+  const futureDeadline = '2099-01-01T00:00:00Z'
+  const { data: insertedClasses, error: classError } = await supabase
+    .from('classes')
+    .insert(
+      classSeeds.map(classSeed => ({
+        session_id: session.id,
+        name: classSeed.name,
+        start_time: classSeed.startTime,
+        attendance_deadline:
+          (classSeed.phase ?? 'a_playoff_in_progress') === 'awaiting_attendance'
+            ? futureDeadline
+            : pastDeadline,
+      })),
+    )
+    .select('id, name, start_time')
+
+  if (classError || !insertedClasses) {
+    throw new Error(`Failed to seed playoff-progress classes: ${classError?.message ?? 'Unknown error'}`)
+  }
+
+  const classesByName = new Map<string, { id: string; name: string; start_time: string }>()
+  for (const row of insertedClasses) {
+    classesByName.set(row.name, row)
+  }
+
+  const now = new Date().toISOString()
+  let playerIndex = 0
+
+  for (const classSeed of classSeeds) {
+    const classRow = classesByName.get(classSeed.name)!
+    const registeredPlayers = classSeed.registeredPlayers ?? 8
+    const phase = classSeed.phase ?? 'a_playoff_in_progress'
+
+    const playerRows = Array.from({ length: registeredPlayers }, () => {
+      playerIndex += 1
+      return {
+        competition_id: competitionId,
+        name: `Slutspelsspelare ${playerIndex}`,
+        club: 'Slutspelsklubben',
+      }
+    })
+
+    const { data: insertedPlayers, error: playerError } = await supabase
+      .from('players')
+      .insert(playerRows)
+      .select('id')
+
+    if (playerError || !insertedPlayers) {
+      throw new Error(`Failed to seed playoff-progress players: ${playerError?.message ?? 'Unknown error'}`)
+    }
+
+    const { data: regs, error: regError } = await supabase
+      .from('registrations')
+      .insert(
+        insertedPlayers.map(player => ({
+          player_id: player.id,
+          class_id: classRow.id,
+          status: 'registered' as const,
+        })),
+      )
+      .select('id')
+
+    if (regError || !regs) {
+      throw new Error(`Failed to seed playoff-progress registrations: ${regError?.message ?? 'Unknown error'}`)
+    }
+
+    if (phase !== 'awaiting_attendance') {
+      const { error: attendanceError } = await supabase.from('attendance').insert(
+        regs.map(reg => ({
+          registration_id: reg.id,
+          status: 'confirmed' as const,
+          reported_at: now,
+          reported_by: 'admin' as const,
+          idempotency_key: `playoff-progress-seed-${reg.id}`,
+        })),
+      )
+
+      if (attendanceError) {
+        throw new Error(`Failed to seed playoff-progress attendance: ${attendanceError.message}`)
+      }
+
+      await seedClassPlayoffWorkflow(supabase, classRow.id, phase, now)
+    }
+  }
+
+  return {
+    competitionId,
+    classes: classSeeds.map((classSeed, index) => {
+      const row = classesByName.get(classSeed.name)!
+      return {
+        id: row.id,
+        name: row.name,
+        startTime: row.start_time,
+        externalClassKey: classSeed.externalClassKey ?? `playoff-seed-${index + 1}`,
+      }
+    }),
+  }
+}
+
+export type PlayoffSnapshotMatchSeed = {
+  playerA: string
+  playerB: string
+  winner?: string | null
+  result?: string | null
+}
+
+export type PlayoffSnapshotRoundSeed = {
+  name: string
+  matches: PlayoffSnapshotMatchSeed[]
+}
+
+export type SeedPlayoffSnapshotInput = {
+  competitionId: string
+  parentClassName: string
+  parentExternalClassKey: string
+  parentClassDate?: string
+  parentClassTime?: string
+  bracket: 'A' | 'B'
+  classExternalKey?: string
+  className?: string
+  rounds: PlayoffSnapshotRoundSeed[]
+  sourceProcessedAt?: string
+  receivedAt?: string
+}
+
+export async function seedOnDataPlayoffSnapshot(
+  supabase: SupabaseClient,
+  input: SeedPlayoffSnapshotInput,
+): Promise<{ snapshotId: string }> {
+  const snapshotId = randomUUID()
+  const now = new Date().toISOString()
+  const receivedAt = input.receivedAt ?? now
+  const sourceProcessedAt = input.sourceProcessedAt ?? receivedAt
+  const bracketSuffix = input.bracket === 'B' ? '~B' : ''
+  const classExternalKey = input.classExternalKey ?? `${input.parentExternalClassKey}${bracketSuffix}`
+  const className = input.className ?? `${input.parentClassName}${bracketSuffix}`
+  const matchRows: Array<{
+    id: string
+    snapshot_id: string
+    snapshot_round_id: string
+    match_order: number
+    match_key: string
+    player_a_name: string
+    player_b_name: string
+    winner_name: string | null
+    result: string | null
+    is_completed: boolean
+  }> = []
+  const roundRows: Array<{
+    id: string
+    snapshot_id: string
+    round_order: number
+    round_name: string
+  }> = []
+
+  let totalMatches = 0
+  let completedMatches = 0
+
+  input.rounds.forEach((round, roundIndex) => {
+    const roundId = randomUUID()
+    roundRows.push({
+      id: roundId,
+      snapshot_id: snapshotId,
+      round_order: roundIndex,
+      round_name: round.name,
+    })
+
+    round.matches.forEach((match, matchIndex) => {
+      const winner = match.winner ?? null
+      const result = match.result ?? null
+      const isCompleted = winner != null || result != null
+      totalMatches += 1
+      if (isCompleted) completedMatches += 1
+
+      matchRows.push({
+        id: randomUUID(),
+        snapshot_id: snapshotId,
+        snapshot_round_id: roundId,
+        match_order: matchIndex,
+        match_key: `${input.bracket}-r${roundIndex}-m${matchIndex}`,
+        player_a_name: match.playerA,
+        player_b_name: match.playerB,
+        winner_name: winner,
+        result,
+        is_completed: isCompleted,
+      })
+    })
+  })
+
+  const { error: snapshotError } = await supabase
+    .from('ondata_playoff_snapshots')
+    .insert({
+      id: snapshotId,
+      competition_id: input.competitionId,
+      schema_version: 2,
+      payload_hash: `seed-${snapshotId}`,
+      received_at: receivedAt,
+      processed_at: receivedAt,
+      processing_status: 'processed',
+      error_message: null,
+      source_type: 'ondata-stage5-playoff',
+      source_competition_url: 'https://example.test/seed',
+      source_class_id: classExternalKey,
+      source_stage5_path: `tests/playoff-seed-${snapshotId}.pdf`,
+      source_stage6_path: null,
+      source_processed_at: sourceProcessedAt,
+      source_file_hash: `hash-${snapshotId}`,
+      class_source_class_id: classExternalKey,
+      external_class_key: classExternalKey,
+      class_name: className,
+      playoff_bracket: input.bracket,
+      parent_source_class_id: input.parentExternalClassKey,
+      parent_external_class_key: input.parentExternalClassKey,
+      parent_class_name: input.parentClassName,
+      parent_class_date: input.parentClassDate ?? '2025-09-13',
+      parent_class_time: input.parentClassTime ?? '09:00',
+      summary_rounds: input.rounds.length,
+      summary_matches: totalMatches,
+      summary_completed_matches: completedMatches,
+      raw_payload: { schemaVersion: 2, rounds: input.rounds },
+    })
+
+  if (snapshotError) {
+    throw new Error(`Failed to seed playoff snapshot: ${snapshotError.message}`)
+  }
+
+  if (roundRows.length > 0) {
+    const { error: roundError } = await supabase
+      .from('ondata_playoff_snapshot_rounds')
+      .insert(roundRows)
+
+    if (roundError) {
+      throw new Error(`Failed to seed playoff snapshot rounds: ${roundError.message}`)
+    }
+  }
+
+  if (matchRows.length > 0) {
+    const { error: matchError } = await supabase
+      .from('ondata_playoff_snapshot_matches')
+      .insert(matchRows)
+
+    if (matchError) {
+      throw new Error(`Failed to seed playoff snapshot matches: ${matchError.message}`)
+    }
+  }
+
+  const { error: statusError } = await supabase
+    .from('ondata_playoff_status')
+    .upsert({
+      competition_id: input.competitionId,
+      parent_external_class_key: input.parentExternalClassKey,
+      playoff_bracket: input.bracket,
+      current_snapshot_id: snapshotId,
+      last_received_at: receivedAt,
+      last_processed_at: receivedAt,
+      last_payload_hash: `seed-${snapshotId}`,
+      last_source_processed_at: sourceProcessedAt,
+      last_error: null,
+      last_summary_rounds: input.rounds.length,
+      last_summary_matches: totalMatches,
+      last_summary_completed_matches: completedMatches,
+      updated_at: receivedAt,
+    }, { onConflict: 'competition_id,parent_external_class_key,playoff_bracket' })
+
+  if (statusError) {
+    throw new Error(`Failed to seed playoff status: ${statusError.message}`)
+  }
+
+  return { snapshotId }
+}

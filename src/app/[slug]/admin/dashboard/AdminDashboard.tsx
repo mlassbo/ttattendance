@@ -7,6 +7,7 @@ import { formatSwedishWeekdayTime } from '@/lib/attendance-window'
 import AutoRefreshStatus from '../AutoRefreshStatus'
 import { formatTime } from '../format'
 import PoolProgressStrip from './PoolProgressStrip'
+import PlayoffProgressStrip from './PlayoffProgressStrip'
 
 const REFRESH_INTERVAL_MS = 30_000
 const REFRESH_INTERVAL_SECONDS = REFRESH_INTERVAL_MS / 1000
@@ -30,6 +31,25 @@ interface ClassPoolProgressPayload {
   completedMatches: number
 }
 
+interface PlayoffBracketPayload {
+  bracket: 'A' | 'B'
+  className: string
+  rounds: Array<{
+    name: string
+    totalMatches: number
+    completedMatches: number
+  }>
+  totalMatches: number
+  completedMatches: number
+  lastSourceProcessedAt: string | null
+}
+
+interface PlayoffProgressPayload {
+  a: PlayoffBracketPayload | null
+  b: PlayoffBracketPayload | null
+  lastSourceProcessedAt: string | null
+}
+
 interface ClassSummary {
   id: string
   name: string
@@ -37,6 +57,7 @@ interface ClassSummary {
   attendanceDeadline: string
   counts: ClassCounts
   poolProgress: ClassPoolProgressPayload | null
+  playoffProgress: PlayoffProgressPayload | null
   workflow: {
     currentPhaseKey: string | null
     currentPhaseLabel: string | null
@@ -349,6 +370,10 @@ export default function AdminDashboard({
                   const showPoolProgress =
                     cls.workflow.currentPhaseKey === 'pool_play_in_progress'
                     || cls.workflow.currentPhaseKey === 'pool_play_complete'
+                  const showPlayoffProgress =
+                    cls.workflow.currentPhaseKey === 'a_playoff_in_progress'
+                    || cls.workflow.currentPhaseKey === 'b_playoff_in_progress'
+                    || cls.workflow.currentPhaseKey === 'playoffs_in_progress'
                   const cardTone = needsAnnouncement
                     ? 'border-amber-300 bg-amber-50/85'
                     : cls.workflow.currentPhaseKey === 'finished'
@@ -537,6 +562,14 @@ export default function AdminDashboard({
                             startTime={cls.startTime}
                             poolProgress={cls.poolProgress}
                             lastSyncAt={lastSyncAt}
+                            now={renderNow}
+                          />
+                        )}
+
+                        {showPlayoffProgress && (
+                          <PlayoffProgressStrip
+                            classId={cls.id}
+                            progress={cls.playoffProgress}
                             now={renderNow}
                           />
                         )}
