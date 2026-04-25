@@ -12,6 +12,7 @@ export default async function HomePage() {
   const { data } = await supabase
     .from('competitions')
     .select('id, name, slug')
+    .eq('show_on_landing_page', true)
     .is('deleted_at', null)
 
   const competitionRows = data ?? []

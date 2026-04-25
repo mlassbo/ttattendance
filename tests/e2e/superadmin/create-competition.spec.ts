@@ -102,6 +102,34 @@ test('newly created competitions appear on the root landing page after cache inv
   await expect(page.getByTestId(`admin-login-link-${slug}`)).toHaveCount(0)
 })
 
+test('super admin can hide a competition from the root landing page without removing direct access', async ({ page }) => {
+  const slug = `${TEST_PREFIX}internal-2026`
+
+  await authenticateSuperadmin(page)
+  await page.goto('/super/competitions')
+
+  await page.getByTestId('new-competition-button').click()
+  await page.getByTestId('field-name').fill('Intern klubbtävling 2026')
+  await page.getByTestId('field-slug').fill(slug)
+  await page.getByTestId('field-player-pin').fill('1234')
+  await page.getByTestId('field-admin-pin').fill('5678')
+  await page.getByTestId('submit-competition').click()
+
+  await expect(page.getByTestId(`competition-entry-card-${slug}`)).toHaveCount(0)
+  await expect(page.getByTestId(`landing-visibility-${slug}`)).toContainText('Visas på startsidan')
+
+  await page.getByTestId(`toggle-landing-visibility-${slug}`).click()
+
+  await expect(page.getByTestId(`landing-visibility-${slug}`)).toContainText('Dold från startsidan')
+
+  await page.goto('/')
+  await expect(page.getByTestId(`competition-entry-card-${slug}`)).toHaveCount(0)
+
+  await page.goto(`/${slug}`)
+  await expect(page.getByTestId('public-start-page')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Intern klubbtävling 2026' })).toBeVisible()
+})
+
 test('super admin can permanently delete a competition', async ({ page }) => {
   const supabase = testClient()
   const slug = `${TEST_PREFIX}delete-me`

@@ -7,6 +7,7 @@ type Competition = {
   id: string
   name: string
   slug: string
+  showOnLandingPage: boolean
   importedRegistrationCount: number
   playerPin: string | null
   adminPin: string | null
@@ -28,6 +29,7 @@ export default function CompetitionsView() {
   const [formError, setFormError] = useState('')
   const [actionError, setActionError] = useState('')
   const [deletingCompetitionId, setDeletingCompetitionId] = useState<string | null>(null)
+  const [updatingCompetitionId, setUpdatingCompetitionId] = useState<string | null>(null)
   const [competitionPendingDeletion, setCompetitionPendingDeletion] = useState<Competition | null>(null)
 
   async function load() {
@@ -127,6 +129,41 @@ export default function CompetitionsView() {
       setActionError(data?.error ?? 'Kunde inte ta bort tävlingen')
     } finally {
       setDeletingCompetitionId(null)
+    }
+  }
+
+  async function toggleLandingVisibility(competition: Competition) {
+    setActionError('')
+    setUpdatingCompetitionId(competition.id)
+
+    try {
+      const res = await fetch(`/api/super/competitions/${competition.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ showOnLandingPage: !competition.showOnLandingPage }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok || !data) {
+        setActionError(data?.error ?? 'Kunde inte uppdatera startsidevisningen')
+        return
+      }
+
+      setCompetitions(current => current.map(currentCompetition => {
+        if (currentCompetition.id !== competition.id) {
+          return currentCompetition
+        }
+
+        return {
+          ...currentCompetition,
+          showOnLandingPage: data.showOnLandingPage,
+        }
+      }))
+    } catch {
+      setActionError('Nätverksfel när startsidevisningen uppdaterades')
+    } finally {
+      setUpdatingCompetitionId(null)
     }
   }
 
@@ -302,7 +339,23 @@ export default function CompetitionsView() {
                   <span data-testid={`import-status-${c.slug}`} className="app-pill-muted">
                     {c.importedRegistrationCount} importerade anmälningar
                   </span>
+                  <span data-testid={`landing-visibility-${c.slug}`} className="text-sm text-muted">
+                    {c.showOnLandingPage ? 'Visas på startsidan' : 'Dold från startsidan'}
+                  </span>
                   <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      data-testid={`toggle-landing-visibility-${c.slug}`}
+                      onClick={() => void toggleLandingVisibility(c)}
+                      disabled={Boolean(updatingCompetitionId) || Boolean(deletingCompetitionId)}
+                      className="app-button-secondary min-h-10 h-fit px-4 py-2"
+                    >
+                      {updatingCompetitionId === c.id
+                        ? 'Sparar...'
+                        : c.showOnLandingPage
+                          ? 'Dölj från startsidan'
+                          : 'Visa på startsidan'}
+                    </button>
                     <Link
                       href={`/super/competitions/${c.id}/integration`}
                       data-testid={`settings-action-${c.slug}`}
