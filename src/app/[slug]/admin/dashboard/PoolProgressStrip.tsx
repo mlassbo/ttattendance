@@ -25,6 +25,9 @@ type PoolProgressStripProps = {
 }
 
 function formatDelayChipLabel(state: PoolDelayState, delayMin: number): { label: string; className: string } | null {
+  if (state === 'done') {
+    return { label: 'Klart', className: 'app-pill-success' }
+  }
   if (state === 'red') {
     return { label: `+${delayMin} min`, className: 'app-pill-danger' }
   }
@@ -100,10 +103,6 @@ export default function PoolProgressStrip({
     now,
   })
 
-  if (aggregate.state === 'done') {
-    return null
-  }
-
   const staleness = computeSyncStaleness({ lastSyncAt, now })
   const chip = formatDelayChipLabel(aggregate.state, aggregate.delayMin)
 
@@ -137,7 +136,7 @@ export default function PoolProgressStrip({
         aria-label="Andel spelade matcher"
       >
         <div
-          className="h-full rounded-full bg-brand transition-[width] duration-300"
+          className={`h-full rounded-full transition-[width] duration-300 ${getPoolBarFillClasses(aggregate.state)}`}
           style={{ width: `${progressPercent}%` }}
         />
       </div>

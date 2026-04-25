@@ -313,7 +313,7 @@ test.describe('Admin pool progress strip', () => {
     await expect(page.getByTestId(`pool-dot-${classRow.id}-1`)).toContainText(/\+5\d min/)
   })
 
-  test('completed class hides the progress strip to keep the dashboard focused', async ({ page }) => {
+  test('completed class keeps the progress strip visible so secretariat can confirm completion', async ({ page }) => {
     const slug = 'test-admin-pool-complete'
     const supabase = testClient()
 
@@ -348,7 +348,10 @@ test.describe('Admin pool progress strip', () => {
     await loginAsAdmin(page, slug, ADMIN_PIN)
 
     await expect(page.getByTestId(`class-row-${classRow.id}`)).toBeVisible()
-    await expect(page.getByTestId(`pool-progress-strip-${classRow.id}`)).toHaveCount(0)
+    await expect(page.getByTestId(`pool-progress-strip-${classRow.id}`)).toBeVisible()
+    await expect(page.getByTestId(`pool-delay-chip-${classRow.id}`)).toContainText('Klart')
+    await expect(page.getByTestId(`pool-progress-strip-${classRow.id}`)).toContainText('6/6 matcher')
+    await expect(page.getByTestId(`pool-dot-${classRow.id}-1`)).toContainText('6/6')
   })
 
   test('non-pool-play class renders no progress strip', async ({ page }) => {
