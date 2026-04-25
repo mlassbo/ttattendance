@@ -12,6 +12,7 @@ import {
 type PoolProgressStripProps = {
   classId: string
   startTime: string | null
+  plannedTablesPerPool: number
   poolProgress: {
     pools: Array<{
       poolNumber: number
@@ -65,6 +66,7 @@ function formatPoolDelayText(pool: PoolDelayResult): string | null {
 export default function PoolProgressStrip({
   classId,
   startTime,
+  plannedTablesPerPool,
   poolProgress,
   lastSyncAt,
   now,
@@ -92,6 +94,7 @@ export default function PoolProgressStrip({
 
   const aggregate: ClassPoolProgressResult = computeClassPoolProgress({
     startTime,
+    plannedTablesPerPool,
     pools: poolProgress!.pools,
     lastSyncAt,
     now,

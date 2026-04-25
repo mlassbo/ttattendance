@@ -235,6 +235,84 @@ test.describe('Admin pool progress strip', () => {
     await expect(page.getByTestId(`pool-sync-stale-${classRow.id}`)).toContainText('OnData-sync har inte gått')
   })
 
+  test('planned tables per pool changes the expected delay pace', async ({ page }) => {
+    const slug = 'test-admin-pool-two-tables'
+    const supabase = testClient()
+
+    const seed = await seedAdminPoolProgressCompetition(
+      supabase,
+      slug,
+      [
+        {
+          name: 'Pojkar 13',
+          startTime: minutesAgo(125),
+          phase: 'pool_play_in_progress',
+          registeredPlayers: 6,
+          plannedTablesPerPool: 2,
+        },
+      ],
+      { adminPin: ADMIN_PIN },
+    )
+
+    const classRow = seed.classes[0]
+    const receivedAt = minutesAgo(1)
+
+    await seedOnDataSnapshotForClasses(supabase, {
+      competitionId: seed.competitionId,
+      receivedAt,
+      classes: [
+        {
+          className: classRow.name,
+          pools: [{ poolNumber: 1, playerCount: 6, completedMatchCount: 10 }],
+        },
+      ],
+    })
+
+    await loginAsAdmin(page, slug, ADMIN_PIN)
+
+    await expect(page.getByTestId(`pool-delay-chip-${classRow.id}`)).toContainText('+20 min')
+    await expect(page.getByTestId(`pool-dot-${classRow.id}-1`)).toContainText('10/15')
+  })
+
+  test('unfinished pool keeps accumulating delay after expected finish time', async ({ page }) => {
+    const slug = 'test-admin-pool-overrun'
+    const supabase = testClient()
+
+    const seed = await seedAdminPoolProgressCompetition(
+      supabase,
+      slug,
+      [
+        {
+          name: 'Pojkar 11',
+          startTime: minutesAgo(173),
+          phase: 'pool_play_in_progress',
+          registeredPlayers: 4,
+          plannedTablesPerPool: 1,
+        },
+      ],
+      { adminPin: ADMIN_PIN },
+    )
+
+    const classRow = seed.classes[0]
+    const receivedAt = minutesAgo(1)
+
+    await seedOnDataSnapshotForClasses(supabase, {
+      competitionId: seed.competitionId,
+      receivedAt,
+      classes: [
+        {
+          className: classRow.name,
+          pools: [{ poolNumber: 1, playerCount: 4, completedMatchCount: 5 }],
+        },
+      ],
+    })
+
+    await loginAsAdmin(page, slug, ADMIN_PIN)
+
+    await expect(page.getByTestId(`pool-delay-chip-${classRow.id}`)).toContainText(/\+5\d min/)
+    await expect(page.getByTestId(`pool-dot-${classRow.id}-1`)).toContainText(/\+5\d min/)
+  })
+
   test('completed class hides the progress strip to keep the dashboard focused', async ({ page }) => {
     const slug = 'test-admin-pool-complete'
     const supabase = testClient()

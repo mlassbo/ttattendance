@@ -181,6 +181,52 @@ test('move class to different session', async ({ page }) => {
   await expect(page.getByTestId(`session-section-${sessions[1].id}`)).toContainText('Herrar A')
 })
 
+test('edit planned tables per pool — happy path', async ({ page }) => {
+  const supabase = testClient()
+  const slug = `${TEST_PREFIX}planned-tables`
+  const { competitionId, sessions } = await seedClassSettingsCompetition(supabase, slug)
+
+  const cls = sessions[0].classes[0]
+
+  await loginAsSuperadmin(page)
+  await page.goto(`/super/competitions/${competitionId}/classes`)
+
+  await expect(page.getByTestId(`planned-tables-input-${cls.id}`)).toHaveValue(String(cls.plannedTablesPerPool))
+  await page.getByTestId(`planned-tables-input-${cls.id}`).fill('2')
+  await page.getByTestId(`planned-tables-input-${cls.id}`).press('Tab')
+
+  await expect.poll(async () => {
+    const { data, error } = await supabase
+      .from('classes')
+      .select('planned_tables_per_pool')
+      .eq('id', cls.id)
+      .single()
+
+    expect(error).toBeNull()
+    return data?.planned_tables_per_pool ?? null
+  }).toBe(2)
+
+  await page.reload()
+  await expect(page.getByTestId(`planned-tables-input-${cls.id}`)).toHaveValue('2')
+})
+
+test('edit planned tables per pool — validation rejects zero', async ({ page }) => {
+  const supabase = testClient()
+  const slug = `${TEST_PREFIX}planned-tables-val`
+  const { competitionId, sessions } = await seedClassSettingsCompetition(supabase, slug)
+
+  const cls = sessions[0].classes[0]
+
+  await loginAsSuperadmin(page)
+  await page.goto(`/super/competitions/${competitionId}/classes`)
+
+  await page.getByTestId(`planned-tables-input-${cls.id}`).fill('0')
+  await page.getByTestId(`planned-tables-input-${cls.id}`).press('Tab')
+
+  await expect(page.getByTestId(`planned-tables-error-${cls.id}`)).toBeVisible()
+  await expect(page.getByTestId(`planned-tables-error-${cls.id}`)).toContainText('positivt heltal')
+})
+
 test('re-import preserves manually edited deadline', async ({ page }) => {
   const supabase = testClient()
   const slug = `${TEST_PREFIX}reimport`

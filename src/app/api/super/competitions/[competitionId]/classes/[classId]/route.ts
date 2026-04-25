@@ -16,11 +16,12 @@ export async function PATCH(
     attendanceDeadline?: string
     sessionId?: string
     maxPlayers?: number | null
+    plannedTablesPerPool?: number
   }
 
-  if (!('attendanceDeadline' in body) && !('sessionId' in body) && !('maxPlayers' in body)) {
+  if (!('attendanceDeadline' in body) && !('sessionId' in body) && !('maxPlayers' in body) && !('plannedTablesPerPool' in body)) {
     return NextResponse.json(
-      { error: 'Minst ett fält måste skickas (attendanceDeadline, sessionId eller maxPlayers)' },
+      { error: 'Minst ett fält måste skickas (attendanceDeadline, sessionId, maxPlayers eller plannedTablesPerPool)' },
       { status: 400 },
     )
   }
@@ -71,6 +72,17 @@ export async function PATCH(
     updates.max_players = body.maxPlayers
   }
 
+  if ('plannedTablesPerPool' in body) {
+    if (!Number.isInteger(body.plannedTablesPerPool) || body.plannedTablesPerPool <= 0) {
+      return NextResponse.json(
+        { error: 'Bord per pool måste vara ett positivt heltal' },
+        { status: 400 },
+      )
+    }
+
+    updates.planned_tables_per_pool = body.plannedTablesPerPool
+  }
+
   if (sessionId) {
     // Verify the session belongs to the same competition
     const { data: targetSession, error: sessionError } = await supabase
@@ -94,7 +106,7 @@ export async function PATCH(
     .from('classes')
     .update(updates)
     .eq('id', params.classId)
-    .select('id, session_id, name, start_time, attendance_deadline, max_players')
+    .select('id, session_id, name, start_time, attendance_deadline, max_players, planned_tables_per_pool')
     .single()
 
   if (updateError) {
@@ -108,5 +120,6 @@ export async function PATCH(
     startTime: updated.start_time,
     attendanceDeadline: updated.attendance_deadline,
     maxPlayers: updated.max_players,
+    plannedTablesPerPool: updated.planned_tables_per_pool,
   })
 }

@@ -55,6 +55,7 @@ interface ClassSummary {
   name: string
   startTime: string
   attendanceDeadline: string
+  plannedTablesPerPool: number
   counts: ClassCounts
   poolProgress: ClassPoolProgressPayload | null
   playoffProgress: PlayoffProgressPayload | null
@@ -560,6 +561,7 @@ export default function AdminDashboard({
                           <PoolProgressStrip
                             classId={cls.id}
                             startTime={cls.startTime}
+                            plannedTablesPerPool={cls.plannedTablesPerPool}
                             poolProgress={cls.poolProgress}
                             lastSyncAt={lastSyncAt}
                             now={renderNow}

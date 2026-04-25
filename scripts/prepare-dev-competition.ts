@@ -1340,8 +1340,12 @@ function buildPlayoffSnapshotPayload(params: {
 
   const progress = resolvePlayoffProgress(classEntry)
   const activeIndex = activeRoundIndexForProgress(progress, roundSizes.length)
+  // OnData only exposes a round once its participants are known (previous round
+  // has resolved). Don't fabricate rounds beyond the currently active one.
+  const visibleRoundCount = Math.min(activeIndex + 1, roundSizes.length)
+  const visibleRoundSizes = roundSizes.slice(0, visibleRoundCount)
 
-  const rounds = roundSizes.map((roundMatches, roundIndex) => {
+  const rounds = visibleRoundSizes.map((roundMatches, roundIndex) => {
     const isComplete = roundIndex < activeIndex
     const isActive = roundIndex === activeIndex && activeIndex < roundSizes.length
     const matches = Array.from({ length: roundMatches }, (_, matchIndex) => {

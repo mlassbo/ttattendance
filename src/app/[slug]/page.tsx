@@ -53,7 +53,7 @@ export default async function CompetitionPage({
                   {competition.name}
                 </h1>
                 <p className="max-w-2xl text-sm leading-6 text-muted sm:text-base">
-                  Se registrerade spelare, klubbar och klasser, anmäl närvaro och följ tävlingen live.
+                  Se registrerade spelare, klubbar och klasser samt anmäl närvaro.
                 </p>
               </div>
             </div>
@@ -89,37 +89,25 @@ export default async function CompetitionPage({
           />
         )}
 
-        <section className="grid gap-4 md:grid-cols-2 lg:gap-6">
-          <article data-testid="public-start-live-card" className="app-card-soft space-y-4 opacity-80">
+        <section className="mt-4 border-t border-line/70 pt-6 sm:pt-8">
+          <article
+            data-testid="public-start-admin-card"
+            className="max-w-xs space-y-3 rounded-2xl border border-dashed border-stone-300/80 bg-stone-50/80 p-4 shadow-sm"
+          >
             <div className="space-y-2">
-              <h2 className="text-2xl font-semibold tracking-tight text-ink">Följ tävlingen live</h2>
-              <p className="text-sm leading-6 text-muted">
-                Pooler, matcher, resultat och slutspel. Kommer snart.
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-500">
+                För funktionärer
               </p>
-            </div>
-
-            <button
-              data-testid="public-start-live-disabled"
-              type="button"
-              disabled
-              className="app-button-secondary w-full"
-            >
-              Kommer snart
-            </button>
-          </article>
-
-          <article data-testid="public-start-admin-card" className="app-card-soft space-y-4">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-semibold tracking-tight text-ink">Sekretariat</h2>
-              <p className="text-sm leading-6 text-muted">Logga in för att arbeta med tävlingen.</p>
+              <h2 className="text-lg font-semibold tracking-tight text-stone-800">Sekretariat</h2>
+              <p className="text-sm leading-5 text-stone-600">Logga in som sekretariat</p>
             </div>
 
             <Link
               href={`/${slug}/admin`}
               data-testid="public-start-admin-link"
-              className="app-button-secondary w-full"
+              className="inline-flex min-h-10 items-center justify-center rounded-lg border border-stone-300 bg-stone-100 px-3 py-2 text-sm font-medium text-stone-700 transition-colors duration-150 hover:border-stone-400 hover:bg-stone-200"
             >
-              Sekretariat
+              Logga in
             </Link>
           </article>
         </section>

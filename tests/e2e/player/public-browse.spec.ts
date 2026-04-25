@@ -32,8 +32,8 @@ test.describe('Public browse flow', () => {
       'placeholder',
       'Sök spelare, klubb eller klass',
     )
-    await expect(page.getByTestId('public-start-live-card')).toContainText('Kommer snart')
-    await expect(page.getByTestId('public-start-admin-link')).toContainText('Sekretariat')
+    await expect(page.getByTestId('public-start-page')).not.toContainText('Följ tävlingen live')
+    await expect(page.getByTestId('public-start-admin-link')).toContainText('Logga in')
   })
 
   test('start page search submits into the public search page', async ({ page }) => {

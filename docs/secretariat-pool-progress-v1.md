@@ -31,7 +31,7 @@ V1 includes:
 
 - A new progress strip inside each class card on the admin dashboard, shown when the class is in pool play
 - A compact per-pool row (dots + delay chip) inside the same card
-- Class-level and pool-level delay calculation based on the 20 min / round assumption
+- Class-level and pool-level delay calculation based on 20 min per match and a class-level `planned_tables_per_pool` setting
 - Inline sync-staleness messaging on pool-play cards when delay numbers may no longer be trustworthy
 - E2E coverage for the four states: no data, on schedule, delayed, and sync-stale
 
@@ -41,8 +41,8 @@ V1 does not include:
 - Any top-of-dashboard pool-progress banner or warning summary
 - Per-match timestamps (OnData only carries snapshot-level timestamps)
 - Predicted finish time for a class
-- Configurable per-class match duration — 20 min / round is a system-wide constant
-- Court assignment awareness — one pool per court is assumed
+- Configurable per-class match duration — 20 min per match is a system-wide constant
+- Per-pool table allocation inside a class — one class-level `planned_tables_per_pool` setting is used in v1
 - Any change to the public class live view
 - Push notifications or alerting — the dashboard's existing 30 s auto-refresh is sufficient
 
@@ -56,19 +56,20 @@ An earlier sketch proposed a dedicated "Poolspel – status" block at the top of
 
 V1 intentionally skips a cross-class banner. The first version should answer a simpler question: are the inline class-card states enough for secretariat staff to spot delayed pools during normal use? If not, a banner can be added in v2 with real usage feedback.
 
-### Delay is measured in rounds, not matches
+### Delay is measured from expected match throughput
 
-A naive "20 min per match" model is wrong for round-robin pools: matches are played in parallel rounds. In a 4-player pool, 2 matches are played each round, so 6 matches take ~60 min, not 120 min. The algorithm uses rounds as the clock tick:
+TTAttendance now treats pool delay as a match-throughput problem. Each class has a `planned_tables_per_pool` setting that defaults to `1` and can be raised when larger pools are expected to use two tables.
 
-- `matches_per_round = floor(pool_size / 2)`
-- One round is expected to complete every 20 min
-- `expected_matches = floor(elapsed / 20 min) × matches_per_round`, capped at pool total
+- `total_matches = pool_size × (pool_size - 1) / 2`
+- `expected_matches = floor(elapsed / 20 min) × planned_tables_per_pool`, capped at pool total
+- `delay_matches = max(0, expected_matches - completed_match_count)`
+- `delay_min = max(progress_delay, elapsed - expected_finish)` where `progress_delay = ceil(delay_matches / planned_tables_per_pool) × 20 min`
 
-This works across pool sizes (3, 4, 5, 6 players) without special cases.
+This keeps a 4-player pool on one table at roughly 120 min total while still allowing larger pools on two tables to advance faster when that has been planned for the class. It also means a pool with one match left can keep getting later after its expected finish time instead of flattening at `+20 min` forever.
 
-### One pool plays on one court
+### Planned tables per pool is a class setting
 
-A Swedish pool-play competition typically assigns one court per pool for the whole round-robin. V1 assumes this. If a competition shares courts across pools, the 20 min / round figure is wrong and the delay chip will over-report. This is documented in the UI copy ("antar en bana per pool"). Configurability is deferred.
+The default is one table per pool, which matches normal pool play. When a class is expected to split each pool across two tables, secretariat can raise the class setting instead of relying on a different global formula.
 
 ### Clamp `expected` at `last_sync_at`, surface staleness separately
 
@@ -176,8 +177,7 @@ Inputs per class:
 
 Per-pool computation:
   total_matches     = pool_size * (pool_size - 1) / 2
-  matches_per_round = floor(pool_size / 2)
-  total_rounds      = pool_size - 1 if pool_size is even else pool_size
+  planned_tables    = max(1, class.planned_tables_per_pool)
 
   if last_sync_at is null:
     state = "awaiting_data"
@@ -194,11 +194,12 @@ Per-pool computation:
     state = "done"
     return
 
-  expected_rounds   = floor(elapsed_min / ROUND_DURATION_MIN)
-  expected_matches  = min(total_matches, expected_rounds * matches_per_round)
-
-  rounds_behind     = max(0, expected_rounds - ceil(completed_match_count / matches_per_round))
-  delay_min         = rounds_behind * ROUND_DURATION_MIN
+  expected_matches  = min(total_matches, floor(elapsed_min / MATCH_DURATION_MIN) * planned_tables)
+  delay_matches     = max(0, expected_matches - completed_match_count)
+  progress_delay    = ceil(delay_matches / planned_tables) * MATCH_DURATION_MIN
+  expected_finish   = ceil(total_matches / planned_tables) * MATCH_DURATION_MIN
+  overrun_delay     = max(0, elapsed_min - expected_finish)
+  delay_min         = max(progress_delay, overrun_delay)
 
   if delay_min == 0:   state = "on_schedule"
   elif delay_min < RED_THRESHOLD: state = "yellow"
@@ -220,8 +221,8 @@ Sync staleness:
 
 Notes:
 
-- `ceil(completed_match_count / matches_per_round)` converts completed matches back into "rounds that have at least started" so a half-finished round does not count as zero progress
 - Delay is reported in whole multiples of 20 min by construction. Good enough for secretariat triage; no need to interpolate
+- The class-level `planned_tables_per_pool` setting defaults to `1`, so existing competitions keep the conservative single-table model until a higher value is explicitly configured
 - Nothing in the algorithm depends on per-match timestamps, which OnData does not provide
 
 ---

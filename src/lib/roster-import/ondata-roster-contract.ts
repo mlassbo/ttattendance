@@ -30,7 +30,9 @@ export type OnDataRosterSnapshotClass = {
   externalClassKey: string
   sourceClassId: string | null
   className: string
-  startAt: string
+  classDate: string | null
+  classTime: string | null
+  startAt: string | null
   registrations: OnDataRosterSnapshotRegistration[]
 }
 
@@ -102,11 +104,20 @@ function parseSummary(value: unknown, path: string): OnDataRosterSnapshotSummary
 
 function parseClass(value: unknown, path: string): OnDataRosterSnapshotClass {
   const entry = expectObject(value, path)
+  const startAt = expectOptionalIsoDate(entry.startAt, `${path}.startAt`)
+  const classDate = expectOptionalDateOnly(entry.classDate, `${path}.classDate`)
+
+  if (!startAt && !classDate) {
+    throw new Error(`${path}.classDate måste finnas när startAt saknas.`)
+  }
+
   return {
     externalClassKey: expectString(entry.externalClassKey, `${path}.externalClassKey`),
     sourceClassId: expectOptionalString(entry.sourceClassId, `${path}.sourceClassId`),
     className: expectString(entry.className, `${path}.className`),
-    startAt: expectIsoDate(entry.startAt, `${path}.startAt`),
+    classDate,
+    classTime: expectOptionalString(entry.classTime, `${path}.classTime`),
+    startAt,
     registrations: expectArray(entry.registrations, `${path}.registrations`).map((registration, index) =>
       parseRegistration(registration, `${path}.registrations[${index}]`),
     ),
@@ -170,6 +181,30 @@ function expectIsoDate(value: unknown, path: string): string {
   const stringValue = expectString(value, path)
   if (Number.isNaN(Date.parse(stringValue))) {
     throw new Error(`${path} måste vara ett giltigt datum.`)
+  }
+
+  return stringValue
+}
+
+function expectOptionalIsoDate(value: unknown, path: string): string | null {
+  if (value == null) {
+    return null
+  }
+
+  return expectIsoDate(value, path)
+}
+
+function expectOptionalDateOnly(value: unknown, path: string): string | null {
+  const stringValue = expectOptionalString(value, path)
+  if (stringValue === null) {
+    return null
+  }
+
+  const parsed = new Date(`${stringValue}T00:00:00.000Z`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(stringValue)
+    || Number.isNaN(parsed.getTime())
+    || parsed.toISOString().slice(0, 10) !== stringValue) {
+    throw new Error(`${path} måste vara ett giltigt datum i formatet yyyy-mm-dd.`)
   }
 
   return stringValue

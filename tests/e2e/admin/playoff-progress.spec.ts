@@ -122,6 +122,53 @@ test.describe('Admin playoff progress strip', () => {
     await expect(page.getByTestId(`playoff-round-active-${classRow.id}-a`)).toHaveCount(0)
   })
 
+  test('uses explicit upstream round names for partial brackets instead of relabeling them by visible round count', async ({ page }) => {
+    const slug = 'test-admin-playoff-explicit-rounds'
+    const supabase = testClient()
+
+    const seed = await seedAdminPlayoffCompetition(
+      supabase,
+      slug,
+      [
+        {
+          name: 'Pojkar 11',
+          startTime: minutesAgo(60),
+          phase: 'a_playoff_in_progress',
+          registeredPlayers: 32,
+        },
+      ],
+      { adminPin: ADMIN_PIN },
+    )
+
+    const classRow = seed.classes[0]
+    await seedOnDataPlayoffSnapshot(supabase, {
+      competitionId: seed.competitionId,
+      parentClassName: classRow.name,
+      parentExternalClassKey: classRow.externalClassKey,
+      bracket: 'A',
+      rounds: [
+        { name: 'Round of 32', matches: completedMatches(4) },
+        { name: 'Round of 16', matches: completedMatches(8) },
+        {
+          name: 'Round of 8',
+          matches: [
+            { playerA: 'Q1', playerB: 'Q2' },
+            { playerA: 'Q3', playerB: 'Q4' },
+            { playerA: 'Q5', playerB: 'Q6' },
+            { playerA: 'Q7', playerB: 'Q8', winner: 'Q7' },
+          ],
+        },
+      ],
+      sourceProcessedAt: minutesAgo(1),
+    })
+
+    await loginAsAdmin(page, slug, ADMIN_PIN)
+
+    await expect(page.getByTestId(`playoff-round-${classRow.id}-a-0`)).toContainText('Sextondel')
+    await expect(page.getByTestId(`playoff-round-${classRow.id}-a-1`)).toContainText('Åttondel')
+    await expect(page.getByTestId(`playoff-round-${classRow.id}-a-2`)).toContainText('Kvartsfinal')
+  })
+
   test('stacks A and B bracket blocks when both exist', async ({ page }) => {
     const slug = 'test-admin-playoff-ab'
     const supabase = testClient()

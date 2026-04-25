@@ -12,7 +12,7 @@ import {
   type CompetitionImportPreview,
   type RosterImportDataset,
 } from './planner'
-import type { OnDataRosterSnapshotPayload } from './ondata-roster-contract'
+import type { OnDataRosterSnapshotClass, OnDataRosterSnapshotPayload } from './ondata-roster-contract'
 
 type OnDataRegistrationStatusRow = {
   current_snapshot_id: string | null
@@ -30,28 +30,47 @@ export function hashOnDataRosterSnapshotPayload(payload: OnDataRosterSnapshotPay
   return createHash('sha256').update(JSON.stringify(payload), 'utf8').digest('hex')
 }
 
+function resolveOnDataClassDate(classRow: OnDataRosterSnapshotClass): string {
+  return classRow.classDate ?? (classRow.startAt ? isoToStockholmDate(classRow.startAt) : '')
+}
+
+function resolveOnDataClassTime(classRow: OnDataRosterSnapshotClass): string {
+  return classRow.classTime ?? (classRow.startAt ? isoToStockholmTime(classRow.startAt) : '')
+}
+
+function buildOnDataRosterDatasetErrors(payload: OnDataRosterSnapshotPayload): string[] {
+  return payload.classes
+    .filter(classRow => !classRow.startAt)
+    .map(classRow => `Klassen ${classRow.className} saknar starttid i OnData och kan inte importeras som aktiv klass ännu.`)
+}
+
 export function buildRosterImportDatasetFromOnDataSnapshot(payload: OnDataRosterSnapshotPayload): RosterImportDataset {
   return {
     sourceType: payload.source.sourceType,
     competitionTitleFromSource: null,
-    classes: payload.classes.map(classRow => ({
-      externalClassKey: classRow.externalClassKey,
-      identityKey: buildClassIdentityKey(
-        classRow.className,
-        isoToStockholmDate(classRow.startAt),
-        isoToStockholmTime(classRow.startAt),
-      ),
-      className: classRow.className,
-      startAt: classRow.startAt,
-      classDate: isoToStockholmDate(classRow.startAt),
-      classTime: isoToStockholmTime(classRow.startAt),
-      registrations: classRow.registrations.map(registration => ({
-        playerName: registration.playerName,
-        clubName: registration.clubName,
-        playerKey: buildPlayerKey(registration.playerName, registration.clubName),
-      })),
-    })),
-    errors: [],
+    classes: payload.classes.map(classRow => {
+      const classDate = resolveOnDataClassDate(classRow)
+      const classTime = resolveOnDataClassTime(classRow)
+
+      return {
+        externalClassKey: classRow.externalClassKey,
+        identityKey: buildClassIdentityKey(
+          classRow.className,
+          classDate,
+          classTime,
+        ),
+        className: classRow.className,
+        startAt: classRow.startAt,
+        classDate,
+        classTime,
+        registrations: classRow.registrations.map(registration => ({
+          playerName: registration.playerName,
+          clubName: registration.clubName,
+          playerKey: buildPlayerKey(registration.playerName, registration.clubName),
+        })),
+      }
+    }),
+    errors: buildOnDataRosterDatasetErrors(payload),
     summary: {
       classesParsed: payload.summary.classes,
       playersParsed: payload.summary.players,

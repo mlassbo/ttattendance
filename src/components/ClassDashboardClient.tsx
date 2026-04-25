@@ -6,6 +6,7 @@ import { sv } from 'date-fns/locale'
 import { useState } from 'react'
 import ClassLiveStatusPill from '@/components/ClassLiveStatusPill'
 import ClassLiveView from '@/components/ClassLiveView'
+import ClassPlayoffView from '@/components/ClassPlayoffView'
 import PublicClassRosterView from '@/components/PublicClassRosterView'
 import type {
   ClassDashboardEntry,
@@ -15,8 +16,20 @@ import type {
   PublicSearchClass,
 } from '@/lib/public-competition'
 
-function hasLivePools(status: ClassLiveStatus): boolean {
+function hasAnyLiveState(status: ClassLiveStatus): boolean {
   return status !== 'none'
+}
+
+function hasLivePoolsStatus(status: ClassLiveStatus): boolean {
+  return (
+    status === 'pools_available' ||
+    status === 'pool_play_started' ||
+    status === 'pool_play_complete'
+  )
+}
+
+function hasLivePlayoffStatus(status: ClassLiveStatus): boolean {
+  return status === 'playoff_in_progress' || status === 'playoff_complete'
 }
 
 type ClassDashboardClientProps = {
@@ -39,7 +52,7 @@ type ClassLiveState = {
   error: boolean
 }
 
-type ExpandedTab = 'players' | 'pools'
+type ExpandedTab = 'players' | 'pools' | 'playoff'
 
 function OpenInNewTabIcon() {
   return (
@@ -136,7 +149,10 @@ export default function ClassDashboardClient({
   const [activeTabByClassId, setActiveTabByClassId] = useState<Record<string, ExpandedTab>>({})
 
   function getDefaultTab(classId: string): ExpandedTab {
-    return hasLivePools(liveStatusByClassId[classId]) ? 'pools' : 'players'
+    const status = liveStatusByClassId[classId]
+    if (hasLivePlayoffStatus(status)) return 'playoff'
+    if (hasLivePoolsStatus(status)) return 'pools'
+    return 'players'
   }
 
   async function loadLiveState(classId: string) {
@@ -218,7 +234,16 @@ export default function ClassDashboardClient({
             {session.classes.map(classEntry => {
               const isExpanded = expandedClassId === classEntry.id
               const liveState = liveStateByClassId[classEntry.id]
-              const hasLiveClassState = hasLivePools(liveStatusByClassId[classEntry.id])
+              const dashboardStatus = liveStatusByClassId[classEntry.id]
+              const hasLiveClassState = hasAnyLiveState(dashboardStatus)
+              const hasLoadedPools = Boolean(liveState?.data?.pools?.length)
+              const hasLoadedPlayoff = Boolean(liveState?.data?.playoff)
+              const hasPoolsTabEnabled = liveState
+                ? hasLoadedPools
+                : hasLivePoolsStatus(dashboardStatus)
+              const hasPlayoffTabVisible = liveState
+                ? hasLoadedPlayoff
+                : hasLivePlayoffStatus(dashboardStatus)
               const activeTab = activeTabByClassId[classEntry.id] ?? getDefaultTab(classEntry.id)
 
               return (
@@ -289,8 +314,8 @@ export default function ClassDashboardClient({
                               type="button"
                               role="tab"
                               aria-selected={activeTab === 'pools'}
-                              aria-disabled={!hasLiveClassState}
-                              disabled={!hasLiveClassState}
+                              aria-disabled={!hasPoolsTabEnabled}
+                              disabled={!hasPoolsTabEnabled}
                               onClick={() => setActiveTabByClassId(previous => ({
                                 ...previous,
                                 [classEntry.id]: 'pools',
@@ -303,6 +328,24 @@ export default function ClassDashboardClient({
                             >
                               Pooler
                             </button>
+                            {hasPlayoffTabVisible ? (
+                              <button
+                                type="button"
+                                role="tab"
+                                aria-selected={activeTab === 'playoff'}
+                                onClick={() => setActiveTabByClassId(previous => ({
+                                  ...previous,
+                                  [classEntry.id]: 'playoff',
+                                }))}
+                                className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                                  activeTab === 'playoff'
+                                    ? 'bg-brand text-white'
+                                    : 'border border-line/80 bg-white text-ink shadow-sm hover:border-brand/30 hover:bg-brand-soft/40'
+                                }`}
+                              >
+                                Slutspel
+                              </button>
+                            ) : null}
                           </div>
                           <Link
                             href={buildClassLiveHref(slug, classEntry.id)}
@@ -319,7 +362,9 @@ export default function ClassDashboardClient({
 
                         {liveState?.loading ? (
                           <LoadingSpinner />
-                        ) : activeTab === 'pools' && liveState?.status !== 'none' && liveState.data ? (
+                        ) : activeTab === 'playoff' && liveState?.data?.playoff ? (
+                          <ClassPlayoffView playoff={liveState.data.playoff} />
+                        ) : activeTab === 'pools' && hasLoadedPools && liveState?.data ? (
                           <ClassLiveView pools={liveState.data.pools} />
                         ) : liveState?.classDetails ? (
                           <PublicClassRosterView

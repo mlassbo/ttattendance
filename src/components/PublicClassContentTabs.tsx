@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { ClassLiveData, PublicSearchClass } from '@/lib/public-competition'
 import ClassLiveView from '@/components/ClassLiveView'
+import ClassPlayoffView from '@/components/ClassPlayoffView'
 import PublicClassRosterView from '@/components/PublicClassRosterView'
 
 type PublicClassContentTabsProps = {
@@ -11,15 +12,17 @@ type PublicClassContentTabsProps = {
   showRosterSummaryPills?: boolean
 }
 
-type ClassTab = 'players' | 'pools'
+type ClassTab = 'players' | 'pools' | 'playoff'
 
 export default function PublicClassContentTabs({
   classDetails,
   liveData,
   showRosterSummaryPills = true,
 }: PublicClassContentTabsProps) {
-  const hasPools = Boolean(liveData)
-  const [activeTab, setActiveTab] = useState<ClassTab>(hasPools ? 'pools' : 'players')
+  const hasPools = Boolean(liveData?.pools?.length)
+  const hasPlayoff = Boolean(liveData?.playoff)
+  const defaultTab: ClassTab = hasPlayoff ? 'playoff' : hasPools ? 'pools' : 'players'
+  const [activeTab, setActiveTab] = useState<ClassTab>(defaultTab)
 
   return (
     <section className="app-card space-y-4">
@@ -56,9 +59,26 @@ export default function PublicClassContentTabs({
         >
           Pooler
         </button>
+        {hasPlayoff ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'playoff'}
+            onClick={() => setActiveTab('playoff')}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+              activeTab === 'playoff'
+                ? 'bg-brand text-white'
+                : 'border border-line/80 bg-white text-ink shadow-sm hover:border-brand/30 hover:bg-brand-soft/40'
+            }`}
+          >
+            Slutspel
+          </button>
+        ) : null}
       </div>
 
-      {activeTab === 'pools' && liveData ? (
+      {activeTab === 'playoff' && liveData?.playoff ? (
+        <ClassPlayoffView playoff={liveData.playoff} />
+      ) : activeTab === 'pools' && hasPools && liveData ? (
         <ClassLiveView pools={liveData.pools} />
       ) : (
         <PublicClassRosterView

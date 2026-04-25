@@ -4,7 +4,7 @@ export { computeSyncStaleness, formatStockholmHourMinute } from './sync-stalenes
 export type { SyncStaleness } from './sync-staleness'
 
 export const POOL_DELAY_CONSTANTS = {
-  ROUND_DURATION_MIN: 20,
+  MATCH_DURATION_MIN: 20,
   GRACE_MIN: 20,
   YELLOW_THRESHOLD_MIN: 5,
   RED_THRESHOLD_MIN: 15,
@@ -23,6 +23,7 @@ export type PoolDelayState =
 export type PoolDelayInput = {
   playerCount: number
   completedMatchCount: number
+  plannedTablesPerPool?: number | null
 }
 
 export type PoolDelayResult = {
@@ -30,13 +31,14 @@ export type PoolDelayResult = {
   playerCount: number
   completedMatchCount: number
   totalMatches: number
-  matchesPerRound: number
+  plannedTablesPerPool: number
   state: PoolDelayState
   delayMin: number
 }
 
 export type ClassPoolProgressInput = {
   startTime: string | null
+  plannedTablesPerPool?: number | null
   pools: Array<PoolDelayInput & { poolNumber: number }>
   lastSyncAt: string | null
   now: Date
@@ -61,11 +63,19 @@ const STATE_PRIORITY: Record<PoolDelayState, number> = {
 
 function computePoolTotals(playerCount: number) {
   if (playerCount < 2) {
-    return { totalMatches: 0, matchesPerRound: 0 }
+    return { totalMatches: 0 }
   }
+
   const totalMatches = (playerCount * (playerCount - 1)) / 2
-  const matchesPerRound = Math.floor(playerCount / 2)
-  return { totalMatches, matchesPerRound }
+  return { totalMatches }
+}
+
+function normalizePlannedTablesPerPool(value: number | null | undefined): number {
+  if (value == null || !Number.isInteger(value) || value < 1) {
+    return 1
+  }
+
+  return value
 }
 
 export function computePoolDelay(input: {
@@ -75,17 +85,18 @@ export function computePoolDelay(input: {
   now: Date
 }): PoolDelayResult {
   const { pool, startTime, lastSyncAt, now } = input
-  const { totalMatches, matchesPerRound } = computePoolTotals(pool.playerCount)
+  const { totalMatches } = computePoolTotals(pool.playerCount)
+  const plannedTablesPerPool = normalizePlannedTablesPerPool(pool.plannedTablesPerPool)
 
   const base: Omit<PoolDelayResult, 'state' | 'delayMin'> = {
     poolNumber: pool.poolNumber,
     playerCount: pool.playerCount,
     completedMatchCount: pool.completedMatchCount,
     totalMatches,
-    matchesPerRound,
+    plannedTablesPerPool,
   }
 
-  if (!lastSyncAt || !startTime || matchesPerRound === 0) {
+  if (!lastSyncAt || !startTime || totalMatches === 0) {
     return { ...base, state: 'awaiting_data', delayMin: 0 }
   }
 
@@ -106,10 +117,15 @@ export function computePoolDelay(input: {
     return { ...base, state: 'starting', delayMin: 0 }
   }
 
-  const expectedRounds = Math.floor(elapsedMin / POOL_DELAY_CONSTANTS.ROUND_DURATION_MIN)
-  const completedRounds = Math.ceil(pool.completedMatchCount / matchesPerRound)
-  const roundsBehind = Math.max(0, expectedRounds - completedRounds)
-  const delayMin = roundsBehind * POOL_DELAY_CONSTANTS.ROUND_DURATION_MIN
+  const expectedCompletedMatches = Math.min(
+    totalMatches,
+    Math.floor(elapsedMin / POOL_DELAY_CONSTANTS.MATCH_DURATION_MIN) * plannedTablesPerPool,
+  )
+  const delayedMatchCount = Math.max(0, expectedCompletedMatches - pool.completedMatchCount)
+  const progressDelayMin = Math.ceil(delayedMatchCount / plannedTablesPerPool) * POOL_DELAY_CONSTANTS.MATCH_DURATION_MIN
+  const expectedFinishMin = Math.ceil(totalMatches / plannedTablesPerPool) * POOL_DELAY_CONSTANTS.MATCH_DURATION_MIN
+  const overrunDelayMin = Math.max(0, Math.round(elapsedMin - expectedFinishMin))
+  const delayMin = Math.max(progressDelayMin, overrunDelayMin)
 
   let state: PoolDelayState = 'on_schedule'
   if (delayMin >= POOL_DELAY_CONSTANTS.RED_THRESHOLD_MIN) {
@@ -125,7 +141,10 @@ export function computeClassPoolProgress(input: ClassPoolProgressInput): ClassPo
   const poolResults = input.pools.map(pool =>
     computePoolDelay({
       startTime: input.startTime,
-      pool,
+      pool: {
+        ...pool,
+        plannedTablesPerPool: input.plannedTablesPerPool,
+      },
       lastSyncAt: input.lastSyncAt,
       now: input.now,
     }),

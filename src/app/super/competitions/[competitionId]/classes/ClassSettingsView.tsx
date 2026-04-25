@@ -11,6 +11,7 @@ type ClassData = {
   startTime: string
   attendanceDeadline: string
   maxPlayers: number | null
+  plannedTablesPerPool: number
 }
 
 type SessionData = {
@@ -31,12 +32,17 @@ type EditingMaxPlayers = {
   value: string
 }
 
+type EditingPlannedTablesPerPool = {
+  value: string
+}
+
 type SaveStatus = {
   state: 'saving' | 'saved' | 'error'
   message?: string
 }
 
 const MAX_PLAYERS_SAVE_DELAY_MS = 450
+const PLANNED_TABLES_SAVE_DELAY_MS = 450
 
 const DeadlineInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function DeadlineInput(props, ref) {
@@ -169,6 +175,8 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
   const [deadlineStatus, setDeadlineStatus] = useState<Record<string, SaveStatus>>({})
   const [maxPlayersDrafts, setMaxPlayersDrafts] = useState<Record<string, EditingMaxPlayers>>({})
   const [maxPlayersStatus, setMaxPlayersStatus] = useState<Record<string, SaveStatus>>({})
+  const [plannedTablesDrafts, setPlannedTablesDrafts] = useState<Record<string, EditingPlannedTablesPerPool>>({})
+  const [plannedTablesStatus, setPlannedTablesStatus] = useState<Record<string, SaveStatus>>({})
   const [sessionStatus, setSessionStatus] = useState<Record<string, SaveStatus>>({})
   const [flashClassIds, setFlashClassIds] = useState<Record<string, boolean>>({})
   const deadlineSaveInFlight = useRef<Record<string, boolean>>({})
@@ -177,6 +185,9 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
   const maxPlayersTimers = useRef<Record<string, number>>({})
   const maxPlayersSaveInFlight = useRef<Record<string, boolean>>({})
   const pendingMaxPlayersValues = useRef<Record<string, string | undefined>>({})
+  const plannedTablesTimers = useRef<Record<string, number>>({})
+  const plannedTablesSaveInFlight = useRef<Record<string, boolean>>({})
+  const pendingPlannedTablesValues = useRef<Record<string, string | undefined>>({})
 
   async function load() {
     setLoading(true)
@@ -208,6 +219,10 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
       })
 
       Object.values(maxPlayersTimers.current).forEach(timerId => {
+        window.clearTimeout(timerId)
+      })
+
+      Object.values(plannedTablesTimers.current).forEach(timerId => {
         window.clearTimeout(timerId)
       })
     }
@@ -281,12 +296,28 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
     })
   }
 
+  function clearPlannedTablesStatus(classId: string) {
+    setPlannedTablesStatus(previous => {
+      if (!(classId in previous)) {
+        return previous
+      }
+
+      const next = { ...previous }
+      delete next[classId]
+      return next
+    })
+  }
+
   function getDeadlineDraft(cls: ClassData): EditingDeadline {
     return deadlineDrafts[cls.id] ?? toDateAndTime(cls.attendanceDeadline)
   }
 
   function getMaxPlayersDraft(cls: ClassData): string {
     return maxPlayersDrafts[cls.id]?.value ?? (cls.maxPlayers === null ? '' : String(cls.maxPlayers))
+  }
+
+  function getPlannedTablesDraft(cls: ClassData): string {
+    return plannedTablesDrafts[cls.id]?.value ?? String(cls.plannedTablesPerPool)
   }
 
   async function saveDeadline(classId: string, draft: EditingDeadline) {
@@ -476,6 +507,98 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
     }
   }
 
+  async function savePlannedTablesPerPool(classId: string, rawValue: string) {
+    const current = findClassById(classId)
+    if (!current) {
+      return
+    }
+
+    const trimmedValue = rawValue.trim()
+    const parsedPlannedTables = Number(trimmedValue)
+
+    if (trimmedValue === '' || !Number.isInteger(parsedPlannedTables) || parsedPlannedTables <= 0) {
+      setPlannedTablesStatus(previous => ({
+        ...previous,
+        [classId]: {
+          state: 'error',
+          message: 'Bord per pool måste vara ett positivt heltal',
+        },
+      }))
+      return
+    }
+
+    if (current.cls.plannedTablesPerPool === parsedPlannedTables) {
+      clearPlannedTablesStatus(classId)
+      return
+    }
+
+    setPlannedTablesStatus(previous => ({ ...previous, [classId]: { state: 'saving' } }))
+
+    try {
+      const res = await fetch(
+        `/api/super/competitions/${competitionId}/classes/${classId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plannedTablesPerPool: parsedPlannedTables }),
+        },
+      )
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setPlannedTablesStatus(previous => ({
+          ...previous,
+          [classId]: {
+            state: 'error',
+            message: data?.error ?? 'Kunde inte spara',
+          },
+        }))
+        return
+      }
+
+      updateClass(classId, cls => ({ ...cls, plannedTablesPerPool: parsedPlannedTables }))
+      setPlannedTablesDrafts(previous => ({
+        ...previous,
+        [classId]: { value: String(parsedPlannedTables) },
+      }))
+      setPlannedTablesStatus(previous => ({ ...previous, [classId]: { state: 'saved' } }))
+      triggerSaveFlash(classId)
+    } catch {
+      setPlannedTablesStatus(previous => ({
+        ...previous,
+        [classId]: {
+          state: 'error',
+          message: 'Nätverksfel',
+        },
+      }))
+    }
+  }
+
+  async function requestPlannedTablesSave(classId: string, rawValue: string) {
+    if (plannedTablesSaveInFlight.current[classId]) {
+      pendingPlannedTablesValues.current[classId] = rawValue
+      setPlannedTablesStatus(previous => ({ ...previous, [classId]: { state: 'saving' } }))
+      return
+    }
+
+    plannedTablesSaveInFlight.current[classId] = true
+
+    try {
+      await savePlannedTablesPerPool(classId, rawValue)
+    } finally {
+      plannedTablesSaveInFlight.current[classId] = false
+
+      const pendingValue = pendingPlannedTablesValues.current[classId]
+      if (pendingValue !== undefined && pendingValue !== rawValue) {
+        delete pendingPlannedTablesValues.current[classId]
+        await requestPlannedTablesSave(classId, pendingValue)
+        return
+      }
+
+      delete pendingPlannedTablesValues.current[classId]
+    }
+  }
+
   function queueMaxPlayersSave(classId: string, rawValue: string) {
     const activeTimer = maxPlayersTimers.current[classId]
     if (activeTimer) {
@@ -486,6 +609,18 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
       void requestMaxPlayersSave(classId, rawValue)
       delete maxPlayersTimers.current[classId]
     }, MAX_PLAYERS_SAVE_DELAY_MS)
+  }
+
+  function queuePlannedTablesSave(classId: string, rawValue: string) {
+    const activeTimer = plannedTablesTimers.current[classId]
+    if (activeTimer) {
+      window.clearTimeout(activeTimer)
+    }
+
+    plannedTablesTimers.current[classId] = window.setTimeout(() => {
+      void requestPlannedTablesSave(classId, rawValue)
+      delete plannedTablesTimers.current[classId]
+    }, PLANNED_TABLES_SAVE_DELAY_MS)
   }
 
   function flushMaxPlayersSave(classId: string) {
@@ -518,6 +653,38 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
       [classId]: { value: current.cls.maxPlayers === null ? '' : String(current.cls.maxPlayers) },
     }))
     clearMaxPlayersStatus(classId)
+  }
+
+  function flushPlannedTablesSave(classId: string) {
+    const activeTimer = plannedTablesTimers.current[classId]
+    if (activeTimer) {
+      window.clearTimeout(activeTimer)
+      delete plannedTablesTimers.current[classId]
+    }
+
+    const currentDraft = plannedTablesDrafts[classId]?.value
+    if (currentDraft !== undefined) {
+      void requestPlannedTablesSave(classId, currentDraft)
+    }
+  }
+
+  function resetPlannedTablesDraft(classId: string) {
+    const activeTimer = plannedTablesTimers.current[classId]
+    if (activeTimer) {
+      window.clearTimeout(activeTimer)
+      delete plannedTablesTimers.current[classId]
+    }
+
+    const current = findClassById(classId)
+    if (!current) {
+      return
+    }
+
+    setPlannedTablesDrafts(previous => ({
+      ...previous,
+      [classId]: { value: String(current.cls.plannedTablesPerPool) },
+    }))
+    clearPlannedTablesStatus(classId)
   }
 
   async function changeSession(classId: string, newSessionId: string) {
@@ -618,6 +785,7 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
             {session.classes.map(cls => {
               const deadlineDraft = getDeadlineDraft(cls)
               const maxPlayersDraft = getMaxPlayersDraft(cls)
+              const plannedTablesDraft = getPlannedTablesDraft(cls)
               const isSessionSaving = sessionStatus[cls.id]?.state === 'saving'
               const isFlashing = flashClassIds[cls.id] === true
 
@@ -774,6 +942,51 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
                       </div>
                       <div className="col-start-2">
                         <StatusNote status={maxPlayersStatus[cls.id]} testId={`max-players-error-${cls.id}`} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[156px_minmax(0,1fr)] gap-x-4 gap-y-2 items-center">
+                      <label
+                        htmlFor={`planned-tables-input-${cls.id}`}
+                        className="text-xs font-semibold uppercase tracking-[0.18em] text-muted"
+                      >
+                        Bord per pool
+                      </label>
+                      <div className="flex items-center justify-start">
+                        <input
+                          id={`planned-tables-input-${cls.id}`}
+                          data-testid={`planned-tables-input-${cls.id}`}
+                          type="number"
+                          inputMode="numeric"
+                          min="1"
+                          step="1"
+                          value={plannedTablesDraft}
+                          onChange={event => {
+                            const nextValue = event.target.value
+                            setPlannedTablesDrafts(previous => ({
+                              ...previous,
+                              [cls.id]: { value: nextValue },
+                            }))
+                            clearPlannedTablesStatus(cls.id)
+                            queuePlannedTablesSave(cls.id, nextValue)
+                          }}
+                          onBlur={() => flushPlannedTablesSave(cls.id)}
+                          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              flushPlannedTablesSave(cls.id)
+                            }
+
+                            if (event.key === 'Escape') {
+                              event.preventDefault()
+                              resetPlannedTablesDraft(cls.id)
+                            }
+                          }}
+                          className="app-input w-full max-w-[132px] py-2 text-sm tabular-nums"
+                        />
+                      </div>
+                      <div className="col-start-2">
+                        <StatusNote status={plannedTablesStatus[cls.id]} testId={`planned-tables-error-${cls.id}`} />
                       </div>
                     </div>
                   </div>

@@ -1,5 +1,6 @@
 import { buildDaySessionOrderMap } from './session-order'
 import { parseMatchResult } from './match-result'
+import { labelRound } from './playoff-progress-view'
 import {
   buildReserveListEntries,
   buildReservePositionMap,
@@ -151,8 +152,47 @@ type SnapshotPoolMatch = ClassLiveMatch & {
   matchOrder: number
 }
 
+type PlayoffBracketCode = 'A' | 'B'
+
+type PlayoffStatusRow = {
+  parent_external_class_key: string
+  playoff_bracket: PlayoffBracketCode
+  current_snapshot_id: string | null
+  last_summary_matches: number
+  last_summary_completed_matches: number
+}
+
+type PlayoffSnapshotRow = {
+  id: string
+  parent_external_class_key: string
+  playoff_bracket: PlayoffBracketCode
+}
+
+type PlayoffSnapshotRoundRow = {
+  id: string
+  snapshot_id: string
+  round_order: number
+  round_name: string
+}
+
+type PlayoffSnapshotMatchRow = {
+  snapshot_round_id: string
+  match_order: number
+  player_a_name: string
+  player_b_name: string
+  winner_name: string | null
+  result: string | null
+  is_completed: boolean
+}
+
 export type PublicSearchMode = 'all' | 'player' | 'club' | 'class'
-export type ClassLiveStatus = 'none' | 'pools_available' | 'pool_play_started' | 'pool_play_complete'
+export type ClassLiveStatus =
+  | 'none'
+  | 'pools_available'
+  | 'pool_play_started'
+  | 'pool_play_complete'
+  | 'playoff_complete'
+  | 'playoff_in_progress'
 
 export interface PublicCompetition {
   id: string
@@ -268,8 +308,35 @@ export interface ClassLiveMatch {
   setScoreB: number | null
 }
 
+export interface ClassLivePlayoffMatch {
+  playerAName: string
+  playerBName: string
+  winnerName: string | null
+  isPlayed: boolean
+  isWalkover: boolean
+  setScoreA: number | null
+  setScoreB: number | null
+  rawResult: string | null
+}
+
+export interface ClassLivePlayoffRound {
+  name: string
+  matches: ClassLivePlayoffMatch[]
+}
+
+export interface ClassLivePlayoffBracket {
+  bracket: PlayoffBracketCode
+  rounds: ClassLivePlayoffRound[]
+}
+
+export interface ClassLivePlayoffData {
+  a: ClassLivePlayoffBracket | null
+  b: ClassLivePlayoffBracket | null
+}
+
 export interface ClassLiveData {
   pools: ClassLivePool[]
+  playoff: ClassLivePlayoffData | null
 }
 
 export function hasPoolMatchFixtures(liveData: ClassLiveData): boolean {
@@ -280,8 +347,31 @@ export function hasPublishedPoolResults(liveData: ClassLiveData): boolean {
   return liveData.pools.length > 0 && liveData.pools.every(pool => pool.standings !== null)
 }
 
+function getPlayoffBrackets(playoff: ClassLivePlayoffData): ClassLivePlayoffBracket[] {
+  return [playoff.a, playoff.b].filter(
+    (bracket): bracket is ClassLivePlayoffBracket => bracket !== null,
+  )
+}
+
+function isPlayoffComplete(playoff: ClassLivePlayoffData): boolean {
+  const brackets = getPlayoffBrackets(playoff)
+
+  return brackets.length > 0 && brackets.every(bracket => {
+    const hasFinalRound = bracket.rounds.some(round => round.name === 'Final')
+    return hasFinalRound && bracket.rounds.every(round => round.matches.every(match => match.isPlayed))
+  })
+}
+
 export function getClassLiveStatus(liveData: ClassLiveData | null): ClassLiveStatus {
   if (!liveData) {
+    return 'none'
+  }
+
+  if (liveData.playoff) {
+    return isPlayoffComplete(liveData.playoff) ? 'playoff_complete' : 'playoff_in_progress'
+  }
+
+  if (liveData.pools.length === 0) {
     return 'none'
   }
 
@@ -293,6 +383,14 @@ export function getClassLiveStatus(liveData: ClassLiveData | null): ClassLiveSta
 }
 
 export function getClassLiveStatusLabel(status: ClassLiveStatus): string {
+  if (status === 'playoff_in_progress') {
+    return 'Slutspel pågår'
+  }
+
+  if (status === 'playoff_complete') {
+    return 'Slutspel klart'
+  }
+
   if (status === 'pool_play_complete') {
     return 'Poolspel klart'
   }
@@ -301,11 +399,11 @@ export function getClassLiveStatusLabel(status: ClassLiveStatus): string {
 }
 
 export function getClassLiveStatusPillClass(status: ClassLiveStatus): string {
-  if (status === 'pool_play_complete') {
+  if (status === 'pool_play_complete' || status === 'playoff_complete') {
     return 'app-pill-success'
   }
 
-  if (status === 'pool_play_started') {
+  if (status === 'pool_play_started' || status === 'playoff_in_progress') {
     return 'app-pill-info'
   }
 
@@ -570,16 +668,34 @@ export async function getClassLiveData(
     return null
   }
 
+  const livePools = await loadClassLivePools(supabase, competitionId, classRow.name)
+  const playoff = await loadClassLivePlayoff(supabase, competitionId, classRow.name)
+
+  if (livePools.length === 0 && playoff === null) {
+    return null
+  }
+
+  return {
+    pools: livePools,
+    playoff,
+  }
+}
+
+async function loadClassLivePools(
+  supabase: ServerClient,
+  competitionId: string,
+  className: string,
+): Promise<ClassLivePool[]> {
   const currentSnapshotId = await getCurrentOnDataSnapshotId(supabase, competitionId)
   if (!currentSnapshotId) {
-    return null
+    return []
   }
 
   const { data: snapshotClass, error: snapshotClassError } = await supabase
     .from('ondata_integration_snapshot_classes')
     .select('id, external_class_key')
     .eq('snapshot_id', currentSnapshotId)
-    .eq('class_name', classRow.name)
+    .eq('class_name', className)
     .maybeSingle()
 
   if (snapshotClassError) {
@@ -587,7 +703,7 @@ export async function getClassLiveData(
   }
 
   if (!snapshotClass) {
-    return null
+    return []
   }
 
   const { data: pools, error: poolsError } = await supabase
@@ -602,7 +718,7 @@ export async function getClassLiveData(
 
   const poolRows = (pools ?? []) as OnDataSnapshotPoolRow[]
   if (poolRows.length === 0) {
-    return null
+    return []
   }
 
   const { data: players, error: playersError } = await supabase
@@ -788,12 +904,235 @@ export async function getClassLiveData(
   }
 
   if (livePools.every(pool => pool.players.length === 0)) {
+    return []
+  }
+
+  return livePools
+}
+
+async function loadClassLivePlayoff(
+  supabase: ServerClient,
+  competitionId: string,
+  className: string,
+): Promise<ClassLivePlayoffData | null> {
+  const { data: snapshotData, error: snapshotError } = await supabase
+    .from('ondata_playoff_snapshots')
+    .select('id, parent_external_class_key, playoff_bracket')
+    .eq('competition_id', competitionId)
+    .eq('parent_class_name', className)
+
+  if (snapshotError) {
+    throw new Error(snapshotError.message)
+  }
+
+  const snapshotRows = (snapshotData ?? []) as PlayoffSnapshotRow[]
+  if (snapshotRows.length === 0) {
     return null
   }
 
-  return {
-    pools: livePools,
+  const parentExternalClassKeys = Array.from(
+    new Set(snapshotRows.map(row => row.parent_external_class_key)),
+  )
+
+  const { data: statusData, error: statusError } = await supabase
+    .from('ondata_playoff_status')
+    .select('parent_external_class_key, playoff_bracket, current_snapshot_id')
+    .eq('competition_id', competitionId)
+    .in('parent_external_class_key', parentExternalClassKeys)
+
+  if (statusError) {
+    throw new Error(statusError.message)
   }
+
+  const statusRows = (statusData ?? []) as PlayoffStatusRow[]
+  const candidateSnapshotIds = new Set(snapshotRows.map(row => row.id))
+  const activeSnapshotByBracket = new Map<PlayoffBracketCode, PlayoffSnapshotRow>()
+  const snapshotById = new Map(snapshotRows.map(row => [row.id, row] as const))
+
+  for (const status of statusRows) {
+    if (!status.current_snapshot_id) continue
+    if (!candidateSnapshotIds.has(status.current_snapshot_id)) continue
+    const snapshot = snapshotById.get(status.current_snapshot_id)
+    if (!snapshot) continue
+    activeSnapshotByBracket.set(status.playoff_bracket, snapshot)
+  }
+
+  if (activeSnapshotByBracket.size === 0) {
+    return null
+  }
+
+  const activeSnapshotIds = Array.from(activeSnapshotByBracket.values()).map(snapshot => snapshot.id)
+
+  const { data: roundData, error: roundError } = await supabase
+    .from('ondata_playoff_snapshot_rounds')
+    .select('id, snapshot_id, round_order, round_name')
+    .in('snapshot_id', activeSnapshotIds)
+    .order('round_order', { ascending: true })
+
+  if (roundError) {
+    throw new Error(roundError.message)
+  }
+
+  const roundRows = (roundData ?? []) as PlayoffSnapshotRoundRow[]
+  const roundsBySnapshotId = new Map<string, PlayoffSnapshotRoundRow[]>()
+  for (const round of roundRows) {
+    const list = roundsBySnapshotId.get(round.snapshot_id) ?? []
+    list.push(round)
+    roundsBySnapshotId.set(round.snapshot_id, list)
+  }
+
+  const matchesByRoundId = new Map<string, PlayoffSnapshotMatchRow[]>()
+  if (roundRows.length > 0) {
+    const { data: matchData, error: matchError } = await supabase
+      .from('ondata_playoff_snapshot_matches')
+      .select('snapshot_round_id, match_order, player_a_name, player_b_name, winner_name, result, is_completed')
+      .in('snapshot_round_id', roundRows.map(round => round.id))
+      .order('match_order', { ascending: true })
+
+    if (matchError) {
+      throw new Error(matchError.message)
+    }
+
+    for (const match of (matchData ?? []) as PlayoffSnapshotMatchRow[]) {
+      const list = matchesByRoundId.get(match.snapshot_round_id) ?? []
+      list.push(match)
+      matchesByRoundId.set(match.snapshot_round_id, list)
+    }
+  }
+
+  const buildBracket = (bracketCode: PlayoffBracketCode): ClassLivePlayoffBracket | null => {
+    const snapshot = activeSnapshotByBracket.get(bracketCode)
+    if (!snapshot) return null
+
+    const snapshotRounds = (roundsBySnapshotId.get(snapshot.id) ?? [])
+      .slice()
+      .sort((left, right) => left.round_order - right.round_order)
+
+    const totalRounds = snapshotRounds.length
+    const rounds: ClassLivePlayoffRound[] = []
+
+    snapshotRounds.forEach((round, roundIndex) => {
+      const matchRows = (matchesByRoundId.get(round.id) ?? [])
+        .slice()
+        .sort((left, right) => left.match_order - right.match_order)
+
+      if (matchRows.length === 0) return
+
+      const matches: ClassLivePlayoffMatch[] = matchRows.map(matchRow =>
+        toClassLivePlayoffMatch(matchRow),
+      )
+
+      rounds.push({
+        name: labelRound(totalRounds, roundIndex, round.round_name),
+        matches,
+      })
+    })
+
+    if (rounds.length === 0) return null
+
+    return {
+      bracket: bracketCode,
+      rounds,
+    }
+  }
+
+  const a = buildBracket('A')
+  const b = buildBracket('B')
+
+  if (a === null && b === null) {
+    return null
+  }
+
+  return { a, b }
+}
+
+function toClassLivePlayoffMatch(row: PlayoffSnapshotMatchRow): ClassLivePlayoffMatch {
+  const playerAName = row.player_a_name.trim()
+  const playerBName = row.player_b_name.trim()
+  const trimmedWinner = row.winner_name?.trim() ?? null
+  const winnerName =
+    trimmedWinner && (trimmedWinner === playerAName || trimmedWinner === playerBName)
+      ? trimmedWinner
+      : null
+
+  if (!row.is_completed) {
+    return {
+      playerAName,
+      playerBName,
+      winnerName: null,
+      isPlayed: false,
+      isWalkover: false,
+      setScoreA: null,
+      setScoreB: null,
+      rawResult: row.result,
+    }
+  }
+
+  const parsed = parseMatchResult(row.result)
+  if (parsed?.kind === 'walkover') {
+    return {
+      playerAName,
+      playerBName,
+      winnerName,
+      isPlayed: true,
+      isWalkover: true,
+      setScoreA: null,
+      setScoreB: null,
+      rawResult: row.result,
+    }
+  }
+
+  if (parsed?.kind === 'score') {
+    const normalizedScore = normalizePlayoffScore(parsed.setScoreA, parsed.setScoreB, {
+      playerAName,
+      playerBName,
+      winnerName,
+    })
+
+    return {
+      playerAName,
+      playerBName,
+      winnerName,
+      isPlayed: true,
+      isWalkover: false,
+      setScoreA: normalizedScore.setScoreA,
+      setScoreB: normalizedScore.setScoreB,
+      rawResult: row.result,
+    }
+  }
+
+  return {
+    playerAName,
+    playerBName,
+    winnerName,
+    isPlayed: true,
+    isWalkover: false,
+    setScoreA: null,
+    setScoreB: null,
+    rawResult: row.result,
+  }
+}
+
+function normalizePlayoffScore(
+  setScoreA: number,
+  setScoreB: number,
+  names: { playerAName: string; playerBName: string; winnerName: string | null },
+): { setScoreA: number; setScoreB: number } {
+  if (names.winnerName === names.playerAName && setScoreA < setScoreB) {
+    return {
+      setScoreA: setScoreB,
+      setScoreB: setScoreA,
+    }
+  }
+
+  if (names.winnerName === names.playerBName && setScoreB < setScoreA) {
+    return {
+      setScoreA: setScoreB,
+      setScoreB: setScoreA,
+    }
+  }
+
+  return { setScoreA, setScoreB }
 }
 
 function buildCompletePoolMatches(
@@ -894,9 +1233,21 @@ export async function getClassDashboardLiveStatus(
     return liveStatus
   }
 
+  await applyPoolDashboardLiveStatus(supabase, competitionId, localClasses, liveStatus)
+  await applyPlayoffDashboardLiveStatus(supabase, competitionId, localClasses, liveStatus)
+
+  return liveStatus
+}
+
+async function applyPoolDashboardLiveStatus(
+  supabase: ServerClient,
+  competitionId: string,
+  localClasses: CompetitionClassNameRow[],
+  liveStatus: Map<string, ClassLiveStatus>,
+): Promise<void> {
   const currentSnapshotId = await getCurrentOnDataSnapshotId(supabase, competitionId)
   if (!currentSnapshotId) {
-    return liveStatus
+    return
   }
 
   const { data: snapshotClasses, error: snapshotClassesError } = await supabase
@@ -910,7 +1261,7 @@ export async function getClassDashboardLiveStatus(
 
   const snapshotClassRows = (snapshotClasses ?? []) as OnDataSnapshotClassRow[]
   if (snapshotClassRows.length === 0) {
-    return liveStatus
+    return
   }
 
   const { data: pools, error: poolsError } = await supabase
@@ -924,12 +1275,8 @@ export async function getClassDashboardLiveStatus(
 
   const poolRows = (pools ?? []) as Array<Pick<OnDataSnapshotPoolRow, 'id' | 'snapshot_class_id'>>
   if (poolRows.length === 0) {
-    return liveStatus
+    return
   }
-
-  const poolClassIdByPoolId = new Map(
-    poolRows.map(poolRow => [poolRow.id, poolRow.snapshot_class_id]),
-  )
 
   const { data: players, error: playersError } = await supabase
     .from('ondata_integration_snapshot_players')
@@ -1039,8 +1386,99 @@ export async function getClassDashboardLiveStatus(
       )
     }
   }
+}
 
-  return liveStatus
+async function applyPlayoffDashboardLiveStatus(
+  supabase: ServerClient,
+  competitionId: string,
+  localClasses: CompetitionClassNameRow[],
+  liveStatus: Map<string, ClassLiveStatus>,
+): Promise<void> {
+  const { data: statusRows, error: statusError } = await supabase
+    .from('ondata_playoff_status')
+    .select(
+      'parent_external_class_key, playoff_bracket, current_snapshot_id, last_summary_matches, last_summary_completed_matches',
+    )
+    .eq('competition_id', competitionId)
+
+  if (statusError) {
+    throw new Error(statusError.message)
+  }
+
+  const activeSnapshotIds = ((statusRows ?? []) as PlayoffStatusRow[])
+    .map(row => row.current_snapshot_id)
+    .filter((id): id is string => Boolean(id))
+
+  if (activeSnapshotIds.length === 0) {
+    return
+  }
+
+  const { data: snapshotRows, error: snapshotError } = await supabase
+    .from('ondata_playoff_snapshots')
+    .select('id, parent_class_name')
+    .in('id', activeSnapshotIds)
+
+  if (snapshotError) {
+    throw new Error(snapshotError.message)
+  }
+
+  const typedSnapshotRows = (snapshotRows ?? []) as Array<{ id: string; parent_class_name: string }>
+  const parentClassNameBySnapshotId = new Map(
+    typedSnapshotRows.map(row => [row.id, row.parent_class_name] as const),
+  )
+
+  const { data: roundRows, error: roundError } = await supabase
+    .from('ondata_playoff_snapshot_rounds')
+    .select('snapshot_id, round_order, round_name')
+    .in('snapshot_id', activeSnapshotIds)
+
+  if (roundError) {
+    throw new Error(roundError.message)
+  }
+
+  const roundsBySnapshotId = new Map<string, Array<Pick<PlayoffSnapshotRoundRow, 'snapshot_id' | 'round_order' | 'round_name'>>>()
+  for (const round of (roundRows ?? []) as Array<Pick<PlayoffSnapshotRoundRow, 'snapshot_id' | 'round_order' | 'round_name'>>) {
+    const rounds = roundsBySnapshotId.get(round.snapshot_id) ?? []
+    rounds.push(round)
+    roundsBySnapshotId.set(round.snapshot_id, rounds)
+  }
+
+  const classStatusByName = new Map<string, ClassLiveStatus>()
+  for (const status of (statusRows ?? []) as PlayoffStatusRow[]) {
+    if (!status.current_snapshot_id) {
+      continue
+    }
+
+    const parentClassName = parentClassNameBySnapshotId.get(status.current_snapshot_id)
+    if (!parentClassName) {
+      continue
+    }
+
+    const snapshotRounds = (roundsBySnapshotId.get(status.current_snapshot_id) ?? [])
+      .slice()
+      .sort((left, right) => left.round_order - right.round_order)
+    const hasFinalRound = snapshotRounds.some((round, roundIndex) =>
+      labelRound(snapshotRounds.length, roundIndex, round.round_name) === 'Final',
+    )
+    const isComplete =
+      hasFinalRound
+      && status.last_summary_matches > 0
+      && status.last_summary_matches === status.last_summary_completed_matches
+
+    const nextStatus: ClassLiveStatus = isComplete ? 'playoff_complete' : 'playoff_in_progress'
+    const currentStatus = classStatusByName.get(parentClassName)
+
+    if (currentStatus !== 'playoff_in_progress') {
+      classStatusByName.set(parentClassName, nextStatus)
+    }
+  }
+
+  for (const classRow of localClasses) {
+    const status = classStatusByName.get(classRow.name)
+    if (status) {
+      liveStatus.set(classRow.id, status)
+    }
+  }
 }
 
 export async function getPublicPlayerDetails(

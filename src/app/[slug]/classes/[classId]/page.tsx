@@ -121,7 +121,7 @@ export default async function PublicClassPage({
                   {classDetails.playerCount} anmälda
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  {liveData ? <ClassLiveStatusPill status={liveStatus} /> : null}
+                  {liveStatus !== 'none' ? <ClassLiveStatusPill status={liveStatus} /> : null}
                   {showRegistrationStatusPills ? (
                     <span data-testid="class-page-availability">
                       <ClassAvailabilityBadge classDetails={classDetails} />

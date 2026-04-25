@@ -37,7 +37,7 @@ export async function GET(
 
   const { data: classes, error: classesError } = await supabase
     .from('classes')
-    .select('id, session_id, name, start_time, attendance_deadline, max_players')
+    .select('id, session_id, name, start_time, attendance_deadline, max_players, planned_tables_per_pool')
     .in('session_id', sessionIds)
     .order('start_time', { ascending: true })
 
@@ -58,6 +58,7 @@ export async function GET(
         startTime: c.start_time,
         attendanceDeadline: c.attendance_deadline,
         maxPlayers: c.max_players,
+        plannedTablesPerPool: c.planned_tables_per_pool,
       })),
   }))
 

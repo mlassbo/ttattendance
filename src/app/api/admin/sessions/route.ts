@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     // Step 1 — sessions + their classes (2-level nesting, reliable).
     const { data: sessionData, error: sessError } = await supabase
       .from('sessions')
-      .select('id, name, date, session_order, classes(id, name, start_time, attendance_deadline)')
+      .select('id, name, date, session_order, classes(id, name, start_time, attendance_deadline, planned_tables_per_pool)')
       .eq('competition_id', auth.competitionId)
       .order('date')
       .order('session_order')
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
         name: cls.name as string,
         startTime: cls.start_time as string,
         attendanceDeadline: cls.attendance_deadline as string,
+        plannedTablesPerPool: (cls.planned_tables_per_pool as number | null | undefined) ?? 1,
       })),
     )
 
@@ -143,6 +144,7 @@ export async function GET(req: NextRequest) {
             name: cls.name,
             startTime: cls.start_time,
             attendanceDeadline: cls.attendance_deadline,
+            plannedTablesPerPool: cls.planned_tables_per_pool ?? 1,
             counts: { confirmed, absent, noResponse, total: regs.length },
             poolProgress: classPoolProgress,
             playoffProgress: classPlayoffProgress,

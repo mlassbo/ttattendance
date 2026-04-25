@@ -182,7 +182,7 @@ export type RosterImportClass = {
   externalClassKey: string
   identityKey: string
   className: string
-  startAt: string
+  startAt: string | null
   classDate: string
   classTime: string
   registrations: RosterImportRegistration[]
@@ -791,6 +791,11 @@ function buildApplyPlan(
   )
 
   const classPlans = prepared.dataset.classes.map(classRow => {
+    const startAt = classRow.startAt
+    if (!startAt) {
+      throw new Error(`Klassen ${classRow.className} saknar starttid och kan inte importeras.`)
+    }
+
     const sessionNumber = assignmentValidation.byClassKey.get(classRow.externalClassKey)
     if (!sessionNumber) {
       throw new Error(`Missing session assignment for ${classRow.externalClassKey}`)
@@ -818,7 +823,7 @@ function buildApplyPlan(
     // Preserve manually edited attendance_deadline and session assignment for existing classes
     const attendanceDeadline = existingClass
       ? existingClass.attendance_deadline
-      : attendanceDeadlineFromStartAt(classRow.startAt)
+      : attendanceDeadlineFromStartAt(startAt)
 
     const effectiveSessionSlotKey = existingClass
       ? (() => {
@@ -840,7 +845,7 @@ function buildApplyPlan(
       class_key: classMatchKey,
       existing_class_id: existingClass?.id ?? null,
       class_name: classRow.className,
-      start_time: classRow.startAt,
+      start_time: startAt,
       attendance_deadline: attendanceDeadline,
       session_slot_key: effectiveSessionSlotKey,
     }
