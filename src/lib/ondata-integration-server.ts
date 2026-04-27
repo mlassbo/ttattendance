@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { OnDataSnapshotPayload } from './ondata-integration-contract'
+import { getOnDataRegistrationImportStatus } from './roster-import/ondata-roster-server'
 
 export function buildOnDataCompetitionIngestPath(competitionSlug: string): string {
   return `/api/integrations/ondata/competitions/${competitionSlug}`
@@ -246,7 +247,7 @@ export async function getOnDataIntegrationView(
     return null
   }
 
-  const [{ data: settings }, { data: liveStatus }, { data: registrationStatus }, { count: sessionCount }] = await Promise.all([
+  const [{ data: settings }, { data: liveStatus }, registrationImportStatus, { count: sessionCount }] = await Promise.all([
     supabase
       .from('ondata_integration_settings')
       .select('api_token_last4, token_generated_at')
@@ -257,11 +258,7 @@ export async function getOnDataIntegrationView(
       .select('current_snapshot_id, last_received_at, last_processed_at, last_source_file_modified_at, last_source_processed_at, last_error, last_summary_classes, last_summary_pools, last_summary_completed_matches')
       .eq('competition_id', competitionId)
       .maybeSingle(),
-    supabase
-      .from('ondata_registration_status')
-      .select('current_snapshot_id, last_received_at, last_processed_at, last_error, last_summary_classes, last_summary_players, last_summary_registrations, last_applied_snapshot_id, last_applied_at')
-      .eq('competition_id', competitionId)
-      .maybeSingle(),
+    getOnDataRegistrationImportStatus(supabase, competitionId),
     supabase
       .from('sessions')
       .select('*', { count: 'exact', head: true })
@@ -277,17 +274,6 @@ export async function getOnDataIntegrationView(
       .maybeSingle()
 
     liveSourceFilePath = snapshot?.source_file_path ?? null
-  }
-
-  let registrationSourceFilePath: string | null = null
-  if (registrationStatus?.current_snapshot_id) {
-    const { data: snapshot } = await supabase
-      .from('ondata_registration_snapshots')
-      .select('source_file_path')
-      .eq('id', registrationStatus.current_snapshot_id)
-      .maybeSingle()
-
-    registrationSourceFilePath = snapshot?.source_file_path ?? null
   }
 
   return {
@@ -317,18 +303,19 @@ export async function getOnDataIntegrationView(
       },
     },
     registrationImport: {
-      latestSnapshotId: registrationStatus?.current_snapshot_id ?? null,
-      latestSnapshotReceivedAt: registrationStatus?.last_received_at ?? null,
-      latestSnapshotProcessedAt: registrationStatus?.last_processed_at ?? null,
-      latestSourceFilePath: registrationSourceFilePath,
-      lastError: registrationStatus?.last_error ?? null,
-      lastAppliedSnapshotId: registrationStatus?.last_applied_snapshot_id ?? null,
-      lastAppliedAt: registrationStatus?.last_applied_at ?? null,
+      latestSnapshotId: registrationImportStatus.decision.latestSnapshotId,
+      latestSnapshotReceivedAt: registrationImportStatus.latestSnapshotReceivedAt,
+      latestSnapshotProcessedAt: registrationImportStatus.decision.latestSnapshotProcessedAt,
+      latestSourceFilePath: registrationImportStatus.latestSourceFilePath,
+      lastError: registrationImportStatus.lastError,
+      lastAppliedSnapshotId: registrationImportStatus.decision.lastAppliedSnapshotId,
+      lastAppliedAt: registrationImportStatus.decision.lastAppliedAt,
       latestSummary: {
-        classes: registrationStatus?.last_summary_classes ?? 0,
-        players: registrationStatus?.last_summary_players ?? 0,
-        registrations: registrationStatus?.last_summary_registrations ?? 0,
+        classes: registrationImportStatus.decision.latestSummary.classes,
+        players: registrationImportStatus.decision.latestSummary.players,
+        registrations: registrationImportStatus.decision.latestSummary.registrations,
       },
+      decision: registrationImportStatus.decision,
     },
   }
 }

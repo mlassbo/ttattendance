@@ -193,6 +193,28 @@ function buildInvalidRegistrationSnapshotPayload(onDataSlug: string) {
   return payload
 }
 
+function buildRegistrationSnapshotPayloadWithRemovedPlayer(onDataSlug: string) {
+  const payload = buildRegistrationSnapshotPayload(onDataSlug)
+
+  payload.source = {
+    ...payload.source,
+    processedAt: '2026-04-08T12:10:10.000Z',
+    fileHash: 'sha256:registrationhash-removed-player',
+  }
+
+  payload.classes[0].registrations = [
+    { playerName: 'Bosse Berg', clubName: 'IFK Lund' },
+  ]
+
+  payload.summary = {
+    classes: 2,
+    players: 3,
+    registrations: 3,
+  }
+
+  return payload
+}
+
 function buildPlayoffSnapshotPayload(onDataSlug: string) {
   return buildPlayoffSnapshotPayloadForBracket(onDataSlug, 'A')
 }
@@ -730,7 +752,9 @@ test.describe('OnData integration', () => {
       data: buildRegistrationSnapshotPayload(onDataSlug),
     })
 
-    expect(response.status()).toBe(202)
+    expect(response.status()).toBe(200)
+
+    await expect(response).toBeOK()
 
     await page.getByTestId('refresh-integration-status').click()
 
@@ -740,6 +764,7 @@ test.describe('OnData integration', () => {
     await expect(page.getByTestId('registration-summary-registrations')).toContainText('4')
     await expect(page.getByTestId('registration-source-path')).toContainText('ViewClassPDF.php')
     await expect(page.getByTestId('registration-last-error')).toHaveCount(0)
+    await expect(page.getByTestId('registration-decision-badge')).toContainText('Automatiskt applicerad')
   })
 
   test('failed registration ingest keeps the last successful registration snapshot as current', async ({ page }) => {
@@ -761,7 +786,7 @@ test.describe('OnData integration', () => {
       data: buildRegistrationSnapshotPayload(onDataSlug),
     })
 
-    expect(successResponse.status()).toBe(202)
+    expect(successResponse.status()).toBe(200)
 
     const { data: successStatus } = await supabase
       .from('ondata_registration_status')
@@ -802,7 +827,7 @@ test.describe('OnData integration', () => {
     await expect(page.getByTestId('registration-last-error')).toBeVisible()
   })
 
-  test('superadmin can preview and apply the latest OnData registration snapshot', async ({ page }) => {
+  test('safe registration snapshot is auto-applied and exposed through the status endpoint', async ({ page }) => {
     const supabase = testClient()
     const slug = `${TEST_PREFIX}registration-apply`
     const onDataSlug = '001352'
@@ -820,24 +845,23 @@ test.describe('OnData integration', () => {
       data: buildRegistrationSnapshotPayload(onDataSlug),
     })
 
-    expect(ingestResponse.status()).toBe(202)
+    expect(ingestResponse.status()).toBe(200)
+
+    const ingestBody = await ingestResponse.json()
+    expect(ingestBody.decision?.state).toBe('auto_applied')
+
+    const statusResponse = await page.request.get(`/api/integrations/ondata/competitions/${slug}/registration-import-status`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    })
+
+    expect(statusResponse.status()).toBe(200)
+    const statusBody = await statusResponse.json()
+    expect(statusBody.decision?.state).toBe('auto_applied')
 
     await page.getByTestId('refresh-integration-status').click()
-    await page.getByTestId('preview-ondata-registration-import-button').click()
-
-    await expect(page.getByTestId('ondata-summary-classes-parsed')).toContainText('2')
-    await expect(page.getByTestId('ondata-summary-players-parsed')).toContainText('3')
-    await expect(page.getByTestId('ondata-summary-registrations-parsed')).toContainText('4')
-    await expect(page.getByTestId('ondata-class-session-select-0')).toHaveValue('1')
-    await expect(page.getByTestId('ondata-class-session-select-1')).toHaveValue('2')
-
-    await page.getByTestId('apply-ondata-registration-import-button').click()
-
-    await expect(page.getByTestId('ondata-registration-apply-success')).toBeVisible()
-    await expect(page.getByTestId('ondata-apply-registrations-added')).toContainText('4')
-    await expect(page.getByTestId('ondata-apply-players-created')).toContainText('3')
-    await expect(page.getByTestId('ondata-apply-sessions-created')).toContainText('2')
-    await expect(page.getByTestId('ondata-apply-classes-created')).toContainText('2')
+    await expect(page.getByTestId('registration-decision-badge')).toContainText('Automatiskt applicerad')
 
     const { data: sessions } = await supabase
       .from('sessions')
@@ -865,7 +889,7 @@ test.describe('OnData integration', () => {
       .in('class_id', classIds)
     const { data: status } = await supabase
       .from('ondata_registration_status')
-      .select('current_snapshot_id, last_applied_snapshot_id, last_applied_at')
+      .select('current_snapshot_id, last_applied_snapshot_id, last_applied_at, decision_state, decision_reason_code')
       .eq('competition_id', competitionId)
       .single()
 
@@ -874,8 +898,108 @@ test.describe('OnData integration', () => {
     expect(status?.current_snapshot_id).toBeTruthy()
     expect(status?.last_applied_snapshot_id).toBe(status?.current_snapshot_id)
     expect(status?.last_applied_at).toBeTruthy()
+    expect(status?.decision_state).toBe('auto_applied')
+    expect(status?.decision_reason_code).toBe('none')
 
     await expect(page.getByTestId('registration-latest-applied')).not.toContainText('Ingen data än')
+  })
+
+  test('confirmed removals stay pending manual review until superadmin applies them', async ({ page }) => {
+    const supabase = testClient()
+    const slug = `${TEST_PREFIX}registration-manual-review`
+    const onDataSlug = '001355'
+    const { competitionId } = await seedSuperadminCompetition(supabase, slug)
+
+    await loginAsSuperadmin(page)
+    await openIntegrationPage(page, slug)
+    await page.getByTestId('generate-api-key-button').click()
+
+    const apiKey = await page.getByTestId('generated-api-key-input').inputValue()
+
+    const initialIngest = await page.request.post(`/api/integrations/ondata/competitions/${slug}/registration-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: buildRegistrationSnapshotPayload(onDataSlug),
+    })
+
+    expect(initialIngest.status()).toBe(200)
+
+    const { data: players } = await supabase
+      .from('players')
+      .select('id, name')
+      .eq('competition_id', competitionId)
+    const alva = players?.find(player => player.name === 'Alva Alfredsson')
+
+    const { data: sessions } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('competition_id', competitionId)
+    const { data: classes } = await supabase
+      .from('classes')
+      .select('id, name')
+      .in('session_id', (sessions ?? []).map(session => session.id))
+    const max400 = classes?.find(classRow => classRow.name === 'Max400')
+    const { data: registration } = await supabase
+      .from('registrations')
+      .select('id')
+      .eq('player_id', alva?.id ?? '')
+      .eq('class_id', max400?.id ?? '')
+      .single()
+
+    await supabase.from('attendance').insert({
+      registration_id: registration!.id,
+      status: 'confirmed',
+      reported_at: new Date().toISOString(),
+      reported_by: 'admin',
+      idempotency_key: `ondata-confirmed-${registration!.id}`,
+    })
+
+    const pendingIngest = await page.request.post(`/api/integrations/ondata/competitions/${slug}/registration-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: buildRegistrationSnapshotPayloadWithRemovedPlayer(onDataSlug),
+    })
+
+    expect(pendingIngest.status()).toBe(200)
+    const pendingBody = await pendingIngest.json()
+    expect(pendingBody.decision?.state).toBe('pending_manual_review')
+    expect(pendingBody.decision?.reasonCode).toBe('confirmed_removals')
+
+    const pendingStatusResponse = await page.request.get(`/api/integrations/ondata/competitions/${slug}/registration-import-status`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    })
+
+    expect(pendingStatusResponse.status()).toBe(200)
+    const pendingStatusBody = await pendingStatusResponse.json()
+    expect(pendingStatusBody.decision?.state).toBe('pending_manual_review')
+
+    await page.getByTestId('refresh-integration-status').click()
+    await expect(page.getByTestId('registration-decision-badge')).toContainText('Väntar på manuell granskning')
+    await page.getByTestId('preview-ondata-registration-import-button').click()
+
+    await expect(page.getByTestId('ondata-summary-registrations-to-remove-with-confirmed-attendance')).toContainText('1')
+    await expect(page.getByTestId('ondata-summary-registrations-to-remove-with-absent-attendance')).toContainText('0')
+    await expect(page.getByTestId('apply-ondata-registration-import-button')).toBeDisabled()
+
+    await page.getByTestId('ondata-confirm-removal-with-attendance').check()
+    await expect(page.getByTestId('apply-ondata-registration-import-button')).toBeEnabled()
+    await page.getByTestId('apply-ondata-registration-import-button').click()
+
+    await expect(page.getByTestId('ondata-registration-apply-success')).toBeVisible()
+    await expect(page.getByTestId('registration-decision-badge')).toContainText('Manuellt applicerad')
+
+    const appliedStatusResponse = await page.request.get(`/api/integrations/ondata/competitions/${slug}/registration-import-status`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    })
+
+    const appliedStatusBody = await appliedStatusResponse.json()
+    expect(appliedStatusBody.decision?.state).toBe('manually_applied')
   })
 
   test('registration preview shows an inline error when the request fails', async ({ page }) => {
@@ -895,7 +1019,7 @@ test.describe('OnData integration', () => {
       data: buildRegistrationSnapshotPayload(onDataSlug),
     })
 
-    expect(ingestResponse.status()).toBe(202)
+    expect(ingestResponse.status()).toBe(200)
 
     await page.route('**/api/super/competitions/*/integration/registration-import/preview', route =>
       route.abort('failed'),

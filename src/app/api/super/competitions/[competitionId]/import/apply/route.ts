@@ -48,7 +48,7 @@ export async function POST(
     )
 
     if (applied.preview) {
-      const status = applied.preview.summary.registrationsToRemoveWithAttendance > 0
+      const status = applied.preview.summary.registrationsToRemoveWithConfirmedAttendance > 0
         ? 409
         : 400
       return NextResponse.json(applied.preview, { status })

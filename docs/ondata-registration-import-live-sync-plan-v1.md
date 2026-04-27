@@ -1,5 +1,11 @@
 # OnData Registration Import And Live Sync Plan V1
 
+> Note
+>
+> For the current in-competition direction, use `docs/ondata-registration-auto-apply-plan-v1.md` instead.
+> This document reflects the earlier decision that OnData registration snapshots should always stop at stored snapshot + manual superadmin preview/apply.
+> The newer plan changes that policy to conditional auto-apply with explicit fallback to manual review.
+
 This document is the implementation handoff for splitting the current OnData work into two separate flows:
 
 1. a manual registration import flow used before the competition

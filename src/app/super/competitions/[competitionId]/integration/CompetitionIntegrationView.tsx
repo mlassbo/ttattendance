@@ -43,6 +43,11 @@ type IntegrationViewData = {
       players: number
       registrations: number
     }
+    decision: {
+      state: 'no_snapshot' | 'ingested_only' | 'pending_manual_review' | 'auto_applied' | 'manually_applied' | 'apply_failed'
+      reasonCode: 'none' | 'confirmed_removals' | 'missing_session_assignment' | 'preview_errors' | 'ingest_failed' | 'apply_failed'
+      message: string | null
+    }
   }
 }
 
@@ -68,6 +73,37 @@ function SummaryValue({ label, value, testId }: { label: string; value: number; 
       <p data-testid={testId} className="mt-1 text-2xl font-semibold text-ink">{value}</p>
     </div>
   )
+}
+
+function registrationDecisionLabel(state: IntegrationViewData['registrationImport']['decision']['state']): string {
+  switch (state) {
+    case 'auto_applied':
+      return 'Automatiskt applicerad'
+    case 'manually_applied':
+      return 'Manuellt applicerad'
+    case 'pending_manual_review':
+      return 'Väntar på manuell granskning'
+    case 'apply_failed':
+      return 'Applicering misslyckades'
+    case 'ingested_only':
+      return 'Snapshot mottagen'
+    default:
+      return 'Ingen snapshot'
+  }
+}
+
+function registrationDecisionTone(state: IntegrationViewData['registrationImport']['decision']['state']): string {
+  switch (state) {
+    case 'auto_applied':
+    case 'manually_applied':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-950'
+    case 'pending_manual_review':
+      return 'border-amber-200 bg-amber-50 text-amber-950'
+    case 'apply_failed':
+      return 'border-red-200 bg-red-50 text-red-950'
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-700'
+  }
 }
 
 export default function CompetitionIntegrationView({
@@ -261,7 +297,19 @@ export default function CompetitionIntegrationView({
         <section className="app-card space-y-4">
           <div>
             <h2 className="text-lg font-semibold text-ink">Anmälningsimport</h2>
-            <p className="text-sm text-muted">OnData stage 1 lagras som snapshot och måste förhandsgranskas innan den appliceras.</p>
+            <p className="text-sm text-muted">OnData stage 1 försöker appliceras automatiskt när diffen är säker. Vid blockerande fall krävs manuell granskning.</p>
+          </div>
+
+          <div data-testid="registration-decision-card" className={`rounded-xl border px-4 py-3 ${registrationDecisionTone(data?.registrationImport.decision.state ?? 'no_snapshot')}`}>
+            <p className="text-xs uppercase tracking-[0.18em]">Status</p>
+            <p data-testid="registration-decision-badge" className="mt-1 text-sm font-semibold">
+              {registrationDecisionLabel(data?.registrationImport.decision.state ?? 'no_snapshot')}
+            </p>
+            {data?.registrationImport.decision.message && (
+              <p data-testid="registration-decision-message" className="mt-2 text-sm">
+                {data.registrationImport.decision.message}
+              </p>
+            )}
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">

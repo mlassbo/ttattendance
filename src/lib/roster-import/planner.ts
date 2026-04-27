@@ -151,6 +151,8 @@ export type CompetitionImportPreview = {
     registrationsParsed: number
     registrationsToAdd: number
     registrationsToRemove: number
+    registrationsToRemoveWithConfirmedAttendance: number
+    registrationsToRemoveWithAbsentAttendance: number
     registrationsToRemoveWithAttendance: number
   }
   warnings: string[]
@@ -426,13 +428,28 @@ function attendanceStatusFromRelation(
   return attendance.status ?? null
 }
 
-function buildWarnings(removalsWithAttendance: number, removalsTotal: number): string[] {
-  if (removalsWithAttendance === 0) return []
+function buildWarnings(
+  removalsWithConfirmedAttendance: number,
+  removalsWithAbsentAttendance: number,
+  removalsTotal: number,
+): string[] {
+  if (removalsWithConfirmedAttendance === 0 && removalsWithAbsentAttendance === 0) return []
 
-  return [
-    `${removalsTotal} anmälningar kommer att tas bort.`,
-    `${removalsWithAttendance} av dessa har redan närvarostatus och den informationen kommer också att tas bort.`,
-  ]
+  const warnings = [`${removalsTotal} anmälningar kommer att tas bort.`]
+
+  if (removalsWithConfirmedAttendance > 0) {
+    warnings.push(
+      `${removalsWithConfirmedAttendance} av dessa har bekräftad närvaro och borttagningen kräver en uttrycklig bekräftelse.`,
+    )
+  }
+
+  if (removalsWithAbsentAttendance > 0) {
+    warnings.push(
+      `${removalsWithAbsentAttendance} av dessa har registrerad frånvaro och den informationen kommer också att tas bort.`,
+    )
+  }
+
+  return warnings
 }
 
 function previewFromPreparedImport(prepared: {
@@ -441,7 +458,13 @@ function previewFromPreparedImport(prepared: {
   toAdd: CompetitionImportDiffRow[]
   toRemove: CompetitionImportDiffRow[]
 }): CompetitionImportPreview {
-  const removalsWithAttendance = prepared.toRemove.filter(row => row.attendanceStatus).length
+  const removalsWithConfirmedAttendance = prepared.toRemove.filter(
+    row => row.attendanceStatus === 'confirmed',
+  ).length
+  const removalsWithAbsentAttendance = prepared.toRemove.filter(
+    row => row.attendanceStatus === 'absent',
+  ).length
+  const removalsWithAttendance = removalsWithConfirmedAttendance + removalsWithAbsentAttendance
 
   return {
     competitionTitleFromSource: prepared.dataset.competitionTitleFromSource,
@@ -451,9 +474,15 @@ function previewFromPreparedImport(prepared: {
       registrationsParsed: prepared.dataset.summary.registrationsParsed,
       registrationsToAdd: prepared.toAdd.length,
       registrationsToRemove: prepared.toRemove.length,
+      registrationsToRemoveWithConfirmedAttendance: removalsWithConfirmedAttendance,
+      registrationsToRemoveWithAbsentAttendance: removalsWithAbsentAttendance,
       registrationsToRemoveWithAttendance: removalsWithAttendance,
     },
-    warnings: buildWarnings(removalsWithAttendance, prepared.toRemove.length),
+    warnings: buildWarnings(
+      removalsWithConfirmedAttendance,
+      removalsWithAbsentAttendance,
+      prepared.toRemove.length,
+    ),
     errors: prepared.dataset.errors,
     classSessionPrompts: prepared.classSessionPrompts,
     toAdd: prepared.toAdd,
@@ -983,7 +1012,7 @@ export async function applyRosterImport(
   }
 
   if (
-    prepared.preview.summary.registrationsToRemoveWithAttendance > 0
+    prepared.preview.summary.registrationsToRemoveWithConfirmedAttendance > 0
     && !confirmRemovalWithAttendance
   ) {
     return { preview: prepared.preview }

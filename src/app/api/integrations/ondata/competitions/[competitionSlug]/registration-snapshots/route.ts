@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { extractBearerToken, verifyOnDataApiToken } from '@/lib/ondata-integration-auth'
+import { revalidateCompetitionPaths } from '@/lib/revalidate-competition-paths'
 import { createServerClient } from '@/lib/supabase'
 import { parseOnDataRosterSnapshotPayload } from '@/lib/roster-import/ondata-roster-contract'
 import {
   hashOnDataRosterSnapshotPayload,
-  persistOnDataRegistrationSnapshot,
+  ingestAndMaybeApplyOnDataRegistrationSnapshot,
 } from '@/lib/roster-import/ondata-roster-server'
 
 export async function POST(
@@ -54,18 +55,23 @@ export async function POST(
   }
 
   try {
-    const result = await persistOnDataRegistrationSnapshot(
+    const result = await ingestAndMaybeApplyOnDataRegistrationSnapshot(
       supabase,
       competition.id,
       payload,
       hashOnDataRosterSnapshotPayload(payload),
     )
 
+    if (result.decision.state === 'auto_applied') {
+      revalidateCompetitionPaths(params.competitionSlug)
+    }
+
     return NextResponse.json({
       snapshotId: result.snapshotId,
       receivedAt: result.receivedAt,
       processedAt: result.processedAt,
-    }, { status: 202 })
+      decision: result.decision,
+    })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Kunde inte spara anmälningssnapshot.' },

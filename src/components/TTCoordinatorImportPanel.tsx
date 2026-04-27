@@ -165,7 +165,7 @@ export default function TTCoordinatorImportPanel({
         if (isPreviewResponse(data)) {
           setPreview(data)
           if (res.status === 409) {
-            setRequestError('Bekräfta att anmälningar med närvarostatus får tas bort innan du synkar.')
+            setRequestError('Bekräfta att anmälningar med bekräftad närvaro får tas bort innan du synkar.')
           }
           return
         }
@@ -198,7 +198,7 @@ export default function TTCoordinatorImportPanel({
     && !isApplyLoading
     && !isPreviewLoading
     && (
-      preview.summary.registrationsToRemoveWithAttendance === 0
+      preview.summary.registrationsToRemoveWithConfirmedAttendance === 0
       || confirmRemovalWithAttendance
     )
   const applyTooltip = preview === null
@@ -207,8 +207,8 @@ export default function TTCoordinatorImportPanel({
       ? 'Rätta felen i förhandsgranskningen innan du importerar.'
       : !hasAssignmentForEveryClass(preview)
         ? 'Välj pass för alla importerade klasser.'
-        : preview.summary.registrationsToRemoveWithAttendance > 0 && !confirmRemovalWithAttendance
-          ? 'Bekräfta först att anmälningar med närvarostatus får tas bort.'
+        : preview.summary.registrationsToRemoveWithConfirmedAttendance > 0 && !confirmRemovalWithAttendance
+          ? 'Bekräfta först att anmälningar med bekräftad närvaro får tas bort.'
           : 'Importera förhandsgranskad startlista.'
   const showReimportDetails = hasImportedData
   const showReimportLists = showReimportDetails && preview !== null
@@ -294,7 +294,7 @@ export default function TTCoordinatorImportPanel({
               )}
             </div>
 
-            <div className={`grid gap-3 ${showReimportDetails ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-3'}`}>
+            <div className={`grid gap-3 ${showReimportDetails ? 'md:grid-cols-3 xl:grid-cols-7' : 'md:grid-cols-3'}`}>
               <SummaryRow label="Klasser" value={preview.summary.classesParsed} testId="summary-classes-parsed" />
               <SummaryRow label="Spelare" value={preview.summary.playersParsed} testId="summary-players-parsed" />
               <SummaryRow label="Anmälningar" value={preview.summary.registrationsParsed} testId="summary-registrations-parsed" />
@@ -302,7 +302,8 @@ export default function TTCoordinatorImportPanel({
                 <>
                   <SummaryRow label="Tillkommer" value={preview.summary.registrationsToAdd} testId="summary-registrations-to-add" />
                   <SummaryRow label="Tas bort" value={preview.summary.registrationsToRemove} testId="summary-registrations-to-remove" />
-                  <SummaryRow label="Tas bort med närvarostatus" value={preview.summary.registrationsToRemoveWithAttendance} testId="summary-registrations-to-remove-with-attendance" />
+                  <SummaryRow label="Tas bort med bekräftad närvaro" value={preview.summary.registrationsToRemoveWithConfirmedAttendance} testId="summary-registrations-to-remove-with-confirmed-attendance" />
+                  <SummaryRow label="Tas bort med frånvaro" value={preview.summary.registrationsToRemoveWithAbsentAttendance} testId="summary-registrations-to-remove-with-absent-attendance" />
                 </>
               )}
             </div>
@@ -357,15 +358,17 @@ export default function TTCoordinatorImportPanel({
               <ul className="mt-3 list-disc pl-5 text-sm">
                 {preview.warnings.map(warning => <li key={warning}>{warning}</li>)}
               </ul>
-              <label className="mt-4 flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  data-testid="confirm-removal-with-attendance"
-                  checked={confirmRemovalWithAttendance}
-                  onChange={event => setConfirmRemovalWithAttendance(event.target.checked)}
-                />
-                Jag förstår att anmälningar med närvarostatus tas bort.
-              </label>
+              {preview.summary.registrationsToRemoveWithConfirmedAttendance > 0 && (
+                <label className="mt-4 flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    data-testid="confirm-removal-with-attendance"
+                    checked={confirmRemovalWithAttendance}
+                    onChange={event => setConfirmRemovalWithAttendance(event.target.checked)}
+                  />
+                  Jag förstår att anmälningar med bekräftad närvaro tas bort.
+                </label>
+              )}
             </section>
           )}
 

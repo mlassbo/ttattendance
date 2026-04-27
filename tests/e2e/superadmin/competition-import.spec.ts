@@ -359,7 +359,7 @@ test.describe('Competition import', () => {
     await expect(page.locator('body')).not.toContainText('Pass 3')
   })
 
-  test('re-import preview shows removals that already have attendance', async ({ page }) => {
+  test('re-import preview shows confirmed removals separately from absent removals', async ({ page }) => {
     const supabase = testClient()
     const slug = `${TEST_PREFIX}preview-warning`
     const { competitionId } = await seedSuperadminCompetition(supabase, slug)
@@ -428,8 +428,9 @@ test.describe('Competition import', () => {
 
     await previewImport(page, updatedSource)
 
-    await expect(page.getByTestId('summary-registrations-to-remove-with-attendance')).toContainText('1')
-    await expect(page.getByTestId('destructive-warning')).toContainText('1 av dessa har redan närvarostatus')
+    await expect(page.getByTestId('summary-registrations-to-remove-with-confirmed-attendance')).toContainText('1')
+    await expect(page.getByTestId('summary-registrations-to-remove-with-absent-attendance')).toContainText('0')
+    await expect(page.getByTestId('destructive-warning')).toContainText('1 av dessa har bekräftad närvaro')
     await expect(page.getByTestId('removals-list')).toContainText('Alva Alfredsson')
     await expect(page.getByTestId('removals-list')).toContainText('Bekräftad')
   })

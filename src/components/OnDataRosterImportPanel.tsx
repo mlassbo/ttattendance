@@ -170,7 +170,7 @@ export default function OnDataRosterImportPanel({
           setPreview(data)
           setSelectedSnapshotId(data.snapshotId)
           if (res.status === 409) {
-            setRequestError('Bekräfta att anmälningar med närvarostatus får tas bort innan du importerar.')
+            setRequestError('Bekräfta att anmälningar med bekräftad närvaro får tas bort innan du importerar.')
           }
           return
         }
@@ -207,7 +207,7 @@ export default function OnDataRosterImportPanel({
     && !isApplyLoading
     && !isPreviewLoading
     && (
-      preview.summary.registrationsToRemoveWithAttendance === 0
+      preview.summary.registrationsToRemoveWithConfirmedAttendance === 0
       || confirmRemovalWithAttendance
     )
 
@@ -264,7 +264,7 @@ export default function OnDataRosterImportPanel({
       {preview && (
         <section className="space-y-6">
           <div className="rounded border border-slate-200 bg-white p-5">
-            <div className={`grid gap-3 ${showReimportDetails ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-3'}`}>
+            <div className={`grid gap-3 ${showReimportDetails ? 'md:grid-cols-3 xl:grid-cols-7' : 'md:grid-cols-3'}`}>
               <SummaryRow label="Klasser" value={preview.summary.classesParsed} testId="ondata-summary-classes-parsed" />
               <SummaryRow label="Spelare" value={preview.summary.playersParsed} testId="ondata-summary-players-parsed" />
               <SummaryRow label="Anmälningar" value={preview.summary.registrationsParsed} testId="ondata-summary-registrations-parsed" />
@@ -272,7 +272,8 @@ export default function OnDataRosterImportPanel({
                 <>
                   <SummaryRow label="Tillkommer" value={preview.summary.registrationsToAdd} testId="ondata-summary-registrations-to-add" />
                   <SummaryRow label="Tas bort" value={preview.summary.registrationsToRemove} testId="ondata-summary-registrations-to-remove" />
-                  <SummaryRow label="Tas bort med närvarostatus" value={preview.summary.registrationsToRemoveWithAttendance} testId="ondata-summary-registrations-to-remove-with-attendance" />
+                  <SummaryRow label="Tas bort med bekräftad närvaro" value={preview.summary.registrationsToRemoveWithConfirmedAttendance} testId="ondata-summary-registrations-to-remove-with-confirmed-attendance" />
+                  <SummaryRow label="Tas bort med frånvaro" value={preview.summary.registrationsToRemoveWithAbsentAttendance} testId="ondata-summary-registrations-to-remove-with-absent-attendance" />
                 </>
               )}
             </div>
@@ -325,15 +326,17 @@ export default function OnDataRosterImportPanel({
               <ul className="mt-3 list-disc pl-5 text-sm">
                 {preview.warnings.map(warning => <li key={warning}>{warning}</li>)}
               </ul>
-              <label className="mt-4 flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  data-testid="ondata-confirm-removal-with-attendance"
-                  checked={confirmRemovalWithAttendance}
-                  onChange={event => setConfirmRemovalWithAttendance(event.target.checked)}
-                />
-                Jag förstår att anmälningar med närvarostatus tas bort.
-              </label>
+              {preview.summary.registrationsToRemoveWithConfirmedAttendance > 0 && (
+                <label className="mt-4 flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    data-testid="ondata-confirm-removal-with-attendance"
+                    checked={confirmRemovalWithAttendance}
+                    onChange={event => setConfirmRemovalWithAttendance(event.target.checked)}
+                  />
+                  Jag förstår att anmälningar med bekräftad närvaro tas bort.
+                </label>
+              )}
             </section>
           )}
 
