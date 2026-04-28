@@ -42,7 +42,6 @@ export default async function PlayerClassesPage({
 
     return (
       <PublicPlayerView
-        slug={slug}
         competitionName={competition.name}
         playerDetails={playerDetails}
         backHref={backHref}

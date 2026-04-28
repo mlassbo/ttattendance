@@ -8,6 +8,5 @@ export function revalidateCompetitionPaths(slug?: string) {
   }
 
   revalidatePath(`/${slug}`)
-  revalidatePath(`/${slug}/player`)
   revalidatePath(`/${slug}/admin`)
 }

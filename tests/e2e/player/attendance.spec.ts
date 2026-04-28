@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import { config } from 'dotenv'
 import {
   testClient,
@@ -13,13 +13,6 @@ config({ path: '.env.test.local' })
 const SLUG = 'test-player-attendance-2025'
 const PLAYER_PIN = '9999'
 
-async function loginAsPlayer(page: Page, slug: string = SLUG) {
-  await page.goto(`/${slug}/player`)
-  await page.getByTestId('pin-input').fill(PLAYER_PIN)
-  await page.getByTestId('login-button').click()
-  await page.waitForURL(`/${slug}/search`)
-}
-
 test.describe('Player attendance flow', () => {
   let seeded: SeededCompetition
 
@@ -28,8 +21,6 @@ test.describe('Player attendance flow', () => {
     await cleanTestCompetitions(supabase, 'test-player-attendance-%')
     seeded = await seedPlayerTestCompetition(supabase, SLUG, PLAYER_PIN)
   })
-
-  // ── Authentication ──────────────────────────────────────────────────────
 
   test('root landing page lists the competition and opens it from the card', async ({
     page,
@@ -60,71 +51,28 @@ test.describe('Player attendance flow', () => {
       'placeholder',
       'Sök spelare, klubb eller klass',
     )
-    await expect(page.getByTestId('public-start-admin-link')).toContainText('Sekretariat')
+    await expect(page.getByTestId('public-start-admin-link')).toContainText('Logga in')
   })
 
-  test('player PIN page renders the shared login shell', async ({ page }) => {
-    await page.goto(`/${SLUG}/player`)
+  test('public search page is reachable without authentication', async ({ page }) => {
+    await page.goto(`/${SLUG}/search`)
 
-    await expect(page.getByTestId('pin-login-page')).toBeVisible()
-    await expect(page.getByTestId('pin-login-card')).toBeVisible()
-    await expect(page.getByTestId('pin-login-form')).toBeVisible()
-    await expect(page.getByTestId('pin-login-eyebrow')).toContainText('Spelare')
-    await expect(page.getByTestId('pin-login-title')).toContainText('Test Tävling')
-    await expect(page.getByTestId('pin-input')).toHaveAttribute('placeholder', 'PIN-kod')
-  })
-
-  test('wrong PIN shows error', async ({ page }) => {
-    await page.goto(`/${SLUG}/player`)
-    await page.getByTestId('pin-input').fill('0000')
-    await page.getByTestId('login-button').click()
-    await expect(page.getByTestId('pin-error')).toContainText('Fel PIN-kod')
-  })
-
-  test('correct PIN redirects to the public search page', async ({ page }) => {
-    await loginAsPlayer(page)
     await expect(page.getByTestId('public-search-page')).toBeVisible()
     await expect(page.getByTestId('public-search-input')).toBeVisible()
-    await expect(page.getByTestId('public-search-mode-all')).toHaveAttribute('aria-current', 'page')
   })
 
-  test('already logged-in player is redirected from PIN page to search', async ({ page }) => {
-    // First login
-    await loginAsPlayer(page)
-
-    // Navigate back to PIN page — should skip it
-    await page.goto(`/${SLUG}/player`)
-    await page.waitForURL(`/${SLUG}/search`)
-    await expect(page.getByTestId('public-search-input')).toBeVisible()
-  })
-
-  test('legacy player search URL redirects to the public search page', async ({ page }) => {
-    await page.goto(`/${SLUG}/player/search`)
-    await page.waitForURL(`/${SLUG}/search`)
-    await expect(page.getByTestId('public-search-page')).toBeVisible()
-  })
-
-  test('legacy player detail URL redirects to the public player page', async ({ page }) => {
-    await page.goto(`/${SLUG}/player/players/${seeded.player.id}`)
-    await page.waitForURL(`/${SLUG}/players/${seeded.player.id}`)
-    await expect(page.getByTestId('public-player-page')).toBeVisible()
-  })
-
-  test('player login pre-unlocks attendance in the public flow', async ({ page }) => {
-    await loginAsPlayer(page)
-    await page.getByTestId('public-search-input').fill('Anna')
-    await page.getByTestId('public-search-submit').click()
+  test('confirming attendance from search applies immediately without any PIN prompt', async ({ page }) => {
+    await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
 
     await page.getByTestId(`public-search-player-toggle-${seeded.player.id}`).click()
     await page.getByTestId(`public-search-confirm-btn-${seeded.player.futureRegId}`).click()
-    await expect(page.getByTestId('public-pin-modal')).toHaveCount(0)
+
     await expect(
       page.getByTestId(`public-search-status-badge-${seeded.player.futureRegId}`)
     ).toContainText('Närvaro bekräftad')
     await expect(page.getByTestId(`public-search-player-toggle-${seeded.player.id}`)).toContainText(
       'Ändra närvaro',
     )
-    await expect(page.getByTestId(`public-search-player-toggle-${seeded.player.id}`)).not.toHaveClass(/app-button-primary/)
   })
 
   test('past-deadline class shows secretariat warning in the expanded search result card', async ({ page }) => {

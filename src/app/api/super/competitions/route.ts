@@ -14,7 +14,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('competitions')
-    .select('id, name, slug, created_at, player_pin_ciphertext, admin_pin_ciphertext, show_on_landing_page')
+    .select('id, name, slug, created_at, admin_pin_ciphertext, show_on_landing_page')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -49,7 +49,6 @@ export async function GET() {
       slug: competition.slug,
       showOnLandingPage: competition.show_on_landing_page,
       importedRegistrationCount: importedRegistrationCountByCompetitionId.get(competition.id) ?? 0,
-      playerPin: decryptStoredPin(competition.player_pin_ciphertext as string | null, secret),
       adminPin: decryptStoredPin(competition.admin_pin_ciphertext as string | null, secret),
     })),
   )
@@ -59,10 +58,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   const slug = typeof body.slug === 'string' ? body.slug.trim() : ''
-  const playerPin = typeof body.playerPin === 'string' ? body.playerPin.trim() : ''
   const adminPin = typeof body.adminPin === 'string' ? body.adminPin.trim() : ''
 
-  if (!name || !playerPin || !adminPin) {
+  if (!name || !adminPin) {
     return NextResponse.json({ error: 'Alla fält måste fyllas i' }, { status: 400 })
   }
 
@@ -70,10 +68,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ogiltigt slug-format' }, { status: 400 })
   }
 
-  const [playerPinHash, adminPinHash] = await Promise.all([
-    bcrypt.hash(playerPin, 10),
-    bcrypt.hash(adminPin, 10),
-  ])
+  const adminPinHash = await bcrypt.hash(adminPin, 10)
 
   const secret = process.env.COOKIE_SECRET
   if (!secret) {
@@ -87,9 +82,7 @@ export async function POST(req: NextRequest) {
     .insert({
       name,
       slug,
-      player_pin_hash: playerPinHash,
       admin_pin_hash: adminPinHash,
-      player_pin_ciphertext: encryptStoredPin(playerPin, secret),
       admin_pin_ciphertext: encryptStoredPin(adminPin, secret),
     })
     .select('id, name, slug')

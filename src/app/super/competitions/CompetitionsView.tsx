@@ -9,14 +9,12 @@ type Competition = {
   slug: string
   showOnLandingPage: boolean
   importedRegistrationCount: number
-  playerPin: string | null
   adminPin: string | null
 }
 
 const emptyForm = {
   name: '',
   slug: '',
-  playerPin: '',
   adminPin: '',
 }
 
@@ -207,15 +205,6 @@ export default function CompetitionsView() {
             />
             <p className="text-sm text-muted">Tävlingsdatum sätts automatiskt från klassernas starttider vid import.</p>
             <input
-              data-testid="field-player-pin"
-              type="password"
-              placeholder="Spelar-PIN"
-              value={form.playerPin}
-              onChange={field('playerPin')}
-              required
-              className="app-input"
-            />
-            <input
               data-testid="field-admin-pin"
               type="password"
               placeholder="Admin-PIN"
@@ -319,19 +308,11 @@ export default function CompetitionsView() {
                     <p className="text-sm text-muted">{c.slug}</p>
                   </div>
 
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-muted">Spelar-PIN</p>
-                      <p data-testid={`player-pin-${c.slug}`} className="font-mono text-sm text-ink">
-                        {c.playerPin ?? 'Saknas'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-muted">Admin-PIN</p>
-                      <p data-testid={`admin-pin-${c.slug}`} className="font-mono text-sm text-ink">
-                        {c.adminPin ?? 'Saknas'}
-                      </p>
-                    </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted">Admin-PIN</p>
+                    <p data-testid={`admin-pin-${c.slug}`} className="font-mono text-sm text-ink">
+                      {c.adminPin ?? 'Saknas'}
+                    </p>
                   </div>
                 </div>
 

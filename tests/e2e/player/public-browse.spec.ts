@@ -182,7 +182,7 @@ test.describe('Public browse flow', () => {
     )
   })
 
-  test('expandable player search card asks for PIN before confirming attendance and accepts a valid PIN', async ({ page }) => {
+  test('expandable player search card confirms attendance immediately without any PIN prompt', async ({ page }) => {
     await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
 
     await expect(page.getByTestId(`public-search-player-toggle-${seeded.player.id}`)).toContainText(
@@ -191,16 +191,7 @@ test.describe('Public browse flow', () => {
 
     await page.getByTestId(`public-search-player-toggle-${seeded.player.id}`).click()
     await page.getByTestId(`public-search-confirm-btn-${seeded.player.futureRegId}`).click()
-    await expect(page.getByTestId('public-pin-modal')).toBeVisible()
 
-    await page.getByTestId('public-pin-input').fill('0000')
-    await page.getByTestId('public-pin-submit').click()
-    await expect(page.getByTestId('public-pin-error')).toContainText('Fel PIN-kod')
-
-    await page.getByTestId('public-pin-input').fill(PLAYER_PIN)
-    await page.getByTestId('public-pin-submit').click()
-
-    await expect(page.getByTestId('public-pin-modal')).toHaveCount(0)
     await expect(page.getByTestId(`public-search-status-badge-${seeded.player.futureRegId}`)).toContainText(
       'Närvaro bekräftad',
     )
@@ -224,8 +215,6 @@ test.describe('Public browse flow', () => {
     await page.goto(`/${SLUG}/search?q=Anna&mode=player`)
     await page.getByTestId(`public-search-player-toggle-${seeded.player.id}`).click()
     await page.getByTestId(`public-search-confirm-btn-${seeded.player.futureRegId}`).click()
-    await page.getByTestId('public-pin-input').fill(PLAYER_PIN)
-    await page.getByTestId('public-pin-submit').click()
 
     await expect(page.getByTestId('public-search-error')).toContainText(
       'Tävlingsschemat är inte importerat än.',
@@ -252,23 +241,19 @@ test.describe('Public browse flow', () => {
     await expect(page.getByTestId(`public-club-player-card-${anna.id}`)).toHaveCount(0)
   })
 
-  test('public club page can report attendance and reuse the unlocked session', async ({ page }) => {
+  test('public club page can report attendance for multiple players in sequence', async ({ page }) => {
     const anna = seeded.players.find(player => player.name === 'Anna Testsson')!
     const bertil = seeded.players.find(player => player.name === 'Bertil Berg')!
 
     await page.goto(`/${SLUG}/clubs/${encodeURIComponent('Test BTK')}`)
 
     await page.getByTestId(`public-club-confirm-btn-${anna.futureRegId}`).click()
-    await expect(page.getByTestId('public-pin-modal')).toBeVisible()
-    await page.getByTestId('public-pin-input').fill(PLAYER_PIN)
-    await page.getByTestId('public-pin-submit').click()
 
     await expect(page.getByTestId(`public-club-status-badge-${anna.futureRegId}`)).toContainText(
       'Närvaro bekräftad',
     )
 
     await page.getByTestId(`public-club-absent-btn-${bertil.futureRegId}`).click()
-    await expect(page.getByTestId('public-pin-modal')).toHaveCount(0)
     await expect(page.getByTestId(`public-club-status-badge-${bertil.futureRegId}`)).toContainText(
       'Frånvaro',
     )
@@ -289,8 +274,6 @@ test.describe('Public browse flow', () => {
 
     await page.goto(`/${SLUG}/clubs/${encodeURIComponent('Test BTK')}`)
     await page.getByTestId(`public-club-confirm-btn-${anna.futureRegId}`).click()
-    await page.getByTestId('public-pin-input').fill(PLAYER_PIN)
-    await page.getByTestId('public-pin-submit').click()
 
     await expect(page.getByTestId('public-club-error')).toContainText('Databasfel')
     await expect(page.getByTestId(`public-club-player-card-${anna.id}`)).toBeVisible()

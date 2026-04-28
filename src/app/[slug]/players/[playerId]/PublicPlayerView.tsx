@@ -14,7 +14,6 @@ import {
 } from '@/lib/public-attendance-ui'
 import type { PublicPlayerDetails } from '@/lib/public-competition'
 import { formatPlayerSessionLabel } from '@/lib/session-format'
-import PublicAttendancePinModal from '@/components/PublicAttendancePinModal'
 import { usePublicAttendanceActions } from '@/lib/use-public-attendance-actions'
 
 type AttendanceAction =
@@ -26,12 +25,10 @@ function getReserveLabel(reservePosition: number | null) {
 }
 
 export default function PublicPlayerView({
-  slug,
   competitionName,
   playerDetails,
   backHref,
 }: {
-  slug: string
   competitionName: string
   playerDetails: PublicPlayerDetails
   backHref: string
@@ -46,19 +43,9 @@ export default function PublicPlayerView({
 
   const {
     actionError,
-    authenticatePin,
-    closePinModal,
     handleAttendanceAction,
-    pendingAction,
-    pin,
-    pinError,
-    pinLoading,
-    pinModalOpen,
-    setPin,
     submitting,
-    unlockStateReady,
   } = usePublicAttendanceActions<AttendanceAction>({
-    slug,
     onApplySuccess: (action, reportedAt) => {
       setData(prev => ({
         ...prev,
@@ -278,7 +265,7 @@ export default function PublicPlayerView({
                               type: 'reset',
                               registrationId: registration.registrationId,
                             })}
-                            disabled={isSubmitting || !unlockStateReady}
+                            disabled={isSubmitting}
                             className="app-button-link"
                           >
                             Återställ närvaro
@@ -293,7 +280,7 @@ export default function PublicPlayerView({
                                 registrationId: registration.registrationId,
                                 status: 'confirmed',
                               })}
-                              disabled={isSubmitting || !unlockStateReady}
+                              disabled={isSubmitting}
                               className="min-h-[44px] rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700 transition-all duration-150 hover:bg-green-100 disabled:opacity-60"
                             >
                               Bekräfta närvaro
@@ -306,7 +293,7 @@ export default function PublicPlayerView({
                                 registrationId: registration.registrationId,
                                 status: 'absent',
                               })}
-                              disabled={isSubmitting || !unlockStateReady}
+                              disabled={isSubmitting}
                               className="min-h-[44px] rounded-xl border border-red-200 bg-surface px-4 py-2.5 text-sm font-semibold text-red-700 transition-all duration-150 hover:bg-red-50 disabled:opacity-60"
                             >
                               Anmäl frånvaro
@@ -323,18 +310,6 @@ export default function PublicPlayerView({
         </div>
       </main>
 
-      <PublicAttendancePinModal
-        open={pinModalOpen}
-        pin={pin}
-        onPinChange={setPin}
-        onSubmit={authenticatePin}
-        onCancel={closePinModal}
-        error={pinError}
-        loading={pinLoading}
-        submitLabel={pendingAction?.type === 'submit' && pendingAction.status === 'absent'
-          ? 'Anmäl frånvaro'
-          : 'Bekräfta närvaro'}
-      />
     </>
   )
 }

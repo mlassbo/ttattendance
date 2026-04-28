@@ -50,7 +50,6 @@ export default async function ClubPage({
 
     return (
       <ClubPlayersView
-        slug={slug}
         competitionName={competition.name}
         club={club}
         returnTo={returnTo}

@@ -78,18 +78,6 @@ test.describe('Admin attendance flow', () => {
     await expect(page.getByTestId('auto-refresh-status')).toBeVisible()
   })
 
-  test('player cookie does not grant access to admin dashboard', async ({ page }) => {
-    // Login as player
-    await page.goto(`/${SLUG}/player`)
-    await page.getByTestId('pin-input').fill('0000')
-    await page.getByTestId('login-button').click()
-    await page.waitForURL(`/${SLUG}/search`)
-
-    // Visiting admin dashboard should redirect back to admin login
-    await page.goto(`/${SLUG}/admin/dashboard`)
-    await expect(page.getByTestId('admin-pin-input')).toBeVisible()
-  })
-
   // ── Dashboard ─────────────────────────────────────────────────────────────
 
   test('dashboard shows session and classes', async ({ page }) => {

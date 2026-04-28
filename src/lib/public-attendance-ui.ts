@@ -1,5 +1,3 @@
-export const PUBLIC_ATTENDANCE_UNLOCK_KEY_PREFIX = 'public-player-unlocked:'
-
 export function getAttendanceStatusCopy(
   status: 'confirmed' | 'absent',
   audience: 'player' | 'club',

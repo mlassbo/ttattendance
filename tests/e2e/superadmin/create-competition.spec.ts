@@ -58,7 +58,6 @@ test('super admin can create a competition and see it in the list', async ({ pag
   // Fill in the form
   await page.getByTestId('field-name').fill('Test SM 2025')
   await page.getByTestId('field-slug').fill(`${TEST_PREFIX}2025`)
-  await page.getByTestId('field-player-pin').fill('1234')
   await page.getByTestId('field-admin-pin').fill('5678')
 
   // Submit
@@ -68,7 +67,6 @@ test('super admin can create a competition and see it in the list', async ({ pag
   await expect(page.getByTestId('competition-list')).toContainText('Test SM 2025')
   await expect(page.getByTestId('competition-list')).toContainText(`${TEST_PREFIX}2025`)
   await expect(page.getByTestId(`import-status-${TEST_PREFIX}2025`)).toContainText('0 importerade anmälningar')
-  await expect(page.getByTestId(`player-pin-${TEST_PREFIX}2025`)).toContainText('1234')
   await expect(page.getByTestId(`admin-pin-${TEST_PREFIX}2025`)).toContainText('5678')
   await expect(page.getByTestId(`settings-action-${TEST_PREFIX}2025`)).toContainText('Inställningar')
   await expect(page.getByTestId(`import-action-${TEST_PREFIX}2025`)).toHaveCount(0)
@@ -86,7 +84,6 @@ test('newly created competitions appear on the root landing page after cache inv
   await page.getByTestId('new-competition-button').click()
   await page.getByTestId('field-name').fill('Test Root 2026')
   await page.getByTestId('field-slug').fill(slug)
-  await page.getByTestId('field-player-pin').fill('1234')
   await page.getByTestId('field-admin-pin').fill('5678')
   await page.getByTestId('submit-competition').click()
 
@@ -111,7 +108,6 @@ test('super admin can hide a competition from the root landing page without remo
   await page.getByTestId('new-competition-button').click()
   await page.getByTestId('field-name').fill('Intern klubbtävling 2026')
   await page.getByTestId('field-slug').fill(slug)
-  await page.getByTestId('field-player-pin').fill('1234')
   await page.getByTestId('field-admin-pin').fill('5678')
   await page.getByTestId('submit-competition').click()
 

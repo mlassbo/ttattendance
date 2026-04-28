@@ -1,24 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { getCompetitionAuth } from '@/lib/auth'
 import type { RegistrationStatus } from '@/lib/reserve-status'
 import {
   getAttendanceNotOpenMessage,
   getClassAttendanceOpensAt,
 } from '@/lib/attendance-window'
 
-type CompetitionAuth = NonNullable<Awaited<ReturnType<typeof getCompetitionAuth>>>
 type RegistrationRow = {
   id: string
   status: RegistrationStatus
-  players: { competition_id: string } | null
   classes: { start_time: string; attendance_deadline: string } | null
 }
 type RelationValue<T> = T | T[] | null | undefined
 type RawRegistrationRow = {
   id: unknown
   status?: unknown
-  players?: RelationValue<{ competition_id: unknown }>
   classes?: RelationValue<{ start_time: unknown; attendance_deadline: unknown }>
 }
 
@@ -44,13 +40,8 @@ function normalizeRegistrationRow(registration: unknown): RegistrationRow | null
     return null
   }
 
-  const player = getSingleRelation(raw.players)
   const cls = getSingleRelation(raw.classes)
 
-  const competitionId =
-    player && typeof player === 'object' && typeof player.competition_id === 'string'
-      ? player.competition_id
-      : null
   const classStartTime =
     cls && typeof cls === 'object' && typeof cls.start_time === 'string' ? cls.start_time : null
   const attendanceDeadline =
@@ -61,7 +52,6 @@ function normalizeRegistrationRow(registration: unknown): RegistrationRow | null
   return {
     id: raw.id,
     status: raw.status,
-    players: competitionId ? { competition_id: competitionId } : null,
     classes:
       classStartTime && attendanceDeadline
         ? { start_time: classStartTime, attendance_deadline: attendanceDeadline }
@@ -69,19 +59,15 @@ function normalizeRegistrationRow(registration: unknown): RegistrationRow | null
   }
 }
 
-async function getAuthorizedRegistration(
-  auth: CompetitionAuth,
+async function loadReportableRegistration(
   registrationId: string,
   supabase: ReturnType<typeof createServerClient>
 ) {
-  // Verify the registration belongs to the competition in the cookie,
-  // and fetch the class deadline in one query.
   const { data: registration, error: regError } = await supabase
     .from('registrations')
     .select(`
       id,
       status,
-      players ( competition_id ),
       classes ( start_time, attendance_deadline )
     `)
     .eq('id', registrationId)
@@ -103,13 +89,6 @@ async function getAuthorizedRegistration(
     }
   }
 
-  if (reg.players?.competition_id !== auth.competitionId) {
-    return {
-      errorResponse: NextResponse.json({ error: 'Anmälan hittades inte' }, { status: 404 }),
-      registration: null,
-    }
-  }
-
   if (reg.status === 'reserve') {
     return {
       errorResponse: NextResponse.json(
@@ -123,14 +102,7 @@ async function getAuthorizedRegistration(
   return { errorResponse: null, registration: reg }
 }
 
-async function enforcePlayerAttendanceWindow(
-  auth: CompetitionAuth,
-  registration: RegistrationRow,
-) {
-  if (auth.role !== 'player') {
-    return null
-  }
-
+function enforcePlayerAttendanceWindow(registration: RegistrationRow) {
   if (!registration.classes?.start_time || !registration.classes.attendance_deadline) {
     return NextResponse.json(
       {
@@ -166,10 +138,7 @@ async function enforcePlayerAttendanceWindow(
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await getCompetitionAuth(req.cookies)
-  if (!auth) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const supabase = createServerClient()
 
   const body = await req.json()
   const { registrationId, status, idempotencyKey } = body
@@ -181,10 +150,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ogiltigt status' }, { status: 400 })
   }
 
-  const supabase = createServerClient()
-
-  const { errorResponse, registration } = await getAuthorizedRegistration(
-    auth,
+  const { errorResponse, registration } = await loadReportableRegistration(
     registrationId,
     supabase
   )
@@ -192,7 +158,7 @@ export async function POST(req: NextRequest) {
     return errorResponse
   }
 
-  const attendanceWindowError = await enforcePlayerAttendanceWindow(auth, registration)
+  const attendanceWindowError = enforcePlayerAttendanceWindow(registration)
   if (attendanceWindowError) {
     return attendanceWindowError
   }
@@ -206,7 +172,7 @@ export async function POST(req: NextRequest) {
         registration_id: registrationId,
         status,
         reported_at: new Date().toISOString(),
-        reported_by: auth.role,
+        reported_by: 'player',
         idempotency_key: idempotencyKey,
       },
       { onConflict: 'registration_id' }
@@ -220,10 +186,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const auth = await getCompetitionAuth(req.cookies)
-  if (!auth) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const supabase = createServerClient()
 
   const body = await req.json()
   const { registrationId } = body
@@ -232,9 +195,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Ogiltiga uppgifter' }, { status: 400 })
   }
 
-  const supabase = createServerClient()
-  const { errorResponse, registration } = await getAuthorizedRegistration(
-    auth,
+  const { errorResponse, registration } = await loadReportableRegistration(
     registrationId,
     supabase
   )
@@ -242,7 +203,7 @@ export async function DELETE(req: NextRequest) {
     return errorResponse
   }
 
-  const attendanceWindowError = await enforcePlayerAttendanceWindow(auth, registration)
+  const attendanceWindowError = enforcePlayerAttendanceWindow(registration)
   if (attendanceWindowError) {
     return attendanceWindowError
   }
