@@ -2372,3 +2372,192 @@ export async function seedCompetitionWithPlayoff(
     snapshotIdB,
   }
 }
+
+export type AttendanceBannerScenario =
+  | 'open'
+  | 'opens_soon'
+  | 'closed_pending'
+  | 'idle'
+
+export interface SeededAttendanceBannerScenario {
+  competitionId: string
+  classId: string
+}
+
+const SWEDISH_TIME_ZONE = 'Europe/Stockholm'
+
+const swedishHourFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: SWEDISH_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+function getSwedishParts(date: Date) {
+  const parts = swedishHourFormatter.formatToParts(date)
+  return {
+    year: Number(parts.find(part => part.type === 'year')!.value),
+    month: Number(parts.find(part => part.type === 'month')!.value),
+    day: Number(parts.find(part => part.type === 'day')!.value),
+    hour: Number(parts.find(part => part.type === 'hour')!.value),
+    minute: Number(parts.find(part => part.type === 'minute')!.value),
+  }
+}
+
+/**
+ * Returns true when "now" lies within the 60-min window before the next
+ * 20:00 Swedish boundary, which is the only window in which the
+ * `opens_soon` banner can be reliably seeded — `getClassAttendanceOpensAt`
+ * always lands at 20:00 Swedish time on the day before a class starts.
+ */
+export function canSeedOpensSoonScenario(now: Date = new Date()): boolean {
+  const swedish = getSwedishParts(now)
+  return swedish.hour === 19
+}
+
+/**
+ * Seeds a competition that exercises one of the four attendance-banner
+ * scenarios. Tests assume the rollup helper is called with the real
+ * server-side `now`, so the seed math is computed against the live clock.
+ *
+ * `opens_soon` can only be seeded between 19:00 and 20:00 Swedish time —
+ * gate tests with `canSeedOpensSoonScenario()` and `test.skip()`.
+ */
+export async function seedAttendanceBannerScenario(
+  supabase: SupabaseClient,
+  slug: string,
+  scenario: AttendanceBannerScenario,
+): Promise<SeededAttendanceBannerScenario> {
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash('0000', 4),
+    bcrypt.hash('0000', 4),
+  ])
+
+  const { data: comp, error: compError } = await supabase
+    .from('competitions')
+    .insert({
+      name: `Banner ${scenario}`,
+      slug,
+      player_pin_hash: playerPinHash,
+      admin_pin_hash: adminPinHash,
+    })
+    .select('id')
+    .single()
+
+  if (compError || !comp) {
+    throw new Error(`Failed to seed banner competition: ${compError?.message ?? 'Unknown error'}`)
+  }
+
+  const competitionId = comp.id
+  const sessionDate =
+    scenario === 'opens_soon'
+      ? swedishDateOnNextOpensAt()
+      : scenario === 'idle'
+        ? '2099-09-15'
+        : scenario === 'open' || scenario === 'closed_pending'
+          ? '2020-09-13'
+          : '2099-09-15'
+
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .insert({
+      competition_id: competitionId,
+      name: 'Pass 1',
+      date: sessionDate,
+      session_order: 1,
+    })
+    .select('id')
+    .single()
+
+  if (sessionError || !session) {
+    throw new Error(`Failed to seed banner session: ${sessionError?.message ?? 'Unknown error'}`)
+  }
+
+  const startTime = `${sessionDate}T09:00:00+02:00`
+  let attendanceDeadline: string
+
+  if (scenario === 'open') {
+    attendanceDeadline = '2099-09-13T08:15:00+02:00'
+  } else if (scenario === 'closed_pending') {
+    attendanceDeadline = '2020-09-13T08:15:00+02:00'
+  } else if (scenario === 'opens_soon') {
+    attendanceDeadline = `${sessionDate}T08:15:00+02:00`
+  } else {
+    attendanceDeadline = `${sessionDate}T08:15:00+02:00`
+  }
+
+  const { data: classRow, error: classError } = await supabase
+    .from('classes')
+    .insert({
+      session_id: session.id,
+      name: 'Banner-klass',
+      start_time: startTime,
+      attendance_deadline: attendanceDeadline,
+      max_players: 8,
+    })
+    .select('id')
+    .single()
+
+  if (classError || !classRow) {
+    throw new Error(`Failed to seed banner class: ${classError?.message ?? 'Unknown error'}`)
+  }
+
+  if (scenario === 'open' || scenario === 'closed_pending' || scenario === 'idle') {
+    const { data: player, error: playerError } = await supabase
+      .from('players')
+      .insert({
+        competition_id: competitionId,
+        name: 'Banner Player',
+        club: 'Banner BTK',
+      })
+      .select('id')
+      .single()
+
+    if (playerError || !player) {
+      throw new Error(`Failed to seed banner player: ${playerError?.message ?? 'Unknown error'}`)
+    }
+
+    const { data: registration, error: registrationError } = await supabase
+      .from('registrations')
+      .insert({
+        player_id: player.id,
+        class_id: classRow.id,
+      })
+      .select('id')
+      .single()
+
+    if (registrationError || !registration) {
+      throw new Error(
+        `Failed to seed banner registration: ${registrationError?.message ?? 'Unknown error'}`,
+      )
+    }
+
+    if (scenario === 'idle') {
+      const { error: attendanceError } = await supabase.from('attendance').insert({
+        registration_id: registration.id,
+        status: 'confirmed',
+        reported_at: new Date().toISOString(),
+        reported_by: 'player',
+        idempotency_key: `seed-${registration.id}-confirmed`,
+      })
+
+      if (attendanceError) {
+        throw new Error(`Failed to seed banner attendance: ${attendanceError.message}`)
+      }
+    }
+  }
+
+  return { competitionId, classId: classRow.id }
+}
+
+function swedishDateOnNextOpensAt(now: Date = new Date()): string {
+  const parts = getSwedishParts(now)
+  const next = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + 1))
+  const year = next.getUTCFullYear()
+  const month = String(next.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(next.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}

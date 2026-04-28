@@ -1,7 +1,12 @@
 import Link from 'next/link'
+import AttendanceStatusBanner from '@/components/AttendanceStatusBanner'
 import ClassDashboard from '@/components/ClassDashboard'
 import { formatCompetitionDateRange, getCompetitionDateRange } from '@/lib/competition-dates'
-import { getClassDashboard, getClassDashboardLiveStatus } from '@/lib/public-competition'
+import {
+  getClassDashboard,
+  getClassDashboardLiveStatus,
+  getCompetitionAttendanceBannerState,
+} from '@/lib/public-competition'
 import { createServerClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
@@ -29,10 +34,16 @@ export default async function CompetitionPage({
     )
   }
 
-  const [competitionDateRange, dashboardSessions, dashboardLiveStatus] = await Promise.all([
+  const [
+    competitionDateRange,
+    dashboardSessions,
+    dashboardLiveStatus,
+    attendanceBannerState,
+  ] = await Promise.all([
     getCompetitionDateRange(supabase, competition.id),
     getClassDashboard(supabase, competition.id),
     getClassDashboardLiveStatus(supabase, competition.id),
+    getCompetitionAttendanceBannerState(supabase, competition.id),
   ])
 
   return (
@@ -57,6 +68,12 @@ export default async function CompetitionPage({
                 </p>
               </div>
             </div>
+
+            <AttendanceStatusBanner
+              state={attendanceBannerState}
+              variant="landing"
+              slug={slug}
+            />
 
             <form
               data-testid="public-start-search-form"

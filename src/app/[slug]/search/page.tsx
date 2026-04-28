@@ -1,8 +1,14 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import type { PublicSearchClassSuggestion, PublicSearchMode } from '@/lib/public-competition'
+import type {
+  AttendanceStatusBannerState,
+  PublicSearchClassSuggestion,
+  PublicSearchMode,
+} from '@/lib/public-competition'
+import AttendanceStatusBanner from '@/components/AttendanceStatusBanner'
 import PublicSearchResultsPanel from '@/components/PublicSearchResultsPanel'
 import {
+  getCompetitionAttendanceBannerState,
   getPublicCompetitionBySlug,
   getPublicCompetitionClassSuggestions,
   searchPublicCompetition,
@@ -110,10 +116,18 @@ export default async function SearchPage({
     const classSuggestionsPromise = mode === 'class'
       ? getPublicCompetitionClassSuggestions(supabase, competition.id)
       : Promise.resolve([])
+    const attendanceBannerStatePromise = getCompetitionAttendanceBannerState(
+      supabase,
+      competition.id,
+    ).catch((error): AttendanceStatusBannerState => {
+      console.error('Failed to load attendance banner state', error)
+      return { kind: 'idle' }
+    })
 
-    const [results, classSuggestions] = await Promise.all([
+    const [results, classSuggestions, attendanceBannerState] = await Promise.all([
       resultsPromise,
       classSuggestionsPromise,
+      attendanceBannerStatePromise,
     ])
     const hasSearched = query.length >= 2
     const hasTooShortQuery = query.length > 0 && query.length < 2
@@ -140,8 +154,16 @@ export default async function SearchPage({
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">Sök</p>
               <h1 className="text-3xl font-semibold tracking-tight text-ink">{competition.name}</h1>
-              <p className="text-sm leading-6 text-muted">Sök på spelare, klubb eller klass.</p>
+              {attendanceBannerState.kind !== 'open' ? (
+                <p className="text-sm leading-6 text-muted">Sök på spelare, klubb eller klass.</p>
+              ) : null}
             </div>
+
+            <AttendanceStatusBanner
+              state={attendanceBannerState}
+              variant="search"
+              slug={slug}
+            />
 
             <nav
               data-testid="public-search-mode-tabs"

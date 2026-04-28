@@ -1,3 +1,4 @@
+import { getClassAttendanceOpensAt } from './attendance-window'
 import { buildDaySessionOrderMap } from './session-order'
 import { parseMatchResult } from './match-result'
 import { labelRound } from './playoff-progress-view'
@@ -91,6 +92,18 @@ type ClassDashboardRow = {
 type ClassDashboardRegistrationRow = {
   class_id: string
   status: RegistrationStatus
+}
+
+type AttendanceBannerClassRow = {
+  id: string
+  start_time: string | null
+  attendance_deadline: string | null
+}
+
+type AttendanceBannerRegistrationRow = {
+  id: string
+  class_id: string
+  attendance: RelationValue<{ id: string }>
 }
 
 type CompetitionClassNameRow = {
@@ -216,6 +229,14 @@ export interface ClassDashboardEntry {
   registeredCount: number
   reserveCount: number
 }
+
+export type AttendanceStatusBannerState =
+  | { kind: 'open' }
+  | { kind: 'opens_soon'; opensAt: string }
+  | { kind: 'closed_pending' }
+  | { kind: 'idle' }
+
+export const ATTENDANCE_OPENS_SOON_WINDOW_MS = 60 * 60 * 1000
 
 export interface PublicClassRegistration {
   registrationId: string
@@ -538,6 +559,104 @@ export async function getClassDashboard(
         })),
     }))
     .filter(session => session.classes.length > 0)
+}
+
+export async function getCompetitionAttendanceBannerState(
+  supabase: ServerClient,
+  competitionId: string,
+  now: Date = new Date(),
+): Promise<AttendanceStatusBannerState> {
+  const { data: classRows, error: classesError } = await supabase
+    .from('classes')
+    .select(`
+      id,
+      start_time,
+      attendance_deadline,
+      sessions!inner (
+        competition_id
+      )
+    `)
+    .eq('sessions.competition_id', competitionId)
+
+  if (classesError) {
+    throw new Error(classesError.message)
+  }
+
+  const classes = (classRows ?? []) as AttendanceBannerClassRow[]
+  if (classes.length === 0) {
+    return { kind: 'idle' }
+  }
+
+  const liveStatusByClassId = await getClassDashboardLiveStatus(supabase, competitionId)
+  const nowMs = now.getTime()
+
+  let hasOpen = false
+  let earliestUpcomingMs: number | null = null
+  const closedUndrawnClassIds: string[] = []
+
+  for (const classRow of classes) {
+    if (!classRow.start_time || !classRow.attendance_deadline) {
+      continue
+    }
+
+    const opensAtMs = getClassAttendanceOpensAt(classRow.start_time).getTime()
+    const deadlineMs = new Date(classRow.attendance_deadline).getTime()
+    const liveStatus = liveStatusByClassId.get(classRow.id) ?? 'none'
+    const isDrawn = liveStatus !== 'none'
+
+    if (!isDrawn && nowMs >= opensAtMs && nowMs <= deadlineMs) {
+      hasOpen = true
+      break
+    }
+
+    if (nowMs < opensAtMs) {
+      const millisUntilOpen = opensAtMs - nowMs
+      if (
+        millisUntilOpen <= ATTENDANCE_OPENS_SOON_WINDOW_MS
+        && (earliestUpcomingMs === null || opensAtMs < earliestUpcomingMs)
+      ) {
+        earliestUpcomingMs = opensAtMs
+      }
+      continue
+    }
+
+    if (!isDrawn && nowMs > deadlineMs) {
+      closedUndrawnClassIds.push(classRow.id)
+    }
+  }
+
+  if (hasOpen) {
+    return { kind: 'open' }
+  }
+
+  if (earliestUpcomingMs !== null) {
+    return { kind: 'opens_soon', opensAt: new Date(earliestUpcomingMs).toISOString() }
+  }
+
+  if (closedUndrawnClassIds.length === 0) {
+    return { kind: 'idle' }
+  }
+
+  const registrations = await fetchAllPages<AttendanceBannerRegistrationRow>(async (from, to) =>
+    await supabase
+      .from('registrations')
+      .select(`
+        id,
+        class_id,
+        attendance (
+          id
+        )
+      `)
+      .in('class_id', closedUndrawnClassIds)
+      .eq('status', 'registered')
+      .range(from, to),
+  )
+
+  const hasMissingAttendance = registrations.some(
+    registration => getSingleRelation(registration.attendance) === null,
+  )
+
+  return hasMissingAttendance ? { kind: 'closed_pending' } : { kind: 'idle' }
 }
 
 export async function searchPublicCompetition(
