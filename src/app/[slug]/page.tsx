@@ -72,7 +72,6 @@ export default async function CompetitionPage({
             <AttendanceStatusBanner
               state={attendanceBannerState}
               variant="landing"
-              slug={slug}
             />
 
             <form

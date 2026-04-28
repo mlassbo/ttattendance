@@ -1,43 +1,20 @@
-import Link from 'next/link'
 import { formatSwedishTime } from '@/lib/attendance-window'
 import type { AttendanceStatusBannerState } from '@/lib/public-competition'
 
 type AttendanceStatusBannerProps = {
   state: AttendanceStatusBannerState
   variant: 'landing' | 'search'
-  slug: string
 }
 
 export default function AttendanceStatusBanner({
   state,
   variant,
-  slug,
 }: AttendanceStatusBannerProps) {
   if (state.kind === 'idle') {
     return null
   }
 
   if (state.kind === 'open') {
-    if (variant === 'landing') {
-      return (
-        <section
-          data-testid="attendance-status-banner-open"
-          className="rounded-2xl border border-green-200 bg-green-50/80 px-4 py-4 sm:px-5"
-        >
-          <div className="space-y-4">
-            <p className="text-sm font-semibold text-green-800">Närvaroanmälan är öppen</p>
-            <Link
-              href={`/${slug}/search`}
-              data-testid="attendance-status-banner-cta"
-              className="app-button-primary inline-flex w-full sm:w-auto"
-            >
-              Anmäl närvaro
-            </Link>
-          </div>
-        </section>
-      )
-    }
-
     return (
       <section
         data-testid="attendance-status-banner-open"

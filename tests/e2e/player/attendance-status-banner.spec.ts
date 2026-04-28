@@ -20,7 +20,7 @@ test.describe('Attendance status banner', () => {
     await cleanTestCompetitions(supabase, 'test-player-banner-%')
   })
 
-  test('landing page shows the open banner with a CTA to search', async ({ page }) => {
+  test('landing page shows the open banner with the search instruction', async ({ page }) => {
     const supabase = testClient()
     await seedAttendanceBannerScenario(supabase, SLUG_OPEN, 'open')
 
@@ -29,12 +29,7 @@ test.describe('Attendance status banner', () => {
     const banner = page.getByTestId('attendance-status-banner-open')
     await expect(banner).toBeVisible()
     await expect(banner).toContainText('Närvaroanmälan är öppen')
-
-    const cta = page.getByTestId('attendance-status-banner-cta')
-    await expect(cta).toBeVisible()
-    await expect(cta).toHaveText('Anmäl närvaro')
-    await cta.click()
-    await expect(page).toHaveURL(new RegExp(`/${SLUG_OPEN}/search$`))
+    await expect(banner).toContainText('Sök spelare eller klubb för att anmäla närvaro.')
   })
 
   test('landing page shows the opens-soon banner with the next opens-at time', async ({ page }) => {

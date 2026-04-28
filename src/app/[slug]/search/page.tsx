@@ -162,7 +162,6 @@ export default async function SearchPage({
             <AttendanceStatusBanner
               state={attendanceBannerState}
               variant="search"
-              slug={slug}
             />
 
             <nav
