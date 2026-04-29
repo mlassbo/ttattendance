@@ -16,7 +16,6 @@ import {
 } from '@/lib/public-attendance-ui'
 import type {
   PublicClassRegistration,
-  PublicSearchClass,
   PublicSearchClub,
   PublicSearchMode,
   PublicSearchPlayer,
@@ -49,10 +48,6 @@ function buildSearchHref(slug: string, query: string, mode: PublicSearchMode) {
 
   const queryString = params.toString()
   return queryString ? `/${slug}/search?${queryString}` : `/${slug}/search`
-}
-
-function buildClassSearchHref(slug: string, className: string) {
-  return buildSearchHref(slug, className, 'class')
 }
 
 function buildClassPageHref(slug: string, classId: string, returnTo: string) {
@@ -111,28 +106,6 @@ function getClassPillClassName(registration: PublicClassRegistration, now: Date)
   }
 
   return `${baseClassName} bg-stone-100 text-stone-600`
-}
-
-function ClassAvailabilityBadge({ classResult }: { classResult: PublicSearchClass }) {
-  if (classResult.maxPlayers == null) {
-    return null
-  }
-
-  const spotsLeft = classResult.maxPlayers - classResult.playerCount
-
-  if (classResult.playerCount < classResult.maxPlayers && spotsLeft > 2) {
-    return <span className="text-xs font-medium text-muted">{spotsLeft} platser kvar</span>
-  }
-
-  if (classResult.playerCount < classResult.maxPlayers && spotsLeft === 1) {
-    return <span className="app-pill-warning">1 plats kvar</span>
-  }
-
-  if (classResult.playerCount < classResult.maxPlayers && spotsLeft === 2) {
-    return <span className="app-pill-warning">2 platser kvar</span>
-  }
-
-  return <span className="app-pill-muted">Fullt</span>
 }
 
 function getPlayerCardAction(registrations: PublicClassRegistration[], now: Date): {
@@ -199,14 +172,12 @@ export default function PublicSearchResults({
   mode,
   initialPlayers,
   clubs,
-  classes,
 }: {
   slug: string
   query: string
   mode: PublicSearchMode
   initialPlayers: PublicSearchPlayer[]
   clubs: PublicSearchClub[]
-  classes: PublicSearchClass[]
 }) {
   const [players, setPlayers] = useState(initialPlayers)
   const [expandedPlayers, setExpandedPlayers] = useState<string[]>([])
@@ -322,11 +293,10 @@ export default function PublicSearchResults({
                       className="flex flex-wrap gap-2"
                     >
                       {player.registrations.map(registration => (
+                        registration.class.id ? (
                         <Link
                           key={registration.registrationId}
-                          href={registration.class.id
-                            ? buildClassPageHref(slug, registration.class.id, returnTo)
-                            : buildClassSearchHref(slug, registration.class.name)}
+                          href={buildClassPageHref(slug, registration.class.id, returnTo)}
                           data-testid={`public-search-player-class-pill-${player.id}-${sanitizeFragment(registration.class.name)}`}
                           aria-label={`Visa alla spelare i ${registration.class.name}`}
                           className={getClassPillClassName(registration, now)}
@@ -335,6 +305,17 @@ export default function PublicSearchResults({
                             ? getReservePillLabel(registration)
                             : registration.class.name}
                         </Link>
+                        ) : (
+                          <span
+                            key={registration.registrationId}
+                            data-testid={`public-search-player-class-pill-${player.id}-${sanitizeFragment(registration.class.name)}`}
+                            className={getClassPillClassName(registration, now)}
+                          >
+                            {registration.status === 'reserve'
+                              ? getReservePillLabel(registration)
+                              : registration.class.name}
+                          </span>
+                        )
                       ))}
                     </div>
                   ) : null}
@@ -520,7 +501,10 @@ export default function PublicSearchResults({
       ) : null}
 
       {clubs.length > 0 ? (
-        <section data-testid="public-search-clubs-section" className="space-y-3">
+        <section
+          data-testid="public-search-clubs-section"
+          className={players.length > 0 ? 'mt-6 space-y-3' : 'space-y-3'}
+        >
           <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.24em] text-muted">
             Klubbar
           </h2>
@@ -546,104 +530,6 @@ export default function PublicSearchResults({
                     Visa klubb
                   </Link>
                 </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {classes.length > 0 ? (
-        <section data-testid="public-search-classes-section" className="space-y-3">
-          <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.24em] text-muted">
-            Klasser
-          </h2>
-
-          <div className="space-y-3">
-            {classes.map(classResult => (
-              <article
-                key={classResult.id}
-                data-testid={`public-search-class-card-${classResult.id}`}
-                className="app-card space-y-4"
-              >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-semibold text-ink">{classResult.name}</h3>
-                    {classResult.startTime ? (
-                      <p className="text-sm text-muted">
-                        Start {formatSwedishDateTime(classResult.startTime)}
-                      </p>
-                    ) : null}
-                    {classResult.startTime ? (
-                      <p className="text-xs text-muted/80">
-                        Närvarorapportering öppnar {formatSwedishDateTime(getClassAttendanceOpensAt(classResult.startTime))}
-                      </p>
-                    ) : null}
-                    {classResult.attendanceDeadline ? (
-                      <p className="text-xs text-muted/80">
-                        Anmäl närvaro senast {formatSwedishDateTime(classResult.attendanceDeadline)}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                    <span className="app-pill-muted whitespace-nowrap">
-                      {classResult.playerCount} spelare
-                    </span>
-                    <span data-testid={`public-search-class-availability-${classResult.id}`}>
-                      <ClassAvailabilityBadge classResult={classResult} />
-                    </span>
-                    {classResult.reserveList.length > 0 ? (
-                      <span
-                        data-testid={`public-search-class-reserve-pill-${classResult.id}`}
-                        className="app-pill-muted whitespace-nowrap"
-                      >
-                        {classResult.reserveList.length} på reservlistan
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div
-                  data-testid={`public-search-class-roster-${classResult.id}`}
-                  className="rounded-2xl border border-line/80 bg-stone-50/70 px-4 py-3"
-                >
-                  {classResult.players.length > 0 ? (
-                    <ul className="space-y-2">
-                      {classResult.players.map(player => (
-                        <li
-                          key={player.id}
-                          data-testid={`public-search-class-player-${classResult.id}-${player.id}`}
-                          className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <span className="text-sm font-medium text-ink">{player.name}</span>
-                          {player.club ? <span className="text-sm text-muted">{player.club}</span> : null}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted">Inga spelare registrerade.</p>
-                  )}
-                </div>
-
-                {classResult.reserveList.length > 0 ? (
-                  <div className="rounded-2xl border border-line/80 bg-surface px-4 py-3">
-                    <p className="text-sm font-semibold text-ink">Reservlista</p>
-                    <ol className="mt-3 space-y-2">
-                      {classResult.reserveList.map(entry => (
-                        <li
-                          key={entry.registrationId}
-                          data-testid={`public-search-class-reserve-${classResult.id}-${entry.registrationId}`}
-                          className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <span className="text-sm font-medium text-ink">
-                            {entry.position}. {entry.name}
-                          </span>
-                          {entry.club ? <span className="text-sm text-muted">{entry.club}</span> : null}
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                ) : null}
               </article>
             ))}
           </div>

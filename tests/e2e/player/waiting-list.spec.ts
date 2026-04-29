@@ -64,7 +64,7 @@ test.describe('Public waiting list', () => {
     await expect(page.getByTestId(`public-search-absent-btn-${seededReserve.registrationId}`)).toHaveCount(0)
   })
 
-  test('class search shows the waiting list in reserve order', async ({ page }) => {
+  test('class page shows the waiting list in reserve order', async ({ page }) => {
     const first = await seedWaitingList(testClient(), {
       slug: SLUG,
       classId: futureClassId,
@@ -80,10 +80,11 @@ test.describe('Public waiting list', () => {
       joinedAt: '2025-01-01T08:05:00.000Z',
     })
 
-    await page.goto(`/${SLUG}/search?q=Herrar%20A-klass&mode=class`)
+    await page.goto(`/${SLUG}/classes/${futureClassId}`)
 
-    await expect(page.getByTestId('public-search-classes-section')).toContainText('Reservlista')
-    await expect(page.getByTestId(/^public-search-class-availability-/)).toContainText('Fullt')
+    await expect(page.getByTestId('class-page-header')).toContainText('Herrar A-klass')
+    await expect(page.getByTestId('class-page-header')).toContainText('Fullt')
+    await expect(page.locator('main')).toContainText('Reservlista')
     await expect(
       page.getByTestId(`public-search-class-reserve-${futureClassId}-${first.registrationId}`),
     ).toContainText('1. Axel Reserv')

@@ -6,9 +6,9 @@ This document is the implementation handoff for the public class live view featu
 
 ## Background
 
-Players and audience (parents, coaches) visiting the competition landing page can see classes grouped by session, with registration counts and availability. But once the competition is underway and the draw has been made, there is no way to see pools and the players in them. Staff, players, and audience all want a quick answer to: "what does the draw look like for this class?"
+Players and audience (parents, coaches) visiting the competition landing page can see classes grouped by session, with registration counts and availability. Once the competition is underway and the draw has been made, staff, players, and audience all want a quick answer to: "what does the draw look like for this class?"
 
-Today, clicking a class card on the landing page leads to a search-results page (`/{slug}/search?mode=class&q={name}`). That works for the registration phase, but doesn't scale to live competition data like pools, match results, and playoffs that will come later.
+This feature establishes the dedicated class page as the public class surface instead of routing class browsing through the search page.
 
 The "Följ tävlingen live" card on the landing page (`src/app/[slug]/page.tsx:88-104`) is currently a disabled placeholder ("Kommer snart"). This feature delivers the first real content behind that promise.
 
@@ -31,7 +31,7 @@ V1 does not include:
 - Playoff draws or results
 - Linking snapshot player names to local player records
 - Any admin-side changes — status is driven entirely by OnData snapshot data
-- Changes to the existing class-search-results view
+- Changes to player or club search behavior
 - Fallback sections (registered-but-not-in-pool lists, reserve lists) on the class page
 
 ---
@@ -276,11 +276,9 @@ This requires converting the card portion of `ClassDashboard` to a client compon
 
 Go with whichever feels simpler during implementation. The key constraint is: the initial render must be a server component (fast, no client JS for the initial class list), but the expand interaction needs client-side state.
 
-#### 4. Update the card link target
+#### 4. Update the card interaction
 
-Currently each card links to `buildClassSearchHref(slug, classEntry.name)` which goes to the search results page. Change this: the card should navigate to `/{slug}/classes/{classEntry.id}` — the new dedicated class page.
-
-However, since cards now expand inline, the primary click action becomes "expand/collapse", not "navigate". The navigation to the class page happens via the "open in new tab" link inside the expanded area.
+The dashboard card no longer routes through search. Its primary action is expand/collapse, and the navigation to `/{slug}/classes/{classId}` happens via the "open in new tab" link inside the expanded area.
 
 So the card changes from a `<Link>` to a `<button>` (or clickable div) that toggles expand. The `<Link>` to the class page moves inside the expanded content.
 

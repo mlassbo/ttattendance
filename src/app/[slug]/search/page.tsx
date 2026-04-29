@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import type {
   AttendanceStatusBannerState,
-  PublicSearchClassSuggestion,
   PublicSearchMode,
 } from '@/lib/public-competition'
 import AttendanceStatusBanner from '@/components/AttendanceStatusBanner'
@@ -10,7 +9,6 @@ import PublicSearchResultsPanel from '@/components/PublicSearchResultsPanel'
 import {
   getCompetitionAttendanceBannerState,
   getPublicCompetitionBySlug,
-  getPublicCompetitionClassSuggestions,
   searchPublicCompetition,
 } from '@/lib/public-competition'
 import { createServerClient } from '@/lib/supabase'
@@ -18,7 +16,7 @@ import { createServerClient } from '@/lib/supabase'
 export const dynamic = 'force-dynamic'
 
 function isSearchMode(value: string | undefined): value is PublicSearchMode {
-  return value === 'all' || value === 'player' || value === 'club' || value === 'class'
+  return value === 'all' || value === 'player' || value === 'club'
 }
 
 function buildSearchHref(slug: string, query: string, mode: PublicSearchMode) {
@@ -36,19 +34,11 @@ function buildSearchHref(slug: string, query: string, mode: PublicSearchMode) {
   return queryString ? `/${slug}/search?${queryString}` : `/${slug}/search`
 }
 
-function buildClassPageHref(slug: string, classId: string, returnTo: string) {
-  const params = new URLSearchParams()
-  params.set('returnTo', returnTo)
-
-  return `/${slug}/classes/${classId}?${params.toString()}`
-}
-
 function buildSearchResultsSummary(results: {
   players: unknown[]
   clubs: unknown[]
-  classes: unknown[]
 }) {
-  const totalCount = results.players.length + results.clubs.length + results.classes.length
+  const totalCount = results.players.length + results.clubs.length
 
   if (totalCount === 0) {
     return ''
@@ -93,7 +83,7 @@ export default async function SearchPage({
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">Sök</p>
               <h1 className="text-3xl font-semibold tracking-tight text-ink">Sök</h1>
-              <p className="text-sm leading-6 text-muted">Sök på spelare, klubb eller klass.</p>
+              <p className="text-sm leading-6 text-muted">Sök på spelare eller klubb.</p>
             </div>
           </section>
 
@@ -112,10 +102,7 @@ export default async function SearchPage({
   try {
     const resultsPromise = query.length >= 2
       ? searchPublicCompetition(supabase, competition.id, query, mode)
-      : Promise.resolve({ players: [], clubs: [], classes: [] })
-    const classSuggestionsPromise = mode === 'class'
-      ? getPublicCompetitionClassSuggestions(supabase, competition.id)
-      : Promise.resolve([])
+      : Promise.resolve({ players: [], clubs: [] })
     const attendanceBannerStatePromise = getCompetitionAttendanceBannerState(
       supabase,
       competition.id,
@@ -124,19 +111,17 @@ export default async function SearchPage({
       return { kind: 'idle' }
     })
 
-    const [results, classSuggestions, attendanceBannerState] = await Promise.all([
+    const [results, attendanceBannerState] = await Promise.all([
       resultsPromise,
-      classSuggestionsPromise,
       attendanceBannerStatePromise,
     ])
     const hasSearched = query.length >= 2
     const hasTooShortQuery = query.length > 0 && query.length < 2
-    const hasResults = results.players.length > 0 || results.clubs.length > 0 || results.classes.length > 0
+    const hasResults = results.players.length > 0 || results.clubs.length > 0
     const tabs: Array<{ mode: PublicSearchMode; label: string; testId: string }> = [
       { mode: 'all', label: 'Alla', testId: 'public-search-mode-all' },
       { mode: 'player', label: 'Spelare', testId: 'public-search-mode-player' },
       { mode: 'club', label: 'Klubbar', testId: 'public-search-mode-club' },
-      { mode: 'class', label: 'Klasser', testId: 'public-search-mode-class' },
     ]
 
     return (
@@ -155,7 +140,7 @@ export default async function SearchPage({
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">Sök</p>
               <h1 className="text-3xl font-semibold tracking-tight text-ink">{competition.name}</h1>
               {attendanceBannerState.kind !== 'open' ? (
-                <p className="text-sm leading-6 text-muted">Sök på spelare, klubb eller klass.</p>
+                <p className="text-sm leading-6 text-muted">Sök på spelare eller klubb.</p>
               ) : null}
             </div>
 
@@ -190,57 +175,48 @@ export default async function SearchPage({
               })}
             </nav>
 
-            {mode === 'class' ? (
-              <ClassSearchPills
-                slug={slug}
-                query={query}
-                returnTo={buildSearchHref(slug, query, mode)}
-                classSuggestions={classSuggestions}
-              />
-            ) : (
-              <>
-                <form
-                  data-testid="public-search-form"
-                  action={`/${slug}/search`}
-                  className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+            <>
+              <form
+                data-testid="public-search-form"
+                action={`/${slug}/search`}
+                className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+              >
+                <input type="hidden" name="mode" value={mode} />
+                <input
+                  data-testid="public-search-input"
+                  name="q"
+                  type="search"
+                  defaultValue={query}
+                  placeholder="Skriv minst 2 tecken"
+                  className="app-input"
+                />
+                <button
+                  data-testid="public-search-submit"
+                  type="submit"
+                  className="app-button-primary"
                 >
-                  <input type="hidden" name="mode" value={mode} />
-                  <input
-                    data-testid="public-search-input"
-                    name="q"
-                    type="search"
-                    defaultValue={query}
-                    placeholder="Skriv minst 2 tecken"
-                    className="app-input"
-                  />
-                  <button
-                    data-testid="public-search-submit"
-                    type="submit"
-                    className="app-button-primary"
-                  >
-                    Sök
-                  </button>
-                </form>
+                  Sök
+                </button>
+              </form>
 
-                {hasTooShortQuery ? (
-                  <p data-testid="public-search-short-query" className="text-sm text-muted">
-                    Skriv minst 2 tecken
-                  </p>
-                ) : null}
-              </>
-            )}
+              {hasTooShortQuery ? (
+                <p data-testid="public-search-short-query" className="text-sm text-muted">
+                  Skriv minst 2 tecken
+                </p>
+              ) : null}
+            </>
           </section>
 
           {!hasSearched ? (
             <section data-testid="public-search-empty-state" className="app-card-soft text-sm text-muted">
-              Sök på spelare, klubb eller klass.
+              Sök på spelare eller klubb.
             </section>
           ) : null}
 
           {hasSearched && !hasResults ? (
             <section data-testid="public-search-no-results" className="app-card-soft space-y-1 text-center">
               <p className="text-base font-semibold text-ink">Inga träffar på din sökning.</p>
-              <p className="text-sm text-muted">Sök på spelare, klubb eller klass.</p>
+              <p className="text-sm text-muted">Sök på spelare eller klubb.</p>
             </section>
           ) : null}
 
@@ -251,7 +227,6 @@ export default async function SearchPage({
               mode={mode}
               players={results.players}
               clubs={results.clubs}
-              classes={results.classes}
               summaryText={buildSearchResultsSummary(results)}
             />
           ) : null}
@@ -274,7 +249,7 @@ export default async function SearchPage({
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted">Sök</p>
               <h1 className="text-3xl font-semibold tracking-tight text-ink">Sök</h1>
-              <p className="text-sm leading-6 text-muted">Sök på spelare, klubb eller klass.</p>
+              <p className="text-sm leading-6 text-muted">Sök på spelare eller klubb.</p>
             </div>
           </section>
 
@@ -285,41 +260,4 @@ export default async function SearchPage({
       </main>
     )
   }
-}
-
-function ClassSearchPills({
-  slug,
-  query,
-  returnTo,
-  classSuggestions,
-}: {
-  slug: string
-  query: string
-  returnTo: string
-  classSuggestions: PublicSearchClassSuggestion[]
-}) {
-  return (
-    <div data-testid="public-search-class-picker" className="space-y-3">
-      <p className="text-sm text-muted">Välj klass.</p>
-      <div className="flex flex-wrap gap-2">
-        {classSuggestions.map(classSuggestion => {
-          const selected = query === classSuggestion.name
-
-          return (
-            <Link
-              key={classSuggestion.id}
-              href={buildClassPageHref(slug, classSuggestion.id, returnTo)}
-              data-testid={`public-search-class-pill-${classSuggestion.id}`}
-              aria-current={selected ? 'page' : undefined}
-              className={selected
-                ? 'rounded-full bg-brand px-4 py-2 text-sm font-medium text-white transition-colors duration-150'
-                : 'rounded-full bg-brand-soft/60 px-4 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-brand-soft'}
-            >
-              {classSuggestion.name}
-            </Link>
-          )
-        })}
-      </div>
-    </div>
-  )
 }

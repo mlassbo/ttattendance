@@ -198,7 +198,7 @@ type PlayoffSnapshotMatchRow = {
   is_completed: boolean
 }
 
-export type PublicSearchMode = 'all' | 'player' | 'club' | 'class'
+export type PublicSearchMode = 'all' | 'player' | 'club'
 export type ClassLiveStatus =
   | 'none'
   | 'pools_available'
@@ -298,11 +298,6 @@ export interface PublicSearchClass {
   playerCount: number
   players: PlayerRow[]
   reserveList: PublicReserveEntry[]
-}
-
-export interface PublicSearchClassSuggestion {
-  id: string
-  name: string
 }
 
 export interface ClassLivePoolStanding {
@@ -664,59 +659,21 @@ export async function searchPublicCompetition(
   competitionId: string,
   query: string,
   mode: PublicSearchMode,
-): Promise<{ players: PublicSearchPlayer[]; clubs: PublicSearchClub[]; classes: PublicSearchClass[] }> {
+): Promise<{ players: PublicSearchPlayer[]; clubs: PublicSearchClub[] }> {
   const searchTerm = query.trim()
 
   if (searchTerm.length < 2) {
-    return { players: [], clubs: [], classes: [] }
+    return { players: [], clubs: [] }
   }
 
-  const players = mode === 'club' || mode === 'class'
+  const players = mode === 'club'
     ? []
     : await searchPlayersWithRegistrations(supabase, competitionId, searchTerm, 'player')
-  const clubs = mode === 'player' || mode === 'class'
+  const clubs = mode === 'player'
     ? []
     : await searchClubs(supabase, competitionId, searchTerm)
-  const classes = mode === 'player' || mode === 'club'
-    ? []
-    : await searchClasses(supabase, competitionId, searchTerm)
 
-  return { players, clubs, classes }
-}
-
-export async function getPublicCompetitionClassSuggestions(
-  supabase: ServerClient,
-  competitionId: string,
-): Promise<PublicSearchClassSuggestion[]> {
-  const daySessionOrderById = await getDaySessionOrderMap(supabase, competitionId)
-  const { data: classRows, error } = await supabase
-    .from('classes')
-    .select(`
-      id,
-      name,
-      start_time,
-      attendance_deadline,
-      max_players,
-      sessions!inner (
-        id,
-        name,
-        date,
-        session_order,
-        competition_id
-      )
-    `)
-    .eq('sessions.competition_id', competitionId)
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  return ((classRows ?? []) as ClassRow[])
-    .sort((left, right) => comparePublicClassRows(left, right, daySessionOrderById))
-    .map(classRow => ({
-      id: classRow.id,
-      name: classRow.name,
-    }))
+  return { players, clubs }
 }
 
 export async function getPublicClassDetails(
@@ -1728,43 +1685,6 @@ async function searchPlayersWithRegistrations(
       registrations,
     }
   })
-}
-
-async function searchClasses(
-  supabase: ServerClient,
-  competitionId: string,
-  query: string,
-): Promise<PublicSearchClass[]> {
-  const daySessionOrderById = await getDaySessionOrderMap(supabase, competitionId)
-  const { data: classRows, error } = await supabase
-    .from('classes')
-    .select(`
-      id,
-      name,
-      start_time,
-      attendance_deadline,
-      max_players,
-      sessions!inner (
-        id,
-        name,
-        date,
-        session_order,
-        competition_id
-      )
-    `)
-    .eq('sessions.competition_id', competitionId)
-    .ilike('name', `%${query}%`)
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  const matchedClasses = (classRows ?? []) as ClassRow[]
-  if (matchedClasses.length === 0) {
-    return []
-  }
-
-  return buildPublicSearchClasses(supabase, matchedClasses, daySessionOrderById)
 }
 
 async function searchClubs(

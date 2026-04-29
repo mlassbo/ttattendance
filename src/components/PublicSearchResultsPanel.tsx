@@ -3,7 +3,6 @@
 import { useRef } from 'react'
 import PublicSearchResults from '@/components/PublicSearchResults'
 import type {
-  PublicSearchClass,
   PublicSearchClub,
   PublicSearchMode,
   PublicSearchPlayer,
@@ -16,7 +15,6 @@ export default function PublicSearchResultsPanel({
   mode,
   players,
   clubs,
-  classes,
   summaryText,
 }: {
   slug: string
@@ -24,7 +22,6 @@ export default function PublicSearchResultsPanel({
   mode: PublicSearchMode
   players: PublicSearchPlayer[]
   clubs: PublicSearchClub[]
-  classes: PublicSearchClass[]
   summaryText: string
 }) {
   const summaryRef = useRef<HTMLElement | null>(null)
@@ -56,7 +53,6 @@ export default function PublicSearchResultsPanel({
           mode={mode}
           initialPlayers={players}
           clubs={clubs}
-          classes={classes}
         />
       </div>
     </>

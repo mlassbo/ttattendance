@@ -158,7 +158,6 @@ Recommended top filters:
 1. `Alla`
 2. `Spelare`
 3. `Klubb`
-4. `Klass`
 
 Default behavior when arriving from the start page:
 
@@ -174,7 +173,7 @@ Collapsed card contents:
 
 1. Player name.
 2. Club.
-3. Clickable class pills that pivot to class search.
+3. Clickable class pills that open the dedicated class page.
 4. Compact attendance state directly in the card, one row per class if needed.
 5. An expansion cue at the bottom of the card.
 
@@ -191,17 +190,6 @@ Expanded card contents:
 3. Deadline or not-open messages inline.
 4. Any links to later live class pages, when those exist.
 
-### Class search and suggestion pills
-
-Class search should support both free text and clickable pills.
-
-Rules:
-
-1. Suggestion pills should appear only when the `Klass` filter is active.
-2. The pills should include all classes in the competition, not just a subset.
-3. Pills should behave as shortcuts into class search results.
-4. Class pills shown on player result cards should also be clickable and pivot the search into the chosen class.
-
 ## Wireframes
 
 ### Start page
@@ -211,7 +199,7 @@ Rules:
 | Tävlingens namn                                  |
 | 12-13 april 2026                                 |
 |                                                  |
-| [ Sök spelare, klubb eller klass ...        ]    |
+| [ Sök spelare eller klubb ...               ]    |
 | [ Sök ]                                          |
 |                                                  |
 | +----------------------------------------------+ |
@@ -240,11 +228,9 @@ Start-page search result behavior:
 +--------------------------------------------------+
 | <- Start                       [ följa tävlingen live ]
 |                                                  |
-| [ Alla ] [ Spelare ] [ Klubb ] [ Klass ]         |
+| [ Alla ] [ Spelare ] [ Klubb ]                   |
 |                                                  |
 | [ Skriv minst 2 tecken ...                  ]    |
-| [ Flickor 13 ] [ Pojkar 14 ] [ Damjuniorer ]     |
-| (visas bara när Klass är vald)                   |
 |                                                  |
 | Spelare                                           |
 | Anna Svensson                                     |
@@ -259,20 +245,15 @@ Start-page search result behavior:
 | IFK Lund Bordtennis                               |
 | 12 spelare                                        |
 | [ Visa klubb ]                                    |
-|                                                  |
-| Klasser                                           |
-| Pojkar 14                                         |
-| Söndag 09:00                                      |
-| [ Visa klass ]                                    |
 +--------------------------------------------------+
 ```
 
 Rule:
 
-1. Search results support players, clubs, and classes.
+1. Search results support players and clubs.
 2. Player result cards show attendance state in collapsed form.
 3. Player result cards expand inline for attendance actions.
-4. Club and class results still link to their dedicated views.
+4. Club results still link to their dedicated view, and class pills open the dedicated class page.
 
 ### Player page
 
