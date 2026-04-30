@@ -89,8 +89,8 @@ test.describe('Attendance status banner', () => {
       'Sök spelare eller klubb för att anmäla närvaro.',
     )
     await expect(page.getByTestId('attendance-status-banner-cta')).toHaveCount(0)
-    // Header subline removed; empty-state still mentions the same copy.
-    await expect(page.getByText('Sök på spelare, klubb eller klass.')).toHaveCount(1)
+    // Header subline removed; empty-state still shows the search hint.
+    await expect(page.getByText('Sök på spelare eller klubb.')).toHaveCount(1)
     await expect(page.getByTestId('public-search-empty-state')).toBeVisible()
   })
 
@@ -108,7 +108,7 @@ test.describe('Attendance status banner', () => {
     await page.goto(`/${SLUG_OPENS_SOON}/search`)
 
     await expect(page.getByTestId('attendance-status-banner-opens-soon')).toHaveCount(0)
-    await expect(page.getByText('Sök på spelare, klubb eller klass.')).toHaveCount(2)
+    await expect(page.getByText('Sök på spelare eller klubb.')).toHaveCount(2)
   })
 
   test('search page hides the closed-pending banner and keeps the original subline', async ({
@@ -120,6 +120,6 @@ test.describe('Attendance status banner', () => {
     await page.goto(`/${SLUG_CLOSED}/search`)
 
     await expect(page.getByTestId('attendance-status-banner-closed-pending')).toHaveCount(0)
-    await expect(page.getByText('Sök på spelare, klubb eller klass.')).toHaveCount(2)
+    await expect(page.getByText('Sök på spelare eller klubb.')).toHaveCount(2)
   })
 })

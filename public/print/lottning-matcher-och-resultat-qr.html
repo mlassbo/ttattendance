@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lottning, matcher och resultat — elva9</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --brand: #F97316;
+      --ink: #1F2937;
+      --muted: #6B7280;
+      --line: #E5E7EB;
+      --surface: #FFFFFF;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      color: var(--ink);
+      background-image:
+        radial-gradient(circle at top, rgba(249, 115, 22, 0.14), transparent 30%),
+        linear-gradient(180deg, #fffaf3 0%, #fff7ed 38%, #fff3e6 100%);
+      background-attachment: fixed;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      display: flex;
+      justify-content: center;
+      padding: 12mm 6mm;
+    }
+
+    .sheet {
+      width: 100%;
+      max-width: 210mm;
+      min-height: 285mm;
+      padding: 22mm 18mm 26mm;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(229, 231, 235, 0.9);
+      border-radius: 28px;
+      box-shadow: 0 20px 40px -24px rgba(31, 41, 55, 0.22);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      backdrop-filter: blur(2px);
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: baseline;
+      line-height: 1;
+      letter-spacing: -0.05em;
+      font-size: 36px;
+    }
+    .logo .elva { color: var(--brand); font-weight: 600; }
+    .logo .nine { color: var(--ink); font-weight: 700; }
+    .logo .tld  { color: var(--muted); font-weight: 500; }
+
+    .title {
+      margin: 22mm 0 10mm;
+      font-size: 64px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      text-align: center;
+      line-height: 1.05;
+    }
+
+    .qr-card {
+      padding: 14mm;
+      background: var(--surface);
+      border: 1px solid rgba(229, 231, 235, 0.9);
+      border-radius: 24px;
+      box-shadow: 0 20px 40px -24px rgba(31, 41, 55, 0.22);
+    }
+
+    .qr-card svg,
+    .qr-card canvas {
+      display: block;
+      width: 130mm;
+      height: 130mm;
+    }
+
+    .qr-fallback {
+      width: 130mm;
+      height: 130mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .caption {
+      margin-top: 10mm;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      word-break: break-all;
+      max-width: 150mm;
+    }
+
+    .hint {
+      margin-top: 4mm;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        background-image:
+          radial-gradient(circle at top, rgba(249, 115, 22, 0.14), transparent 30%),
+          linear-gradient(180deg, #fffaf3 0%, #fff7ed 38%, #fff3e6 100%);
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .sheet {
+        max-width: none;
+        min-height: auto;
+        border: none;
+        box-shadow: none;
+        border-radius: 0;
+        background: transparent;
+        padding: 18mm 16mm;
+      }
+      .qr-card {
+        box-shadow: none;
+      }
+      .hint { display: none; }
+      @page { size: A4 portrait; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <span class="logo" aria-label="elva9">
+      <span class="elva">elva</span><span class="nine">9</span>
+    </span>
+
+    <h1 class="title">Lottning, matcher och resultat</h1>
+
+    <div class="qr-card">
+      <div id="qr" class="qr-fallback">Genererar QR-kod…</div>
+    </div>
+
+    <p id="caption" class="caption"></p>
+    <p class="hint">Tips: lägg till <code>?url=https://din-länk</code> i adressen för att byta destination.</p>
+  </main>
+
+  <script src="qrcode.min.js"></script>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const target = params.get('url') || 'https://elva9.se';
+      const qrEl = document.getElementById('qr');
+      const captionEl = document.getElementById('caption');
+      captionEl.textContent = target;
+
+      if (typeof window.qrcode === 'undefined') {
+        qrEl.textContent = 'QR-biblioteket kunde inte laddas.';
+        return;
+      }
+
+      try {
+        const qr = window.qrcode(0, 'H');
+        qr.addData(target);
+        qr.make();
+        const svgTag = qr.createSvgTag({ scalable: true, margin: 0 });
+        qrEl.classList.remove('qr-fallback');
+        qrEl.innerHTML = svgTag;
+        const svg = qrEl.querySelector('svg');
+        if (svg) {
+          svg.setAttribute('width', '100%');
+          svg.setAttribute('height', '100%');
+          svg.removeAttribute('style');
+          svg.querySelectorAll('rect').forEach(function (rect) {
+            if (rect.getAttribute('fill') !== 'white') {
+              rect.setAttribute('fill', '#1F2937');
+            }
+          });
+        }
+      } catch (e) {
+        qrEl.textContent = 'Kunde inte generera QR-kod.';
+      }
+    })();
+  </script>
+</body>
+</html>

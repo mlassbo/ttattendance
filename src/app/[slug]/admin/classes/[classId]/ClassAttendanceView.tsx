@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { formatSwedishDateTime, formatSwedishWeekdayTime } from '@/lib/attendance-window'
 import AutoRefreshStatus from '../../AutoRefreshStatus'
 import { formatTime } from '../../format'
+import PoolTablesSection from './PoolTablesSection'
 import ReserveListSection, { type ReserveEntry } from './ReserveListSection'
 
 const REFRESH_INTERVAL_MS = 30_000
@@ -1005,6 +1006,8 @@ export default function ClassAttendanceView({
 
         {pageError && <p data-testid="class-load-error" className="app-banner-error">{pageError}</p>}
         {overrideError && <p data-testid="override-error" className="app-banner-error">{overrideError}</p>}
+
+        <PoolTablesSection slug={slug} classId={classId} />
 
         <section id="attendance-list" data-testid="attendance-list" className="scroll-mt-6 space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

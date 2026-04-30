@@ -18,6 +18,7 @@ type PoolProgressStripProps = {
       poolNumber: number
       playerCount: number
       completedMatchCount: number
+      tables: number[]
     }>
   } | null
   lastSyncAt: string | null
@@ -147,14 +148,25 @@ export default function PoolProgressStrip({
             ? Math.round(Math.min(1, pool.completedMatchCount / pool.totalMatches) * 100)
             : 0
           const delayText = formatPoolDelayText(pool)
+          const tables = poolProgress?.pools.find(p => p.poolNumber === pool.poolNumber)?.tables ?? []
 
           return (
             <li
               key={pool.poolNumber}
               data-testid={`pool-dot-${classId}-${pool.poolNumber}`}
-              className="grid grid-cols-[5rem_1fr_auto_auto] items-center gap-3 text-xs"
+              className="grid grid-cols-[8rem_1fr_auto_auto] items-center gap-3 text-xs"
             >
-              <span className="font-medium text-ink">Pool {pool.poolNumber}</span>
+              <span className="font-medium text-ink">
+                Pool {pool.poolNumber}
+                {tables.length > 0 && (
+                  <span
+                    data-testid={`pool-tables-${classId}-${pool.poolNumber}`}
+                    className="ml-1 font-normal text-muted"
+                  >
+                    (Bord {tables.join(', ')})
+                  </span>
+                )}
+              </span>
               <span
                 className="h-2 overflow-hidden rounded-full bg-stone-200"
                 aria-label={`Pool ${pool.poolNumber} framsteg`}

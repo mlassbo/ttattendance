@@ -23,6 +23,7 @@ interface ClassPoolProgressPool {
   poolNumber: number
   playerCount: number
   completedMatchCount: number
+  tables: number[]
 }
 
 interface ClassPoolProgressPayload {

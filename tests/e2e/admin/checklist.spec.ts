@@ -70,7 +70,7 @@ test.describe('Admin checklist flow', () => {
     await expect(page.getByTestId('workflow-callout-button')).toBeVisible()
 
     await page.getByTestId('workflow-callout-button').click()
-    await expect(page.getByTestId('workflow-last-callout')).toHaveText(/Senaste upprop [A-ZÅÄÖ][a-zåäö]{2} \d{2}:\d{2}/)
+    await expect(page.getByTestId('workflow-last-callout')).toHaveText(/Senaste upprop [A-ZÅÄÖ][a-zåäö]{2,3} \d{2}:\d{2}/)
   })
 
   test('class detail still shows attendance list if checklist returns 404', async ({ page }) => {
@@ -292,7 +292,7 @@ test.describe('Admin checklist flow', () => {
     await page.getByTestId(`dashboard-callout-btn-${seed.pastClassId}`).click()
 
     await expect(page.getByTestId(`dashboard-last-callout-${seed.pastClassId}`)).toHaveText(
-      /Senaste upprop [A-ZÅÄÖ][a-zåäö]{2} \d{2}:\d{2}/,
+      /Senaste upprop [A-ZÅÄÖ][a-zåäö]{2,3} \d{2}:\d{2}/,
     )
   })
 

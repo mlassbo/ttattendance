@@ -6,6 +6,7 @@ export type PoolProgressPool = {
   poolNumber: number
   playerCount: number
   completedMatchCount: number
+  tables: number[]
 }
 
 export type ClassPoolProgress = {
@@ -41,9 +42,101 @@ type SnapshotPlayerRow = {
   snapshot_pool_id: string
 }
 
+type ClassPoolTablesRow = {
+  class_id: string
+  pool_number: number
+  tables: number[] | null
+}
+
 type LocalClassRow = {
   id: string
   name: string
+}
+
+export async function getSnapshotPoolNumbersForClass(
+  supabase: ServerClient,
+  competitionId: string,
+  className: string,
+): Promise<number[]> {
+  const { data: statusRow, error: statusError } = await supabase
+    .from('ondata_integration_status')
+    .select('current_snapshot_id')
+    .eq('competition_id', competitionId)
+    .maybeSingle()
+
+  if (statusError) {
+    throw new Error(statusError.message)
+  }
+
+  const snapshotId = (statusRow as { current_snapshot_id: string | null } | null)?.current_snapshot_id ?? null
+  if (!snapshotId) {
+    return []
+  }
+
+  const { data: snapshotClassRows, error: snapshotClassError } = await supabase
+    .from('ondata_integration_snapshot_classes')
+    .select('id')
+    .eq('snapshot_id', snapshotId)
+    .eq('class_name', className)
+
+  if (snapshotClassError) {
+    throw new Error(snapshotClassError.message)
+  }
+
+  const snapshotClassIds = ((snapshotClassRows ?? []) as Array<{ id: string }>).map(row => row.id)
+  if (snapshotClassIds.length === 0) {
+    return []
+  }
+
+  const { data: poolsData, error: poolsError } = await supabase
+    .from('ondata_integration_snapshot_pools')
+    .select('pool_number')
+    .in('snapshot_class_id', snapshotClassIds)
+    .order('pool_number', { ascending: true })
+
+  if (poolsError) {
+    throw new Error(poolsError.message)
+  }
+
+  const seen = new Set<number>()
+  const ordered: number[] = []
+  for (const row of (poolsData ?? []) as Array<{ pool_number: number }>) {
+    if (!seen.has(row.pool_number)) {
+      seen.add(row.pool_number)
+      ordered.push(row.pool_number)
+    }
+  }
+  return ordered
+}
+
+export async function getPoolTablesByClassId(
+  supabase: ServerClient,
+  classIds: string[],
+): Promise<Map<string, Map<number, number[]>>> {
+  const result = new Map<string, Map<number, number[]>>()
+  if (classIds.length === 0) {
+    return result
+  }
+
+  const { data, error } = await supabase
+    .from('class_pool_tables')
+    .select('class_id, pool_number, tables')
+    .in('class_id', classIds)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  for (const row of (data ?? []) as ClassPoolTablesRow[]) {
+    let perClass = result.get(row.class_id)
+    if (!perClass) {
+      perClass = new Map<number, number[]>()
+      result.set(row.class_id, perClass)
+    }
+    perClass.set(row.pool_number, row.tables ?? [])
+  }
+
+  return result
 }
 
 export async function getPoolProgressByClassId(
@@ -149,7 +242,13 @@ export async function getPoolProgressByClassId(
     )
   }
 
-  const poolsBySnapshotClassId = new Map<string, PoolProgressPool[]>()
+  type PoolBase = {
+    poolNumber: number
+    playerCount: number
+    completedMatchCount: number
+  }
+
+  const poolsBySnapshotClassId = new Map<string, PoolBase[]>()
   for (const pool of poolRows) {
     const playerCount = playerCountByPoolId.get(pool.id) ?? 0
     const list = poolsBySnapshotClassId.get(pool.snapshot_class_id) ?? []
@@ -161,27 +260,36 @@ export async function getPoolProgressByClassId(
     poolsBySnapshotClassId.set(pool.snapshot_class_id, list)
   }
 
+  const allLocalClassIds = Array.from(
+    new Set(Array.from(localClassIdsBySnapshotClassId.values()).flat()),
+  )
+  const tablesByClassId = await getPoolTablesByClassId(supabase, allLocalClassIds)
+
   const byClassId = new Map<string, ClassPoolProgress>()
   for (const [snapshotClassId, localClassIds] of Array.from(localClassIdsBySnapshotClassId.entries())) {
-    const pools = poolsBySnapshotClassId.get(snapshotClassId) ?? []
-    if (pools.length === 0) continue
+    const basePools = poolsBySnapshotClassId.get(snapshotClassId) ?? []
+    if (basePools.length === 0) continue
 
-    pools.sort((a, b) => a.poolNumber - b.poolNumber)
+    basePools.sort((a, b) => a.poolNumber - b.poolNumber)
 
-    const totalMatches = pools.reduce(
+    const totalMatches = basePools.reduce(
       (sum, pool) => sum + (pool.playerCount * (pool.playerCount - 1)) / 2,
       0,
     )
-    const completedMatches = pools.reduce((sum, pool) => sum + pool.completedMatchCount, 0)
-
-    const progress: ClassPoolProgress = {
-      pools,
-      totalMatches,
-      completedMatches,
-    }
+    const completedMatches = basePools.reduce((sum, pool) => sum + pool.completedMatchCount, 0)
 
     for (const localClassId of localClassIds) {
-      byClassId.set(localClassId, progress)
+      const tablesForClass = tablesByClassId.get(localClassId) ?? new Map<number, number[]>()
+      const poolsWithTables: PoolProgressPool[] = basePools.map(pool => ({
+        ...pool,
+        tables: tablesForClass.get(pool.poolNumber) ?? [],
+      }))
+
+      byClassId.set(localClassId, {
+        pools: poolsWithTables,
+        totalMatches,
+        completedMatches,
+      })
     }
   }
 

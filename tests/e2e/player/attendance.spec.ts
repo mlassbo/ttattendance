@@ -49,7 +49,7 @@ test.describe('Player attendance flow', () => {
     await expect(page.getByTestId('public-start-page')).toBeVisible()
     await expect(page.getByTestId('public-start-search-input')).toHaveAttribute(
       'placeholder',
-      'Sök spelare, klubb eller klass',
+      'Sök spelare eller klubb',
     )
     await expect(page.getByTestId('public-start-admin-link')).toContainText('Logga in')
   })

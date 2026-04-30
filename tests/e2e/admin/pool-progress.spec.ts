@@ -102,6 +102,8 @@ test.describe('Admin pool progress strip', () => {
     const poolTwo = page.getByTestId(`pool-dot-${classRow.id}-2`)
     await expect(poolTwo).toContainText('Pool 2')
     await expect(poolTwo).toContainText('2/6')
+    await expect(page.getByTestId(`pool-tables-${classRow.id}-1`)).toHaveCount(0)
+    await expect(page.getByTestId(`pool-tables-${classRow.id}-2`)).toHaveCount(0)
     await expect(page.getByTestId(`pool-sync-stale-${classRow.id}`)).toHaveCount(0)
     await expect(page.getByTestId(`pool-sync-soft-${classRow.id}`)).toHaveCount(0)
   })

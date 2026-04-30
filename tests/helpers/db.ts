@@ -1713,6 +1713,31 @@ export async function seedOnDataSnapshotForClasses(
   return { snapshotId }
 }
 
+export async function seedClassPoolTables(
+  supabase: SupabaseClient,
+  classId: string,
+  pools: Array<{ poolNumber: number; tables: number[] }>,
+): Promise<void> {
+  if (pools.length === 0) return
+
+  const now = new Date().toISOString()
+  const { error } = await supabase
+    .from('class_pool_tables')
+    .upsert(
+      pools.map(pool => ({
+        class_id: classId,
+        pool_number: pool.poolNumber,
+        tables: pool.tables,
+        updated_at: now,
+      })),
+      { onConflict: 'class_id,pool_number' },
+    )
+
+  if (error) {
+    throw new Error(`Failed to seed class pool tables: ${error.message}`)
+  }
+}
+
 export async function seedPoolResultSnapshots(
   supabase: SupabaseClient,
   input: {
