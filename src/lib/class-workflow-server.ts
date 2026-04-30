@@ -14,6 +14,8 @@ type AdminClassRow = {
   attendance_deadline: string
   has_a_playoff: boolean
   has_b_playoff: boolean
+  has_seeding: boolean
+  players_per_pool: number | null
   sessions: { competition_id: string } | Array<{ competition_id: string }> | null
 }
 
@@ -24,6 +26,8 @@ type AdminClassDescriptor = {
   attendanceDeadline: string
   hasAPlayoff: boolean
   hasBPlayoff: boolean
+  hasSeeding: boolean
+  playersPerPool: number | null
 }
 
 type ClassWorkflowStepRow = {
@@ -83,6 +87,8 @@ function toAdminClassDescriptor(classRow: AdminClassRow): AdminClassDescriptor {
     attendanceDeadline: classRow.attendance_deadline,
     hasAPlayoff: classRow.has_a_playoff,
     hasBPlayoff: classRow.has_b_playoff,
+    hasSeeding: classRow.has_seeding,
+    playersPerPool: classRow.players_per_pool,
   }
 }
 
@@ -93,7 +99,7 @@ export async function getAuthorizedAdminClass(
 ) {
   const { data, error } = await supabase
     .from('classes')
-    .select('id, name, start_time, attendance_deadline, has_a_playoff, has_b_playoff, sessions!inner(competition_id)')
+    .select('id, name, start_time, attendance_deadline, has_a_playoff, has_b_playoff, has_seeding, players_per_pool, sessions!inner(competition_id)')
     .eq('id', classId)
     .single()
 
@@ -205,7 +211,12 @@ export async function getClassWorkflowSummaryMap(
         counts: classRow.counts,
         attendanceDeadline: classRow.attendanceDeadline,
         steps: stepsByClassId.get(classRow.id) ?? [],
-        config: { hasAPlayoff: classRow.hasAPlayoff, hasBPlayoff: classRow.hasBPlayoff },
+        config: {
+          hasAPlayoff: classRow.hasAPlayoff,
+          hasBPlayoff: classRow.hasBPlayoff,
+          hasSeeding: classRow.hasSeeding,
+          playersPerPool: classRow.playersPerPool,
+        },
         lastCalloutAt: lastCalloutAtByClassId.get(classRow.id) ?? null,
         now,
       }),

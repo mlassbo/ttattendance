@@ -1,3 +1,5 @@
+import { getEstimatedPoolCount, getSeededPlayerCount } from './class-seeding'
+
 export const CLASS_WORKFLOW_STEP_KEYS = [
   'remove_absent_players',
   'seed_class',
@@ -97,6 +99,8 @@ export type ClassWorkflowNextAction = {
 export type ClassWorkflowConfig = {
   hasAPlayoff: boolean
   hasBPlayoff: boolean
+  hasSeeding: boolean
+  playersPerPool: number | null
 }
 
 const PUBLISH_POOL_RESULTS_HELPER_WITH_PLAYOFF =
@@ -105,14 +109,40 @@ const PUBLISH_POOL_RESULTS_HELPER_WITH_PLAYOFF =
 const PUBLISH_POOL_RESULTS_HELPER_WITHOUT_PLAYOFF =
   'Skriv ut och sätt upp poolresultaten. Ropa ut att resultaten är uppsatta och att prisutdelning sker inom kort.'
 
+const SEED_CLASS_CONFIG_MISSING_HELPER =
+  'Seedning är aktiverad men antal spelare per pool saknas.'
+
+function resolveSeedClassHelper(
+  counts: ClassWorkflowAttendanceCounts,
+  config: ClassWorkflowConfig,
+) {
+  const estimatedPoolCount = getEstimatedPoolCount(counts.confirmed, config.playersPerPool)
+
+  if (estimatedPoolCount === null) {
+    return SEED_CLASS_CONFIG_MISSING_HELPER
+  }
+
+  if (estimatedPoolCount < 2) {
+    return `Gör seedning i tävlingssystemet. Ingen seedning behövs just nu (beräknat antal pooler: ${estimatedPoolCount}).`
+  }
+
+  const seededPlayers = getSeededPlayerCount(estimatedPoolCount)
+  return `Gör seedning i tävlingssystemet. ${seededPlayers} spelare ska seedas (beräknat antal pooler: ${estimatedPoolCount}).`
+}
+
 function resolveStepHelper(
   definition: ClassWorkflowStepDefinition,
+  counts: ClassWorkflowAttendanceCounts,
   config: ClassWorkflowConfig,
 ) {
   if (definition.key === 'publish_pool_results') {
     return config.hasAPlayoff || config.hasBPlayoff
       ? PUBLISH_POOL_RESULTS_HELPER_WITH_PLAYOFF
       : PUBLISH_POOL_RESULTS_HELPER_WITHOUT_PLAYOFF
+  }
+
+  if (definition.key === 'seed_class') {
+    return resolveSeedClassHelper(counts, config)
   }
 
   return definition.helper
@@ -416,6 +446,10 @@ function isWorkflowStepVisible(
     return config.hasAPlayoff
   }
 
+  if (definition.key === 'seed_class') {
+    return config.hasSeeding
+  }
+
   if (definition.key === 'b_playoff') {
     return config.hasBPlayoff
   }
@@ -524,7 +558,7 @@ export function buildClassWorkflowSummary({
 
     return {
       ...definition,
-      helper: resolveStepHelper(definition, config),
+      helper: resolveStepHelper(definition, counts, config),
       status: step.status,
       derivedState,
       note: step.note,

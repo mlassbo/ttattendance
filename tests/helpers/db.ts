@@ -162,12 +162,16 @@ export async function seedAdminTestCompetition(
         name: 'Herrar A-klass',
         start_time:          '2025-09-13T09:00:00+02:00',
         attendance_deadline: '2099-09-13T08:15:00+02:00',
+        has_seeding: true,
+        players_per_pool: 4,
       },
       {
         session_id: sessionId,
         name: 'Utgången klass',
         start_time:          '2020-09-13T09:00:00+02:00',
         attendance_deadline: '2020-09-13T08:15:00+02:00',
+        has_seeding: true,
+        players_per_pool: 4,
       },
     ])
     .select('id, name')
@@ -462,6 +466,8 @@ export interface SeededClassSettingsCompetition {
       startTime: string
       attendanceDeadline: string
       plannedTablesPerPool: number
+      hasSeeding: boolean
+      playersPerPool: number | null
     }>
   }>
 }
@@ -510,6 +516,8 @@ export async function seedClassSettingsCompetition(
         start_time: '2025-09-13T09:00:00+02:00',
         attendance_deadline: '2025-09-13T08:15:00+02:00',
         planned_tables_per_pool: 1,
+        has_seeding: true,
+        players_per_pool: 4,
       },
       {
         session_id: session1.id,
@@ -517,6 +525,8 @@ export async function seedClassSettingsCompetition(
         start_time: '2025-09-13T09:30:00+02:00',
         attendance_deadline: '2025-09-13T08:45:00+02:00',
         planned_tables_per_pool: 1,
+        has_seeding: true,
+        players_per_pool: 4,
       },
       {
         session_id: session2.id,
@@ -524,9 +534,11 @@ export async function seedClassSettingsCompetition(
         start_time: '2025-09-13T13:00:00+02:00',
         attendance_deadline: '2025-09-13T12:15:00+02:00',
         planned_tables_per_pool: 1,
+        has_seeding: true,
+        players_per_pool: 4,
       },
     ])
-    .select('id, name, session_id, start_time, attendance_deadline, planned_tables_per_pool')
+    .select('id, name, session_id, start_time, attendance_deadline, planned_tables_per_pool, has_seeding, players_per_pool')
 
   if (classesError || !classes) {
     throw new Error(`Failed to seed class settings classes: ${classesError?.message ?? 'Unknown error'}`)
@@ -543,6 +555,8 @@ export async function seedClassSettingsCompetition(
         startTime: c.start_time,
         attendanceDeadline: c.attendance_deadline,
         plannedTablesPerPool: c.planned_tables_per_pool,
+        hasSeeding: c.has_seeding,
+        playersPerPool: c.players_per_pool,
       }))
   }
 
@@ -552,6 +566,212 @@ export async function seedClassSettingsCompetition(
       { id: session1.id, name: 'Pass 1', classes: classesForSession(session1.id) },
       { id: session2.id, name: 'Pass 2', classes: classesForSession(session2.id) },
     ],
+  }
+}
+
+type AdminClassSeedingSeed = {
+  name: string
+  startTime?: string
+  hasSeeding?: boolean
+  playersPerPool?: number | null
+  registeredPlayers: number
+  confirmedPlayers?: number
+  absentPlayers?: number
+}
+
+export interface SeededAdminClassSeedingCompetition {
+  competitionId: string
+  classes: Array<{
+    id: string
+    name: string
+    hasSeeding: boolean
+    playersPerPool: number | null
+    registrations: Array<{
+      id: string
+      attendanceStatus: 'confirmed' | 'absent' | null
+    }>
+  }>
+}
+
+export async function seedAdminClassSeedingCompetition(
+  supabase: SupabaseClient,
+  slug: string,
+  classSeeds: AdminClassSeedingSeed[],
+  options?: { adminPin?: string; playerPin?: string },
+): Promise<SeededAdminClassSeedingCompetition> {
+  if (classSeeds.length === 0) {
+    throw new Error('seedAdminClassSeedingCompetition requires at least one class')
+  }
+
+  const adminPin = options?.adminPin ?? '2222'
+  const playerPin = options?.playerPin ?? '1111'
+
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash(playerPin, 4),
+    bcrypt.hash(adminPin, 4),
+  ])
+
+  const { data: competition, error: competitionError } = await supabase
+    .from('competitions')
+    .insert({
+      name: 'Seeding Workflow Testtävling',
+      slug,
+      player_pin_hash: playerPinHash,
+      admin_pin_hash: adminPinHash,
+    })
+    .select('id')
+    .single()
+
+  if (competitionError || !competition) {
+    throw new Error(`Failed to seed class-seeding competition: ${competitionError?.message ?? 'Unknown error'}`)
+  }
+
+  const competitionId = competition.id
+
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .insert({
+      competition_id: competitionId,
+      name: 'Pass 1',
+      date: '2025-09-13',
+      session_order: 1,
+    })
+    .select('id')
+    .single()
+
+  if (sessionError || !session) {
+    throw new Error(`Failed to seed class-seeding session: ${sessionError?.message ?? 'Unknown error'}`)
+  }
+
+  const seenNames = new Set<string>()
+  for (const classSeed of classSeeds) {
+    if (seenNames.has(classSeed.name)) {
+      throw new Error(`Duplicate class name in seed: ${classSeed.name}`)
+    }
+
+    const confirmedPlayers = classSeed.confirmedPlayers ?? classSeed.registeredPlayers
+    const absentPlayers = classSeed.absentPlayers ?? 0
+    if (confirmedPlayers < 0 || absentPlayers < 0 || confirmedPlayers + absentPlayers > classSeed.registeredPlayers) {
+      throw new Error(`Invalid attendance counts for seeded class: ${classSeed.name}`)
+    }
+
+    seenNames.add(classSeed.name)
+  }
+
+  const futureDeadline = '2099-01-01T00:00:00Z'
+  const { data: insertedClasses, error: classError } = await supabase
+    .from('classes')
+    .insert(
+      classSeeds.map((classSeed, index) => ({
+        session_id: session.id,
+        name: classSeed.name,
+        start_time: classSeed.startTime ?? `2025-09-13T${String(9 + index).padStart(2, '0')}:00:00+02:00`,
+        attendance_deadline: futureDeadline,
+        has_seeding: classSeed.hasSeeding ?? true,
+        players_per_pool: classSeed.playersPerPool ?? null,
+      })),
+    )
+    .select('id, name, has_seeding, players_per_pool')
+
+  if (classError || !insertedClasses) {
+    throw new Error(`Failed to seed class-seeding classes: ${classError?.message ?? 'Unknown error'}`)
+  }
+
+  const classesByName = new Map<string, { id: string; name: string; has_seeding: boolean; players_per_pool: number | null }>()
+  for (const row of insertedClasses) {
+    classesByName.set(row.name, row)
+  }
+
+  const now = new Date().toISOString()
+  let playerIndex = 0
+  const seededClasses: SeededAdminClassSeedingCompetition['classes'] = []
+
+  for (const classSeed of classSeeds) {
+    const classRow = classesByName.get(classSeed.name)
+    if (!classRow) {
+      throw new Error(`Seeded class not found after insert: ${classSeed.name}`)
+    }
+
+    const playerRows = Array.from({ length: classSeed.registeredPlayers }, () => {
+      playerIndex += 1
+      return {
+        competition_id: competitionId,
+        name: `Seedningsspelare ${playerIndex}`,
+        club: 'Seedningsklubben',
+      }
+    })
+
+    const { data: insertedPlayers, error: playerError } = await supabase
+      .from('players')
+      .insert(playerRows)
+      .select('id')
+
+    if (playerError || !insertedPlayers) {
+      throw new Error(`Failed to seed class-seeding players: ${playerError?.message ?? 'Unknown error'}`)
+    }
+
+    const { data: regs, error: regError } = await supabase
+      .from('registrations')
+      .insert(
+        insertedPlayers.map(player => ({
+          player_id: player.id,
+          class_id: classRow.id,
+          status: 'registered' as const,
+        })),
+      )
+      .select('id')
+
+    if (regError || !regs) {
+      throw new Error(`Failed to seed class-seeding registrations: ${regError?.message ?? 'Unknown error'}`)
+    }
+
+    const confirmedPlayers = classSeed.confirmedPlayers ?? classSeed.registeredPlayers
+    const absentPlayers = classSeed.absentPlayers ?? 0
+    const attendanceRows = [
+      ...regs.slice(0, confirmedPlayers).map(reg => ({
+        registration_id: reg.id,
+        status: 'confirmed' as const,
+        reported_at: now,
+        reported_by: 'admin' as const,
+        idempotency_key: `class-seeding-confirmed-${reg.id}`,
+      })),
+      ...regs.slice(confirmedPlayers, confirmedPlayers + absentPlayers).map(reg => ({
+        registration_id: reg.id,
+        status: 'absent' as const,
+        reported_at: now,
+        reported_by: 'admin' as const,
+        idempotency_key: `class-seeding-absent-${reg.id}`,
+      })),
+    ]
+
+    if (attendanceRows.length > 0) {
+      const { error: attendanceError } = await supabase.from('attendance').insert(attendanceRows)
+
+      if (attendanceError) {
+        throw new Error(`Failed to seed class-seeding attendance: ${attendanceError.message}`)
+      }
+    }
+
+    seededClasses.push({
+      id: classRow.id,
+      name: classRow.name,
+      hasSeeding: classRow.has_seeding,
+      playersPerPool: classRow.players_per_pool,
+      registrations: regs.map((reg, index) => ({
+        id: reg.id,
+        attendanceStatus:
+          index < confirmedPlayers
+            ? 'confirmed'
+            : index < confirmedPlayers + absentPlayers
+              ? 'absent'
+              : null,
+      })),
+    })
+  }
+
+  return {
+    competitionId,
+    classes: seededClasses,
   }
 }
 
@@ -1492,6 +1712,8 @@ export async function seedAdminPoolProgressCompetition(
         name: classSeed.name,
         start_time: classSeed.startTime,
         planned_tables_per_pool: classSeed.plannedTablesPerPool ?? 1,
+        has_seeding: true,
+        players_per_pool: 4,
         attendance_deadline:
           classSeed.phase === 'awaiting_attendance' ? futureDeadline : pastDeadline,
       })),
@@ -2028,6 +2250,8 @@ export async function seedAdminPlayoffCompetition(
             : pastDeadline,
         has_a_playoff: classSeed.hasAPlayoff ?? true,
         has_b_playoff: classSeed.hasBPlayoff ?? true,
+        has_seeding: true,
+        players_per_pool: 4,
       })),
     )
     .select('id, name, start_time')

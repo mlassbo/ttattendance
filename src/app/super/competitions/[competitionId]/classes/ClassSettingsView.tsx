@@ -14,6 +14,8 @@ type ClassData = {
   plannedTablesPerPool: number
   hasAPlayoff: boolean
   hasBPlayoff: boolean
+  hasSeeding: boolean
+  playersPerPool: number | null
 }
 
 type SessionData = {
@@ -38,6 +40,10 @@ type EditingPlannedTablesPerPool = {
   value: string
 }
 
+type EditingPlayersPerPool = {
+  value: string
+}
+
 type SaveStatus = {
   state: 'saving' | 'saved' | 'error'
   message?: string
@@ -45,6 +51,7 @@ type SaveStatus = {
 
 const MAX_PLAYERS_SAVE_DELAY_MS = 450
 const PLANNED_TABLES_SAVE_DELAY_MS = 450
+const PLAYERS_PER_POOL_SAVE_DELAY_MS = 450
 
 const DeadlineInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function DeadlineInput(props, ref) {
@@ -179,8 +186,11 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
   const [maxPlayersStatus, setMaxPlayersStatus] = useState<Record<string, SaveStatus>>({})
   const [plannedTablesDrafts, setPlannedTablesDrafts] = useState<Record<string, EditingPlannedTablesPerPool>>({})
   const [plannedTablesStatus, setPlannedTablesStatus] = useState<Record<string, SaveStatus>>({})
+  const [playersPerPoolDrafts, setPlayersPerPoolDrafts] = useState<Record<string, EditingPlayersPerPool>>({})
+  const [playersPerPoolStatus, setPlayersPerPoolStatus] = useState<Record<string, SaveStatus>>({})
   const [sessionStatus, setSessionStatus] = useState<Record<string, SaveStatus>>({})
   const [playoffStatus, setPlayoffStatus] = useState<Record<string, SaveStatus>>({})
+  const [seedingStatus, setSeedingStatus] = useState<Record<string, SaveStatus>>({})
   const [flashClassIds, setFlashClassIds] = useState<Record<string, boolean>>({})
   const deadlineSaveInFlight = useRef<Record<string, boolean>>({})
   const pendingDeadlineDrafts = useRef<Record<string, EditingDeadline | undefined>>({})
@@ -191,6 +201,9 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
   const plannedTablesTimers = useRef<Record<string, number>>({})
   const plannedTablesSaveInFlight = useRef<Record<string, boolean>>({})
   const pendingPlannedTablesValues = useRef<Record<string, string | undefined>>({})
+  const playersPerPoolTimers = useRef<Record<string, number>>({})
+  const playersPerPoolSaveInFlight = useRef<Record<string, boolean>>({})
+  const pendingPlayersPerPoolValues = useRef<Record<string, string | undefined>>({})
 
   async function load() {
     setLoading(true)
@@ -226,6 +239,10 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
       })
 
       Object.values(plannedTablesTimers.current).forEach(timerId => {
+        window.clearTimeout(timerId)
+      })
+
+      Object.values(playersPerPoolTimers.current).forEach(timerId => {
         window.clearTimeout(timerId)
       })
     }
@@ -311,6 +328,18 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
     })
   }
 
+  function clearPlayersPerPoolStatus(classId: string) {
+    setPlayersPerPoolStatus(previous => {
+      if (!(classId in previous)) {
+        return previous
+      }
+
+      const next = { ...previous }
+      delete next[classId]
+      return next
+    })
+  }
+
   function getDeadlineDraft(cls: ClassData): EditingDeadline {
     return deadlineDrafts[cls.id] ?? toDateAndTime(cls.attendanceDeadline)
   }
@@ -321,6 +350,10 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
 
   function getPlannedTablesDraft(cls: ClassData): string {
     return plannedTablesDrafts[cls.id]?.value ?? String(cls.plannedTablesPerPool)
+  }
+
+  function getPlayersPerPoolDraft(cls: ClassData): string {
+    return playersPerPoolDrafts[cls.id]?.value ?? (cls.playersPerPool === null ? '' : String(cls.playersPerPool))
   }
 
   async function saveDeadline(classId: string, draft: EditingDeadline) {
@@ -602,6 +635,98 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
     }
   }
 
+  async function savePlayersPerPool(classId: string, rawValue: string) {
+    const current = findClassById(classId)
+    if (!current) {
+      return
+    }
+
+    const trimmedValue = rawValue.trim()
+    const parsedPlayersPerPool = Number(trimmedValue)
+
+    if (trimmedValue === '' || !Number.isInteger(parsedPlayersPerPool) || parsedPlayersPerPool <= 0) {
+      setPlayersPerPoolStatus(previous => ({
+        ...previous,
+        [classId]: {
+          state: 'error',
+          message: 'Antal spelare per pool måste vara ett positivt heltal',
+        },
+      }))
+      return
+    }
+
+    if (current.cls.playersPerPool === parsedPlayersPerPool) {
+      clearPlayersPerPoolStatus(classId)
+      return
+    }
+
+    setPlayersPerPoolStatus(previous => ({ ...previous, [classId]: { state: 'saving' } }))
+
+    try {
+      const res = await fetch(
+        `/api/super/competitions/${competitionId}/classes/${classId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ playersPerPool: parsedPlayersPerPool }),
+        },
+      )
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setPlayersPerPoolStatus(previous => ({
+          ...previous,
+          [classId]: {
+            state: 'error',
+            message: data?.error ?? 'Kunde inte spara',
+          },
+        }))
+        return
+      }
+
+      updateClass(classId, cls => ({ ...cls, playersPerPool: parsedPlayersPerPool }))
+      setPlayersPerPoolDrafts(previous => ({
+        ...previous,
+        [classId]: { value: String(parsedPlayersPerPool) },
+      }))
+      setPlayersPerPoolStatus(previous => ({ ...previous, [classId]: { state: 'saved' } }))
+      triggerSaveFlash(classId)
+    } catch {
+      setPlayersPerPoolStatus(previous => ({
+        ...previous,
+        [classId]: {
+          state: 'error',
+          message: 'Nätverksfel',
+        },
+      }))
+    }
+  }
+
+  async function requestPlayersPerPoolSave(classId: string, rawValue: string) {
+    if (playersPerPoolSaveInFlight.current[classId]) {
+      pendingPlayersPerPoolValues.current[classId] = rawValue
+      setPlayersPerPoolStatus(previous => ({ ...previous, [classId]: { state: 'saving' } }))
+      return
+    }
+
+    playersPerPoolSaveInFlight.current[classId] = true
+
+    try {
+      await savePlayersPerPool(classId, rawValue)
+    } finally {
+      playersPerPoolSaveInFlight.current[classId] = false
+
+      const pendingValue = pendingPlayersPerPoolValues.current[classId]
+      if (pendingValue !== undefined && pendingValue !== rawValue) {
+        delete pendingPlayersPerPoolValues.current[classId]
+        await requestPlayersPerPoolSave(classId, pendingValue)
+        return
+      }
+
+      delete pendingPlayersPerPoolValues.current[classId]
+    }
+  }
+
   function queueMaxPlayersSave(classId: string, rawValue: string) {
     const activeTimer = maxPlayersTimers.current[classId]
     if (activeTimer) {
@@ -624,6 +749,18 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
       void requestPlannedTablesSave(classId, rawValue)
       delete plannedTablesTimers.current[classId]
     }, PLANNED_TABLES_SAVE_DELAY_MS)
+  }
+
+  function queuePlayersPerPoolSave(classId: string, rawValue: string) {
+    const activeTimer = playersPerPoolTimers.current[classId]
+    if (activeTimer) {
+      window.clearTimeout(activeTimer)
+    }
+
+    playersPerPoolTimers.current[classId] = window.setTimeout(() => {
+      void requestPlayersPerPoolSave(classId, rawValue)
+      delete playersPerPoolTimers.current[classId]
+    }, PLAYERS_PER_POOL_SAVE_DELAY_MS)
   }
 
   function flushMaxPlayersSave(classId: string) {
@@ -688,6 +825,38 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
       [classId]: { value: String(current.cls.plannedTablesPerPool) },
     }))
     clearPlannedTablesStatus(classId)
+  }
+
+  function flushPlayersPerPoolSave(classId: string) {
+    const activeTimer = playersPerPoolTimers.current[classId]
+    if (activeTimer) {
+      window.clearTimeout(activeTimer)
+      delete playersPerPoolTimers.current[classId]
+    }
+
+    const currentDraft = playersPerPoolDrafts[classId]?.value
+    if (currentDraft !== undefined) {
+      void requestPlayersPerPoolSave(classId, currentDraft)
+    }
+  }
+
+  function resetPlayersPerPoolDraft(classId: string) {
+    const activeTimer = playersPerPoolTimers.current[classId]
+    if (activeTimer) {
+      window.clearTimeout(activeTimer)
+      delete playersPerPoolTimers.current[classId]
+    }
+
+    const current = findClassById(classId)
+    if (!current) {
+      return
+    }
+
+    setPlayersPerPoolDrafts(previous => ({
+      ...previous,
+      [classId]: { value: current.cls.playersPerPool === null ? '' : String(current.cls.playersPerPool) },
+    }))
+    clearPlayersPerPoolStatus(classId)
   }
 
   async function changeSession(classId: string, newSessionId: string) {
@@ -791,6 +960,56 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
     }
   }
 
+  async function changeSeedingFlag(classId: string, value: boolean) {
+    const current = findClassById(classId)
+    if (!current) {
+      return
+    }
+
+    const previousValue = current.cls.hasSeeding
+    updateClass(classId, cls => ({ ...cls, hasSeeding: value }))
+    if (!value) {
+      clearPlayersPerPoolStatus(classId)
+    }
+    setSeedingStatus(previous => ({ ...previous, [classId]: { state: 'saving' } }))
+
+    try {
+      const res = await fetch(
+        `/api/super/competitions/${competitionId}/classes/${classId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hasSeeding: value }),
+        },
+      )
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        updateClass(classId, cls => ({ ...cls, hasSeeding: previousValue }))
+        setSeedingStatus(previous => ({
+          ...previous,
+          [classId]: {
+            state: 'error',
+            message: data?.error ?? 'Kunde inte spara',
+          },
+        }))
+        return
+      }
+
+      setSeedingStatus(previous => ({ ...previous, [classId]: { state: 'saved' } }))
+      triggerSaveFlash(classId)
+    } catch {
+      updateClass(classId, cls => ({ ...cls, hasSeeding: previousValue }))
+      setSeedingStatus(previous => ({
+        ...previous,
+        [classId]: {
+          state: 'error',
+          message: 'Nätverksfel',
+        },
+      }))
+    }
+  }
+
   if (loading && sessions.length === 0) {
     return (
       <section
@@ -840,6 +1059,7 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
               const deadlineDraft = getDeadlineDraft(cls)
               const maxPlayersDraft = getMaxPlayersDraft(cls)
               const plannedTablesDraft = getPlannedTablesDraft(cls)
+              const playersPerPoolDraft = getPlayersPerPoolDraft(cls)
               const isSessionSaving = sessionStatus[cls.id]?.state === 'saving'
               const isFlashing = flashClassIds[cls.id] === true
 
@@ -1041,6 +1261,75 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
                       </div>
                       <div className="col-start-2">
                         <StatusNote status={plannedTablesStatus[cls.id]} testId={`planned-tables-error-${cls.id}`} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[156px_minmax(0,1fr)] gap-x-4 gap-y-2 items-center">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                        Seedning
+                      </span>
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-ink">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            data-testid={`has-seeding-checkbox-${cls.id}`}
+                            checked={cls.hasSeeding}
+                            onChange={event => void changeSeedingFlag(cls.id, event.target.checked)}
+                          />
+                          Använd seedning
+                        </label>
+                      </div>
+                      <div className="col-start-2">
+                        <StatusNote status={seedingStatus[cls.id]} testId={`seeding-error-${cls.id}`} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[156px_minmax(0,1fr)] gap-x-4 gap-y-2 items-center">
+                      <label
+                        htmlFor={`players-per-pool-input-${cls.id}`}
+                        className="text-xs font-semibold uppercase tracking-[0.18em] text-muted"
+                      >
+                        Antal spelare per pool
+                      </label>
+                      <div className={`flex items-center justify-start ${cls.hasSeeding ? '' : 'opacity-60'}`}>
+                        <input
+                          id={`players-per-pool-input-${cls.id}`}
+                          data-testid={`players-per-pool-input-${cls.id}`}
+                          type="number"
+                          inputMode="numeric"
+                          min="1"
+                          step="1"
+                          value={playersPerPoolDraft}
+                          disabled={!cls.hasSeeding}
+                          onChange={event => {
+                            const nextValue = event.target.value
+                            setPlayersPerPoolDrafts(previous => ({
+                              ...previous,
+                              [cls.id]: { value: nextValue },
+                            }))
+                            clearPlayersPerPoolStatus(cls.id)
+                            queuePlayersPerPoolSave(cls.id, nextValue)
+                          }}
+                          onBlur={() => flushPlayersPerPoolSave(cls.id)}
+                          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              flushPlayersPerPoolSave(cls.id)
+                            }
+
+                            if (event.key === 'Escape') {
+                              event.preventDefault()
+                              resetPlayersPerPoolDraft(cls.id)
+                            }
+                          }}
+                          className="app-input w-full max-w-[132px] py-2 text-sm tabular-nums disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-muted"
+                        />
+                      </div>
+                      <div className="col-start-2">
+                        <StatusNote
+                          status={playersPerPoolStatus[cls.id]}
+                          testId={`players-per-pool-error-${cls.id}`}
+                        />
                       </div>
                     </div>
 

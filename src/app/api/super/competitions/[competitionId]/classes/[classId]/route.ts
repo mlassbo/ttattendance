@@ -19,6 +19,8 @@ export async function PATCH(
     plannedTablesPerPool?: number
     hasAPlayoff?: boolean
     hasBPlayoff?: boolean
+    hasSeeding?: boolean
+    playersPerPool?: number | null
   }
 
   if (
@@ -28,9 +30,11 @@ export async function PATCH(
     && !('plannedTablesPerPool' in body)
     && !('hasAPlayoff' in body)
     && !('hasBPlayoff' in body)
+    && !('hasSeeding' in body)
+    && !('playersPerPool' in body)
   ) {
     return NextResponse.json(
-      { error: 'Minst ett fält måste skickas (attendanceDeadline, sessionId, maxPlayers, plannedTablesPerPool, hasAPlayoff eller hasBPlayoff)' },
+      { error: 'Minst ett fält måste skickas (attendanceDeadline, sessionId, maxPlayers, plannedTablesPerPool, hasAPlayoff, hasBPlayoff, hasSeeding eller playersPerPool)' },
       { status: 400 },
     )
   }
@@ -114,6 +118,28 @@ export async function PATCH(
     updates.has_b_playoff = body.hasBPlayoff
   }
 
+  if ('hasSeeding' in body) {
+    if (typeof body.hasSeeding !== 'boolean') {
+      return NextResponse.json(
+        { error: 'hasSeeding måste vara ett booleskt värde' },
+        { status: 400 },
+      )
+    }
+
+    updates.has_seeding = body.hasSeeding
+  }
+
+  if ('playersPerPool' in body) {
+    if (body.playersPerPool !== null && (!Number.isInteger(body.playersPerPool) || body.playersPerPool <= 0)) {
+      return NextResponse.json(
+        { error: 'Antal spelare per pool måste vara ett positivt heltal' },
+        { status: 400 },
+      )
+    }
+
+    updates.players_per_pool = body.playersPerPool
+  }
+
   if (sessionId) {
     // Verify the session belongs to the same competition
     const { data: targetSession, error: sessionError } = await supabase
@@ -137,7 +163,7 @@ export async function PATCH(
     .from('classes')
     .update(updates)
     .eq('id', params.classId)
-    .select('id, session_id, name, start_time, attendance_deadline, max_players, planned_tables_per_pool, has_a_playoff, has_b_playoff')
+    .select('id, session_id, name, start_time, attendance_deadline, max_players, planned_tables_per_pool, has_a_playoff, has_b_playoff, has_seeding, players_per_pool')
     .single()
 
   if (updateError) {
@@ -154,5 +180,7 @@ export async function PATCH(
     plannedTablesPerPool: updated.planned_tables_per_pool,
     hasAPlayoff: updated.has_a_playoff,
     hasBPlayoff: updated.has_b_playoff,
+    hasSeeding: updated.has_seeding,
+    playersPerPool: updated.players_per_pool,
   })
 }

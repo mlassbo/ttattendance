@@ -37,7 +37,7 @@ export async function GET(
 
   const { data: classes, error: classesError } = await supabase
     .from('classes')
-    .select('id, session_id, name, start_time, attendance_deadline, max_players, planned_tables_per_pool, has_a_playoff, has_b_playoff')
+    .select('id, session_id, name, start_time, attendance_deadline, max_players, planned_tables_per_pool, has_a_playoff, has_b_playoff, has_seeding, players_per_pool')
     .in('session_id', sessionIds)
     .order('start_time', { ascending: true })
 
@@ -61,6 +61,8 @@ export async function GET(
         plannedTablesPerPool: c.planned_tables_per_pool,
         hasAPlayoff: c.has_a_playoff,
         hasBPlayoff: c.has_b_playoff,
+        hasSeeding: c.has_seeding,
+        playersPerPool: c.players_per_pool,
       })),
   }))
 

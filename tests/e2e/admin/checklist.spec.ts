@@ -317,7 +317,7 @@ test.describe('Admin checklist flow', () => {
       'Seeda klass',
     )
     await expect(page.getByTestId(`dashboard-next-action-helper-${seed.futureClassId}`)).toContainText(
-      'Gör seedning i tävlingssystemet om klassen ska seedas.',
+      'Ingen seedning behövs just nu (beräknat antal pooler: 1).',
     )
     await expect(page.getByTestId(`dashboard-followup-action-${seed.futureClassId}`)).toContainText(
       'Lotta och publicera pooler',

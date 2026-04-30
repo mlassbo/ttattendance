@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     // Step 1 — sessions + their classes (2-level nesting, reliable).
     const { data: sessionData, error: sessError } = await supabase
       .from('sessions')
-      .select('id, name, date, session_order, classes(id, name, start_time, attendance_deadline, planned_tables_per_pool, has_a_playoff, has_b_playoff)')
+      .select('id, name, date, session_order, classes(id, name, start_time, attendance_deadline, planned_tables_per_pool, has_a_playoff, has_b_playoff, has_seeding, players_per_pool)')
       .eq('competition_id', auth.competitionId)
       .order('date')
       .order('session_order')
@@ -40,6 +40,8 @@ export async function GET(req: NextRequest) {
         plannedTablesPerPool: (cls.planned_tables_per_pool as number | null | undefined) ?? 1,
         hasAPlayoff: (cls.has_a_playoff as boolean | null | undefined) ?? true,
         hasBPlayoff: (cls.has_b_playoff as boolean | null | undefined) ?? true,
+        hasSeeding: (cls.has_seeding as boolean | null | undefined) ?? true,
+        playersPerPool: (cls.players_per_pool as number | null | undefined) ?? null,
       })),
     )
 
@@ -148,6 +150,8 @@ export async function GET(req: NextRequest) {
             plannedTablesPerPool: cls.planned_tables_per_pool ?? 1,
             hasAPlayoff: cls.has_a_playoff ?? true,
             hasBPlayoff: cls.has_b_playoff ?? true,
+            hasSeeding: cls.has_seeding ?? true,
+            playersPerPool: cls.players_per_pool ?? null,
             counts: { confirmed, absent, noResponse, total: regs.length },
             poolProgress: classPoolProgress,
             playoffProgress: classPlayoffProgress,
