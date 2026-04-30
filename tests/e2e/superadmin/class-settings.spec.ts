@@ -227,6 +227,76 @@ test('edit planned tables per pool — validation rejects zero', async ({ page }
   await expect(page.getByTestId(`planned-tables-error-${cls.id}`)).toContainText('positivt heltal')
 })
 
+test('playoff toggles — default for new classes is both on', async ({ page }) => {
+  const supabase = testClient()
+  const slug = `${TEST_PREFIX}playoff-default`
+  const { competitionId, sessions } = await seedClassSettingsCompetition(supabase, slug)
+
+  const cls = sessions[0].classes[0]
+
+  await loginAsSuperadmin(page)
+  await page.goto(`/super/competitions/${competitionId}/classes`)
+
+  await expect(page.getByTestId(`has-a-playoff-checkbox-${cls.id}`)).toBeChecked()
+  await expect(page.getByTestId(`has-b-playoff-checkbox-${cls.id}`)).toBeChecked()
+})
+
+test('playoff toggles — uncheck A-slutspel persists across reload', async ({ page }) => {
+  const supabase = testClient()
+  const slug = `${TEST_PREFIX}playoff-toggle-a`
+  const { competitionId, sessions } = await seedClassSettingsCompetition(supabase, slug)
+
+  const cls = sessions[0].classes[0]
+
+  await loginAsSuperadmin(page)
+  await page.goto(`/super/competitions/${competitionId}/classes`)
+
+  await page.getByTestId(`has-a-playoff-checkbox-${cls.id}`).uncheck()
+
+  await expect.poll(async () => {
+    const { data, error } = await supabase
+      .from('classes')
+      .select('has_a_playoff')
+      .eq('id', cls.id)
+      .single()
+
+    expect(error).toBeNull()
+    return data?.has_a_playoff
+  }).toBe(false)
+
+  await page.reload()
+  await expect(page.getByTestId(`has-a-playoff-checkbox-${cls.id}`)).not.toBeChecked()
+  await expect(page.getByTestId(`has-b-playoff-checkbox-${cls.id}`)).toBeChecked()
+})
+
+test('playoff toggles — uncheck B-slutspel persists across reload', async ({ page }) => {
+  const supabase = testClient()
+  const slug = `${TEST_PREFIX}playoff-toggle-b`
+  const { competitionId, sessions } = await seedClassSettingsCompetition(supabase, slug)
+
+  const cls = sessions[0].classes[0]
+
+  await loginAsSuperadmin(page)
+  await page.goto(`/super/competitions/${competitionId}/classes`)
+
+  await page.getByTestId(`has-b-playoff-checkbox-${cls.id}`).uncheck()
+
+  await expect.poll(async () => {
+    const { data, error } = await supabase
+      .from('classes')
+      .select('has_b_playoff')
+      .eq('id', cls.id)
+      .single()
+
+    expect(error).toBeNull()
+    return data?.has_b_playoff
+  }).toBe(false)
+
+  await page.reload()
+  await expect(page.getByTestId(`has-b-playoff-checkbox-${cls.id}`)).not.toBeChecked()
+  await expect(page.getByTestId(`has-a-playoff-checkbox-${cls.id}`)).toBeChecked()
+})
+
 test('re-import preserves manually edited deadline', async ({ page }) => {
   const supabase = testClient()
   const slug = `${TEST_PREFIX}reimport`

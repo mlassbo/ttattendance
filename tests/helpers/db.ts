@@ -1889,6 +1889,7 @@ export type SeededAdminPlayoffCompetition = {
 export type AdminPlayoffPhase =
   | 'awaiting_attendance'
   | 'pool_play_in_progress'
+  | 'pool_results_published'
   | 'a_playoff_in_progress'
   | 'playoffs_in_progress'
   | 'playoffs_complete'
@@ -1899,6 +1900,8 @@ type AdminPlayoffClassSeed = {
   phase?: AdminPlayoffPhase
   registeredPlayers?: number
   externalClassKey?: string
+  hasAPlayoff?: boolean
+  hasBPlayoff?: boolean
 }
 
 async function seedClassPlayoffWorkflow(
@@ -1932,6 +1935,7 @@ async function seedClassPlayoffWorkflow(
       rows.push({ step_key: 'b_playoff', status: 'done' })
       rows.push({ step_key: 'register_playoff_match_results', status: 'done' })
     }
+    // 'pool_results_published' has only publish_pool_results done.
   }
 
   const { error } = await supabase
@@ -2022,6 +2026,8 @@ export async function seedAdminPlayoffCompetition(
           (classSeed.phase ?? 'a_playoff_in_progress') === 'awaiting_attendance'
             ? futureDeadline
             : pastDeadline,
+        has_a_playoff: classSeed.hasAPlayoff ?? true,
+        has_b_playoff: classSeed.hasBPlayoff ?? true,
       })),
     )
     .select('id, name, start_time')

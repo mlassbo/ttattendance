@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getScopedCompetitionAuth } from '@/lib/scoped-competition-auth'
 import { getClassWorkflowSummaryMap } from '@/lib/class-workflow-server'
-import { getClassWorkflowActionHelper } from '@/lib/class-workflow'
 import { getPoolProgressByClassId } from '@/lib/pool-progress'
 import { getPlayoffProgressByClassId } from '@/lib/playoff-progress'
 import { createServerClient } from '@/lib/supabase'
@@ -19,7 +18,7 @@ export async function GET(req: NextRequest) {
     // Step 1 — sessions + their classes (2-level nesting, reliable).
     const { data: sessionData, error: sessError } = await supabase
       .from('sessions')
-      .select('id, name, date, session_order, classes(id, name, start_time, attendance_deadline, planned_tables_per_pool)')
+      .select('id, name, date, session_order, classes(id, name, start_time, attendance_deadline, planned_tables_per_pool, has_a_playoff, has_b_playoff)')
       .eq('competition_id', auth.competitionId)
       .order('date')
       .order('session_order')
@@ -39,6 +38,8 @@ export async function GET(req: NextRequest) {
         startTime: cls.start_time as string,
         attendanceDeadline: cls.attendance_deadline as string,
         plannedTablesPerPool: (cls.planned_tables_per_pool as number | null | undefined) ?? 1,
+        hasAPlayoff: (cls.has_a_playoff as boolean | null | undefined) ?? true,
+        hasBPlayoff: (cls.has_b_playoff as boolean | null | undefined) ?? true,
       })),
     )
 
@@ -145,6 +146,8 @@ export async function GET(req: NextRequest) {
             startTime: cls.start_time,
             attendanceDeadline: cls.attendance_deadline,
             plannedTablesPerPool: cls.planned_tables_per_pool ?? 1,
+            hasAPlayoff: cls.has_a_playoff ?? true,
+            hasBPlayoff: cls.has_b_playoff ?? true,
             counts: { confirmed, absent, noResponse, total: regs.length },
             poolProgress: classPoolProgress,
             playoffProgress: classPlayoffProgress,
@@ -154,9 +157,7 @@ export async function GET(req: NextRequest) {
                   currentPhaseLabel: workflow.currentPhaseLabel,
                   nextActionKey: workflow.nextAction?.key ?? null,
                   nextActionLabel: workflow.nextAction?.label ?? null,
-                  nextActionHelper: workflow.nextAction
-                    ? getClassWorkflowActionHelper(workflow.nextAction.key)
-                    : null,
+                  nextActionHelper: workflow.nextAction?.helper ?? null,
                   followUpActionLabel: workflow.followUpAction?.label ?? null,
                   lastCalloutAt: workflow.attendance.lastCalloutAt,
                   missingPlayers,

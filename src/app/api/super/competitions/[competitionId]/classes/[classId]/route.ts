@@ -17,11 +17,20 @@ export async function PATCH(
     sessionId?: string
     maxPlayers?: number | null
     plannedTablesPerPool?: number
+    hasAPlayoff?: boolean
+    hasBPlayoff?: boolean
   }
 
-  if (!('attendanceDeadline' in body) && !('sessionId' in body) && !('maxPlayers' in body) && !('plannedTablesPerPool' in body)) {
+  if (
+    !('attendanceDeadline' in body)
+    && !('sessionId' in body)
+    && !('maxPlayers' in body)
+    && !('plannedTablesPerPool' in body)
+    && !('hasAPlayoff' in body)
+    && !('hasBPlayoff' in body)
+  ) {
     return NextResponse.json(
-      { error: 'Minst ett fält måste skickas (attendanceDeadline, sessionId, maxPlayers eller plannedTablesPerPool)' },
+      { error: 'Minst ett fält måste skickas (attendanceDeadline, sessionId, maxPlayers, plannedTablesPerPool, hasAPlayoff eller hasBPlayoff)' },
       { status: 400 },
     )
   }
@@ -42,7 +51,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Klassen tillhör inte denna tävling' }, { status: 404 })
   }
 
-  const updates: Record<string, string | number | null> = {}
+  const updates: Record<string, string | number | boolean | null> = {}
 
   if (attendanceDeadline) {
     const deadline = new Date(attendanceDeadline)
@@ -83,6 +92,28 @@ export async function PATCH(
     updates.planned_tables_per_pool = body.plannedTablesPerPool
   }
 
+  if ('hasAPlayoff' in body) {
+    if (typeof body.hasAPlayoff !== 'boolean') {
+      return NextResponse.json(
+        { error: 'hasAPlayoff måste vara ett booleskt värde' },
+        { status: 400 },
+      )
+    }
+
+    updates.has_a_playoff = body.hasAPlayoff
+  }
+
+  if ('hasBPlayoff' in body) {
+    if (typeof body.hasBPlayoff !== 'boolean') {
+      return NextResponse.json(
+        { error: 'hasBPlayoff måste vara ett booleskt värde' },
+        { status: 400 },
+      )
+    }
+
+    updates.has_b_playoff = body.hasBPlayoff
+  }
+
   if (sessionId) {
     // Verify the session belongs to the same competition
     const { data: targetSession, error: sessionError } = await supabase
@@ -106,7 +137,7 @@ export async function PATCH(
     .from('classes')
     .update(updates)
     .eq('id', params.classId)
-    .select('id, session_id, name, start_time, attendance_deadline, max_players, planned_tables_per_pool')
+    .select('id, session_id, name, start_time, attendance_deadline, max_players, planned_tables_per_pool, has_a_playoff, has_b_playoff')
     .single()
 
   if (updateError) {
@@ -121,5 +152,7 @@ export async function PATCH(
     attendanceDeadline: updated.attendance_deadline,
     maxPlayers: updated.max_players,
     plannedTablesPerPool: updated.planned_tables_per_pool,
+    hasAPlayoff: updated.has_a_playoff,
+    hasBPlayoff: updated.has_b_playoff,
   })
 }

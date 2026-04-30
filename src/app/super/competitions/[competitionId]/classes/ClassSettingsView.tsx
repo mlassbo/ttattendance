@@ -12,6 +12,8 @@ type ClassData = {
   attendanceDeadline: string
   maxPlayers: number | null
   plannedTablesPerPool: number
+  hasAPlayoff: boolean
+  hasBPlayoff: boolean
 }
 
 type SessionData = {
@@ -178,6 +180,7 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
   const [plannedTablesDrafts, setPlannedTablesDrafts] = useState<Record<string, EditingPlannedTablesPerPool>>({})
   const [plannedTablesStatus, setPlannedTablesStatus] = useState<Record<string, SaveStatus>>({})
   const [sessionStatus, setSessionStatus] = useState<Record<string, SaveStatus>>({})
+  const [playoffStatus, setPlayoffStatus] = useState<Record<string, SaveStatus>>({})
   const [flashClassIds, setFlashClassIds] = useState<Record<string, boolean>>({})
   const deadlineSaveInFlight = useRef<Record<string, boolean>>({})
   const pendingDeadlineDrafts = useRef<Record<string, EditingDeadline | undefined>>({})
@@ -737,6 +740,57 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
     }
   }
 
+  async function changePlayoffFlag(
+    classId: string,
+    field: 'hasAPlayoff' | 'hasBPlayoff',
+    value: boolean,
+  ) {
+    const current = findClassById(classId)
+    if (!current) {
+      return
+    }
+
+    const previousValue = current.cls[field]
+    updateClass(classId, cls => ({ ...cls, [field]: value }))
+    setPlayoffStatus(previous => ({ ...previous, [classId]: { state: 'saving' } }))
+
+    try {
+      const res = await fetch(
+        `/api/super/competitions/${competitionId}/classes/${classId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [field]: value }),
+        },
+      )
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        updateClass(classId, cls => ({ ...cls, [field]: previousValue }))
+        setPlayoffStatus(previous => ({
+          ...previous,
+          [classId]: {
+            state: 'error',
+            message: data?.error ?? 'Kunde inte spara',
+          },
+        }))
+        return
+      }
+
+      setPlayoffStatus(previous => ({ ...previous, [classId]: { state: 'saved' } }))
+      triggerSaveFlash(classId)
+    } catch {
+      updateClass(classId, cls => ({ ...cls, [field]: previousValue }))
+      setPlayoffStatus(previous => ({
+        ...previous,
+        [classId]: {
+          state: 'error',
+          message: 'Nätverksfel',
+        },
+      }))
+    }
+  }
+
   if (loading && sessions.length === 0) {
     return (
       <section
@@ -987,6 +1041,39 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
                       </div>
                       <div className="col-start-2">
                         <StatusNote status={plannedTablesStatus[cls.id]} testId={`planned-tables-error-${cls.id}`} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[156px_minmax(0,1fr)] gap-x-4 gap-y-2 items-center">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                        Slutspel
+                      </span>
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-ink">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            data-testid={`has-a-playoff-checkbox-${cls.id}`}
+                            checked={cls.hasAPlayoff}
+                            onChange={event =>
+                              void changePlayoffFlag(cls.id, 'hasAPlayoff', event.target.checked)
+                            }
+                          />
+                          A-slutspel
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            data-testid={`has-b-playoff-checkbox-${cls.id}`}
+                            checked={cls.hasBPlayoff}
+                            onChange={event =>
+                              void changePlayoffFlag(cls.id, 'hasBPlayoff', event.target.checked)
+                            }
+                          />
+                          B-slutspel
+                        </label>
+                      </div>
+                      <div className="col-start-2">
+                        <StatusNote status={playoffStatus[cls.id]} testId={`playoff-error-${cls.id}`} />
                       </div>
                     </div>
                   </div>

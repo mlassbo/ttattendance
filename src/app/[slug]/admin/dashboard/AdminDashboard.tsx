@@ -57,6 +57,8 @@ interface ClassSummary {
   startTime: string
   attendanceDeadline: string
   plannedTablesPerPool: number
+  hasAPlayoff: boolean
+  hasBPlayoff: boolean
   counts: ClassCounts
   poolProgress: ClassPoolProgressPayload | null
   playoffProgress: PlayoffProgressPayload | null
@@ -373,9 +375,10 @@ export default function AdminDashboard({
                     cls.workflow.currentPhaseKey === 'pool_play_in_progress'
                     || cls.workflow.currentPhaseKey === 'pool_play_complete'
                   const showPlayoffProgress =
-                    cls.workflow.currentPhaseKey === 'a_playoff_in_progress'
-                    || cls.workflow.currentPhaseKey === 'b_playoff_in_progress'
-                    || cls.workflow.currentPhaseKey === 'playoffs_in_progress'
+                    (cls.hasAPlayoff || cls.hasBPlayoff)
+                    && (cls.workflow.currentPhaseKey === 'a_playoff_in_progress'
+                      || cls.workflow.currentPhaseKey === 'b_playoff_in_progress'
+                      || cls.workflow.currentPhaseKey === 'playoffs_in_progress')
                   const cardTone = needsAnnouncement
                     ? 'border-amber-300 bg-amber-50/85'
                     : cls.workflow.currentPhaseKey === 'finished'

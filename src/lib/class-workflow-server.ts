@@ -12,6 +12,8 @@ type AdminClassRow = {
   name: string
   start_time: string
   attendance_deadline: string
+  has_a_playoff: boolean
+  has_b_playoff: boolean
   sessions: { competition_id: string } | Array<{ competition_id: string }> | null
 }
 
@@ -20,6 +22,8 @@ type AdminClassDescriptor = {
   name: string
   startTime: string
   attendanceDeadline: string
+  hasAPlayoff: boolean
+  hasBPlayoff: boolean
 }
 
 type ClassWorkflowStepRow = {
@@ -77,6 +81,8 @@ function toAdminClassDescriptor(classRow: AdminClassRow): AdminClassDescriptor {
     name: classRow.name,
     startTime: classRow.start_time,
     attendanceDeadline: classRow.attendance_deadline,
+    hasAPlayoff: classRow.has_a_playoff,
+    hasBPlayoff: classRow.has_b_playoff,
   }
 }
 
@@ -87,7 +93,7 @@ export async function getAuthorizedAdminClass(
 ) {
   const { data, error } = await supabase
     .from('classes')
-    .select('id, name, start_time, attendance_deadline, sessions!inner(competition_id)')
+    .select('id, name, start_time, attendance_deadline, has_a_playoff, has_b_playoff, sessions!inner(competition_id)')
     .eq('id', classId)
     .single()
 
@@ -199,6 +205,7 @@ export async function getClassWorkflowSummaryMap(
         counts: classRow.counts,
         attendanceDeadline: classRow.attendanceDeadline,
         steps: stepsByClassId.get(classRow.id) ?? [],
+        config: { hasAPlayoff: classRow.hasAPlayoff, hasBPlayoff: classRow.hasBPlayoff },
         lastCalloutAt: lastCalloutAtByClassId.get(classRow.id) ?? null,
         now,
       }),

@@ -91,6 +91,31 @@ export type ClassWorkflowStepSummary = ClassWorkflowStepDefinition & {
 export type ClassWorkflowNextAction = {
   key: ClassWorkflowActionKey
   label: string
+  helper: string
+}
+
+export type ClassWorkflowConfig = {
+  hasAPlayoff: boolean
+  hasBPlayoff: boolean
+}
+
+const PUBLISH_POOL_RESULTS_HELPER_WITH_PLAYOFF =
+  'Skriv ut och sätt upp poolresultaten. Ropa ut att resultaten är uppsatta och att slutspelet lottas inom kort.'
+
+const PUBLISH_POOL_RESULTS_HELPER_WITHOUT_PLAYOFF =
+  'Skriv ut och sätt upp poolresultaten. Ropa ut att resultaten är uppsatta och att prisutdelning sker inom kort.'
+
+function resolveStepHelper(
+  definition: ClassWorkflowStepDefinition,
+  config: ClassWorkflowConfig,
+) {
+  if (definition.key === 'publish_pool_results') {
+    return config.hasAPlayoff || config.hasBPlayoff
+      ? PUBLISH_POOL_RESULTS_HELPER_WITH_PLAYOFF
+      : PUBLISH_POOL_RESULTS_HELPER_WITHOUT_PLAYOFF
+  }
+
+  return definition.helper
 }
 
 export type ClassWorkflowSummary = {
@@ -239,6 +264,7 @@ function hasResolvedDependencies(
 function canSkipClassWorkflowStep(
   definition: ClassWorkflowStepDefinition,
   stepsByKey: Map<ClassWorkflowStepKey, ClassWorkflowStepRecord>,
+  visibleStepKeys: ReadonlySet<ClassWorkflowStepKey>,
 ) {
   if (!definition.canSkip) {
     return false
@@ -248,8 +274,11 @@ function canSkipClassWorkflowStep(
     return true
   }
 
-  return getStepStatus(stepsByKey, 'a_playoff') === 'skipped'
-    && getStepStatus(stepsByKey, 'b_playoff') === 'skipped'
+  const aResolved = !visibleStepKeys.has('a_playoff')
+    || getStepStatus(stepsByKey, 'a_playoff') === 'skipped'
+  const bResolved = !visibleStepKeys.has('b_playoff')
+    || getStepStatus(stepsByKey, 'b_playoff') === 'skipped'
+  return aResolved && bResolved
 }
 
 export function getClassWorkflowStepDefinition(stepKey: ClassWorkflowStepKey) {
@@ -347,6 +376,7 @@ export function getClassWorkflowDerivedStepState({
   attendanceState: ClassWorkflowAttendanceState
   steps: ReadonlyArray<ClassWorkflowStepRecord>
   visibleStepKeys?: ReadonlySet<ClassWorkflowStepKey>
+  config?: ClassWorkflowConfig
 }): ClassWorkflowDerivedStepState {
   const normalizedSteps = normalizeClassWorkflowSteps(steps)
   const stepsByKey = new Map(normalizedSteps.map(step => [step.key, step] as const))
@@ -376,9 +406,22 @@ export function getClassWorkflowDerivedStepState({
 function isWorkflowStepVisible(
   definition: ClassWorkflowStepDefinition,
   counts: ClassWorkflowAttendanceCounts,
+  config: ClassWorkflowConfig,
 ) {
   if (definition.key === 'remove_absent_players') {
     return counts.absent > 0
+  }
+
+  if (definition.key === 'a_playoff') {
+    return config.hasAPlayoff
+  }
+
+  if (definition.key === 'b_playoff') {
+    return config.hasBPlayoff
+  }
+
+  if (definition.key === 'register_playoff_match_results') {
+    return config.hasAPlayoff || config.hasBPlayoff
   }
 
   return true
@@ -441,12 +484,14 @@ export function buildClassWorkflowSummary({
   counts,
   attendanceDeadline,
   steps,
+  config,
   lastCalloutAt = null,
   now = new Date(),
 }: {
   counts: ClassWorkflowAttendanceCounts
   attendanceDeadline: string | Date
   steps: ReadonlyArray<Partial<ClassWorkflowStepRecord> & { key: ClassWorkflowStepKey }>
+  config: ClassWorkflowConfig
   lastCalloutAt?: string | null
   now?: Date
 }): ClassWorkflowSummary {
@@ -458,7 +503,7 @@ export function buildClassWorkflowSummary({
     now,
   })
   const visibleStepDefinitions = CLASS_WORKFLOW_STEP_DEFINITIONS.filter(definition =>
-    isWorkflowStepVisible(definition, counts),
+    isWorkflowStepVisible(definition, counts, config),
   )
   const visibleStepKeys = new Set(visibleStepDefinitions.map(definition => definition.key))
 
@@ -474,17 +519,19 @@ export function buildClassWorkflowSummary({
       attendanceState,
       steps: normalizedSteps,
       visibleStepKeys,
+      config,
     })
 
     return {
       ...definition,
+      helper: resolveStepHelper(definition, config),
       status: step.status,
       derivedState,
       note: step.note,
       updatedAt: step.updatedAt,
       canStart: derivedState === 'ready' && step.status === 'not_started',
       canMarkDone: derivedState === 'ready' || derivedState === 'active',
-      canSkip: derivedState === 'ready' && canSkipClassWorkflowStep(definition, stepsByKey),
+      canSkip: derivedState === 'ready' && canSkipClassWorkflowStep(definition, stepsByKey, visibleStepKeys),
       canReopen:
         step.status === 'active' || step.status === 'done' || step.status === 'skipped',
     }
@@ -548,6 +595,7 @@ export function buildClassWorkflowSummary({
     nextAction = {
       key: 'missing_players_callout',
       label: 'Ropa upp saknade spelare',
+      helper: getClassWorkflowActionHelper('missing_players_callout'),
     }
   } else if (attendanceState === 'attendance_complete') {
     const activeStep = stepSummaries.find(step => step.derivedState === 'active')
@@ -558,6 +606,7 @@ export function buildClassWorkflowSummary({
       nextAction = {
         key: actionStep.key,
         label: actionStep.label,
+        helper: actionStep.helper,
       }
 
       const currentIndex = stepSummaries.findIndex(step => step.key === actionStep.key)
@@ -569,6 +618,7 @@ export function buildClassWorkflowSummary({
         followUpAction = {
           key: nextWorkflowStep.key,
           label: nextWorkflowStep.label,
+          helper: nextWorkflowStep.helper,
         }
       }
     }
