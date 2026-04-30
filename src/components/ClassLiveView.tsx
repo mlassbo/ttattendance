@@ -1,4 +1,5 @@
 import type { ClassLivePool } from '@/lib/public-competition'
+import { formatPoolTables } from '@/lib/pool-tables'
 
 type ClassLiveViewProps = {
   pools: ClassLivePool[]
@@ -26,7 +27,17 @@ export default function ClassLiveView({ pools }: ClassLiveViewProps) {
             className="rounded-2xl border border-stone-300 bg-stone-50/70 px-4 py-4"
           >
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-base font-semibold text-ink">Pool {pool.poolNumber}</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-semibold text-ink">Pool {pool.poolNumber}</h2>
+                {pool.tables.length > 0 ? (
+                  <span
+                    data-testid={`class-live-pool-tables-${pool.poolNumber}`}
+                    className="app-pill-info shrink-0"
+                  >
+                    Bord {formatPoolTables(pool.tables)}
+                  </span>
+                ) : null}
+              </div>
               {hasPublishedStandings ? (
                 <span
                   data-testid={`class-live-pool-final-pill-${pool.poolNumber}`}

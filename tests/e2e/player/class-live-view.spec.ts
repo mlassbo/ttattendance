@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { config } from 'dotenv'
 import {
   cleanTestCompetitions,
+  seedClassPoolTables,
   seedCompetitionWithPools,
   type SeededCompetitionWithPools,
   testClient,
@@ -131,5 +132,17 @@ test.describe('Public class live view', () => {
     await page.goto(`/${SLUG}/classes/00000000-0000-0000-0000-000000000000`)
 
     await expect(page.getByText('Klassen hittades inte.')).toBeVisible()
+  })
+
+  test('pool card shows a Bord pill when a pool has table assignments', async ({ page }) => {
+    const supabase = testClient()
+    await seedClassPoolTables(supabase, seeded.classId, [
+      { poolNumber: 1, tables: [1, 2] },
+    ])
+
+    await page.goto(`/${SLUG}/classes/${seeded.classId}`)
+
+    await expect(page.getByTestId('class-live-pool-tables-1')).toHaveText('Bord 1, 2')
+    await expect(page.getByTestId('class-live-pool-tables-2')).toHaveCount(0)
   })
 })

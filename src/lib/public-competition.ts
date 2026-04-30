@@ -2,6 +2,7 @@ import { getClassAttendanceOpensAt } from './attendance-window'
 import { buildDaySessionOrderMap } from './session-order'
 import { parseMatchResult } from './match-result'
 import { labelRound } from './playoff-progress-view'
+import { getPoolTablesByClassId } from './pool-progress'
 import {
   buildReserveListEntries,
   buildReservePositionMap,
@@ -313,6 +314,7 @@ export interface ClassLivePool {
   playedMatches: number
   totalMatches: number
   standings: ClassLivePoolStanding[] | null
+  tables: number[]
 }
 
 export interface ClassLiveMatch {
@@ -744,7 +746,7 @@ export async function getClassLiveData(
     return null
   }
 
-  const livePools = await loadClassLivePools(supabase, competitionId, classRow.name)
+  const livePools = await loadClassLivePools(supabase, competitionId, classId, classRow.name)
   const playoff = await loadClassLivePlayoff(supabase, competitionId, classRow.name)
 
   if (livePools.length === 0 && playoff === null) {
@@ -760,6 +762,7 @@ export async function getClassLiveData(
 async function loadClassLivePools(
   supabase: ServerClient,
   competitionId: string,
+  classId: string,
   className: string,
 ): Promise<ClassLivePool[]> {
   const currentSnapshotId = await getCurrentOnDataSnapshotId(supabase, competitionId)
@@ -910,6 +913,9 @@ async function loadClassLivePools(
     matchesByPoolId.set(match.snapshot_pool_id, poolMatches)
   }
 
+  const tablesByClass = await getPoolTablesByClassId(supabase, [classId])
+  const tablesByPoolNumber = tablesByClass.get(classId) ?? new Map<number, number[]>()
+
   const livePools: ClassLivePool[] = poolRows.map(pool => {
     const poolPlayers = playersByPoolId.get(pool.id) ?? []
     const snapshotPoolMatches = matchesByPoolId.get(pool.id) ?? []
@@ -922,6 +928,7 @@ async function loadClassLivePools(
       playedMatches: completePoolMatches.filter(match => match.isPlayed).length,
       totalMatches: (poolPlayers.length * (poolPlayers.length - 1)) / 2,
       standings: null,
+      tables: tablesByPoolNumber.get(pool.pool_number) ?? [],
     }
   })
 
