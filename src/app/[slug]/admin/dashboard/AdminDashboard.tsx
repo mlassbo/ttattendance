@@ -297,6 +297,9 @@ export default function AdminDashboard({
   )
   const overdueMissingPlayers = overdueClasses.reduce((sum, cls) => sum + cls.noResponse, 0)
 
+  const allClasses = sessions.flatMap(s => s.classes)
+  const allClassesFinished = allClasses.length > 0 && allClasses.every(c => c.workflow.currentPhaseKey === 'finished')
+
   return (
     <main className="app-shell">
       <div className="mx-auto max-w-5xl space-y-4">
@@ -587,6 +590,43 @@ export default function AdminDashboard({
             </section>
           ))}
         </div>
+
+        {allClassesFinished && (
+          <section data-testid="competition-report-section" className="app-card space-y-5 border-green-200 bg-green-50/80">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-green-800/70">Alla klasser klara</p>
+              <h2 className="text-xl font-semibold text-ink">Redovisa tävlingen</h2>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-ink">1. Skicka in överdomarrapporten</h3>
+                <a
+                  href="https://forms.office.com/Pages/ResponsePage.aspx?id=s7eF0cixJ065qBot8sR_uyZ_q0fej_RAiv-MvH-JXN5URVJTWjNCVkczN001WFM2VTZLSEpRTjdCTC4u"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="app-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm"
+                >
+                  Öppna formuläret ↗
+                </a>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-ink">2. Mejla tävlingsfilen</h3>
+                <div className="text-sm text-muted space-y-1">
+                  <p>
+                    Mejla tävlingsfilen (<code>.mdb</code>) samma dag som tävlingen avslutas till{' '}
+                    <a href="mailto:sbtf.ranking@gmail.com" className="font-medium text-brand underline">
+                      sbtf.ranking@gmail.com
+                    </a>
+                  </p>
+                  <p>Filen hittas i TT Coordinators &quot;Competitions&quot;-mapp.</p>
+                  <p>Skriv med eventuella justeringar i mejlet, t.ex. felaktigt inlottade spelare.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
     </main>
   )
