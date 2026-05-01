@@ -1291,7 +1291,7 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
                       >
                         Antal spelare per pool
                       </label>
-                      <div className={`flex items-center justify-start ${cls.hasSeeding ? '' : 'opacity-60'}`}>
+                      <div className="flex items-center justify-start">
                         <input
                           id={`players-per-pool-input-${cls.id}`}
                           data-testid={`players-per-pool-input-${cls.id}`}
@@ -1300,7 +1300,6 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
                           min="1"
                           step="1"
                           value={playersPerPoolDraft}
-                          disabled={!cls.hasSeeding}
                           onChange={event => {
                             const nextValue = event.target.value
                             setPlayersPerPoolDrafts(previous => ({
@@ -1322,10 +1321,18 @@ export default function ClassSettingsView({ competitionId }: { competitionId: st
                               resetPlayersPerPoolDraft(cls.id)
                             }
                           }}
-                          className="app-input w-full max-w-[132px] py-2 text-sm tabular-nums disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-muted"
+                          className="app-input w-full max-w-[132px] py-2 text-sm tabular-nums"
                         />
                       </div>
-                      <div className="col-start-2">
+                      <div className="col-start-2 space-y-1">
+                        {!cls.hasSeeding && (
+                          <p
+                            data-testid={`players-per-pool-helper-${cls.id}`}
+                            className="text-xs text-muted"
+                          >
+                            Används också för att uppskatta antal bord som klassen behöver vid start.
+                          </p>
+                        )}
                         <StatusNote
                           status={playersPerPoolStatus[cls.id]}
                           testId={`players-per-pool-error-${cls.id}`}

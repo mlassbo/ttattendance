@@ -84,7 +84,12 @@ test('turning seeding off persists and survives reload', async ({ page }) => {
 
   await page.reload()
   await expect(page.getByTestId(`has-seeding-checkbox-${cls.id}`)).not.toBeChecked()
-  await expect(page.getByTestId(`players-per-pool-input-${cls.id}`)).toBeDisabled()
+  // The players-per-pool input is editable for non-seeded classes too — it
+  // also drives the start-readiness "Kräver X bord" estimate.
+  await expect(page.getByTestId(`players-per-pool-input-${cls.id}`)).toBeEnabled()
+  await expect(page.getByTestId(`players-per-pool-helper-${cls.id}`)).toContainText(
+    'antal bord som klassen behöver vid start',
+  )
 })
 
 test('setting players per pool persists and survives reload', async ({ page }) => {

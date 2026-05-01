@@ -64,6 +64,121 @@ type MatchRow = {
   is_completed: boolean
 }
 
+type PendingMatchRow = {
+  snapshot_id: string
+  is_completed: boolean
+  player_a_name: string | null
+  player_b_name: string | null
+}
+
+export type PlayoffActiveSnapshot = {
+  pendingMatchCount: number
+  pendingPlayerNames: string[]
+}
+
+export type PlayoffActivePlayersLookup = {
+  byClassId: Map<string, PlayoffActiveSnapshot>
+}
+
+export async function getPlayoffActivePlayersByClassId(
+  supabase: ServerClient,
+  competitionId: string,
+  classes: LocalClassRow[],
+): Promise<PlayoffActivePlayersLookup> {
+  if (classes.length === 0) {
+    return { byClassId: new Map() }
+  }
+
+  const { data: statusData, error: statusError } = await supabase
+    .from('ondata_playoff_status')
+    .select('current_snapshot_id, playoff_bracket')
+    .eq('competition_id', competitionId)
+
+  if (statusError) {
+    throw new Error(statusError.message)
+  }
+
+  const statusRows = (statusData ?? []) as Array<{
+    current_snapshot_id: string | null
+    playoff_bracket: PlayoffBracketCode
+  }>
+  const snapshotIds = statusRows
+    .map(row => row.current_snapshot_id)
+    .filter((value): value is string => Boolean(value))
+
+  if (snapshotIds.length === 0) {
+    return { byClassId: new Map() }
+  }
+
+  const { data: snapshotData, error: snapshotError } = await supabase
+    .from('ondata_playoff_snapshots')
+    .select('id, parent_class_name, playoff_bracket')
+    .in('id', snapshotIds)
+
+  if (snapshotError) {
+    throw new Error(snapshotError.message)
+  }
+
+  const snapshotRows = (snapshotData ?? []) as Array<{
+    id: string
+    parent_class_name: string
+    playoff_bracket: PlayoffBracketCode
+  }>
+
+  if (snapshotRows.length === 0) {
+    return { byClassId: new Map() }
+  }
+
+  const { data: matchData, error: matchError } = await supabase
+    .from('ondata_playoff_snapshot_matches')
+    .select('snapshot_id, is_completed, player_a_name, player_b_name')
+    .in('snapshot_id', snapshotIds)
+
+  if (matchError) {
+    throw new Error(matchError.message)
+  }
+
+  const matchRows = (matchData ?? []) as PendingMatchRow[]
+
+  const pendingBySnapshotId = new Map<string, { count: number; names: Set<string> }>()
+  for (const match of matchRows) {
+    if (match.is_completed) continue
+    const entry = pendingBySnapshotId.get(match.snapshot_id) ?? {
+      count: 0,
+      names: new Set<string>(),
+    }
+    entry.count += 1
+    if (match.player_a_name) entry.names.add(match.player_a_name)
+    if (match.player_b_name) entry.names.add(match.player_b_name)
+    pendingBySnapshotId.set(match.snapshot_id, entry)
+  }
+
+  const pendingByClassName = new Map<string, { count: number; names: Set<string> }>()
+  for (const snapshot of snapshotRows) {
+    const pending = pendingBySnapshotId.get(snapshot.id)
+    if (!pending) continue
+    const entry = pendingByClassName.get(snapshot.parent_class_name) ?? {
+      count: 0,
+      names: new Set<string>(),
+    }
+    entry.count += pending.count
+    pending.names.forEach(name => entry.names.add(name))
+    pendingByClassName.set(snapshot.parent_class_name, entry)
+  }
+
+  const byClassId = new Map<string, PlayoffActiveSnapshot>()
+  for (const cls of classes) {
+    const entry = pendingByClassName.get(cls.name)
+    if (!entry) continue
+    byClassId.set(cls.id, {
+      pendingMatchCount: entry.count,
+      pendingPlayerNames: Array.from(entry.names),
+    })
+  }
+
+  return { byClassId }
+}
+
 function maxIsoDate(left: string | null, right: string | null): string | null {
   if (!left) return right
   if (!right) return left

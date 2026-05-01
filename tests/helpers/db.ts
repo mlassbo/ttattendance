@@ -2816,3 +2816,326 @@ function swedishDateOnNextOpensAt(now: Date = new Date()): string {
   const day = String(next.getUTCDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+export type StartReadinessClassPhase =
+  | 'awaiting_attendance'
+  | 'attendance_complete'
+  | 'seeding_in_progress'
+  | 'pool_draw_in_progress'
+  | 'pool_play_in_progress'
+  | 'pool_play_complete'
+  | 'a_playoff_in_progress'
+  | 'b_playoff_in_progress'
+  | 'playoffs_in_progress'
+  | 'playoffs_complete'
+  | 'prize_ceremony_in_progress'
+  | 'finished'
+
+export type StartReadinessClassSeed = {
+  name: string
+  startTime: string
+  attendanceDeadlineOverride?: string
+  phase: StartReadinessClassPhase
+  hasSeeding?: boolean
+  playersPerPool?: number | null
+  plannedTablesPerPool?: number
+  hasAPlayoff?: boolean
+  hasBPlayoff?: boolean
+  /** Confirmed players list (name + optional club). */
+  confirmedPlayers?: Array<{ name: string; club?: string | null }>
+  /** Players whose registration is unanswered (no attendance row). */
+  noResponsePlayers?: Array<{ name: string; club?: string | null }>
+}
+
+export type SeededStartReadinessClass = {
+  id: string
+  name: string
+  startTime: string
+}
+
+export type SeededStartReadinessCompetition = {
+  competitionId: string
+  classes: SeededStartReadinessClass[]
+}
+
+async function applyStartReadinessWorkflowSteps(
+  supabase: SupabaseClient,
+  classId: string,
+  phase: StartReadinessClassPhase,
+  now: string,
+) {
+  const rows: Array<{ step_key: string; status: 'not_started' | 'active' | 'done' | 'skipped' }> = []
+
+  if (phase === 'seeding_in_progress') {
+    rows.push({ step_key: 'seed_class', status: 'active' })
+  } else if (phase === 'pool_draw_in_progress') {
+    rows.push({ step_key: 'seed_class', status: 'skipped' })
+    rows.push({ step_key: 'publish_pools', status: 'active' })
+  } else if (phase === 'pool_play_in_progress') {
+    rows.push({ step_key: 'seed_class', status: 'skipped' })
+    rows.push({ step_key: 'publish_pools', status: 'done' })
+    rows.push({ step_key: 'register_match_results', status: 'active' })
+  } else if (phase === 'pool_play_complete') {
+    rows.push({ step_key: 'seed_class', status: 'skipped' })
+    rows.push({ step_key: 'publish_pools', status: 'done' })
+    rows.push({ step_key: 'register_match_results', status: 'done' })
+  } else if (phase === 'a_playoff_in_progress') {
+    rows.push({ step_key: 'seed_class', status: 'skipped' })
+    rows.push({ step_key: 'publish_pools', status: 'done' })
+    rows.push({ step_key: 'register_match_results', status: 'done' })
+    rows.push({ step_key: 'publish_pool_results', status: 'done' })
+    rows.push({ step_key: 'a_playoff', status: 'active' })
+  } else if (phase === 'b_playoff_in_progress') {
+    rows.push({ step_key: 'seed_class', status: 'skipped' })
+    rows.push({ step_key: 'publish_pools', status: 'done' })
+    rows.push({ step_key: 'register_match_results', status: 'done' })
+    rows.push({ step_key: 'publish_pool_results', status: 'done' })
+    rows.push({ step_key: 'b_playoff', status: 'active' })
+  } else if (phase === 'playoffs_in_progress') {
+    rows.push({ step_key: 'seed_class', status: 'skipped' })
+    rows.push({ step_key: 'publish_pools', status: 'done' })
+    rows.push({ step_key: 'register_match_results', status: 'done' })
+    rows.push({ step_key: 'publish_pool_results', status: 'done' })
+    rows.push({ step_key: 'a_playoff', status: 'active' })
+    rows.push({ step_key: 'b_playoff', status: 'active' })
+  } else if (phase === 'playoffs_complete') {
+    rows.push({ step_key: 'seed_class', status: 'skipped' })
+    rows.push({ step_key: 'publish_pools', status: 'done' })
+    rows.push({ step_key: 'register_match_results', status: 'done' })
+    rows.push({ step_key: 'publish_pool_results', status: 'done' })
+    rows.push({ step_key: 'a_playoff', status: 'done' })
+    rows.push({ step_key: 'b_playoff', status: 'done' })
+    rows.push({ step_key: 'register_playoff_match_results', status: 'done' })
+  } else if (phase === 'prize_ceremony_in_progress') {
+    rows.push({ step_key: 'seed_class', status: 'skipped' })
+    rows.push({ step_key: 'publish_pools', status: 'done' })
+    rows.push({ step_key: 'register_match_results', status: 'done' })
+    rows.push({ step_key: 'publish_pool_results', status: 'done' })
+    rows.push({ step_key: 'a_playoff', status: 'done' })
+    rows.push({ step_key: 'b_playoff', status: 'done' })
+    rows.push({ step_key: 'register_playoff_match_results', status: 'done' })
+    rows.push({ step_key: 'prize_ceremony', status: 'active' })
+  } else if (phase === 'finished') {
+    rows.push({ step_key: 'seed_class', status: 'skipped' })
+    rows.push({ step_key: 'publish_pools', status: 'done' })
+    rows.push({ step_key: 'register_match_results', status: 'done' })
+    rows.push({ step_key: 'publish_pool_results', status: 'done' })
+    rows.push({ step_key: 'a_playoff', status: 'done' })
+    rows.push({ step_key: 'b_playoff', status: 'done' })
+    rows.push({ step_key: 'register_playoff_match_results', status: 'done' })
+    rows.push({ step_key: 'prize_ceremony', status: 'done' })
+  }
+
+  if (rows.length === 0) return
+
+  const { error } = await supabase
+    .from('class_workflow_steps')
+    .upsert(
+      rows.map(row => ({
+        class_id: classId,
+        step_key: row.step_key,
+        status: row.status,
+        updated_at: now,
+      })),
+      { onConflict: 'class_id,step_key' },
+    )
+
+  if (error) {
+    throw new Error(`Failed to seed start-readiness workflow steps: ${error.message}`)
+  }
+}
+
+export async function seedStartReadinessCompetition(
+  supabase: SupabaseClient,
+  slug: string,
+  classSeeds: StartReadinessClassSeed[],
+  options?: {
+    adminPin?: string
+    playerPin?: string
+    venueTableCount?: number | null
+  },
+): Promise<SeededStartReadinessCompetition> {
+  if (classSeeds.length === 0) {
+    throw new Error('seedStartReadinessCompetition requires at least one class')
+  }
+
+  const adminPin = options?.adminPin ?? '2222'
+  const playerPin = options?.playerPin ?? '1111'
+
+  const [playerPinHash, adminPinHash] = await Promise.all([
+    bcrypt.hash(playerPin, 4),
+    bcrypt.hash(adminPin, 4),
+  ])
+
+  const insertPayload: Record<string, unknown> = {
+    name: 'Start Readiness Testtävling',
+    slug,
+    player_pin_hash: playerPinHash,
+    admin_pin_hash: adminPinHash,
+  }
+
+  if (options?.venueTableCount !== undefined) {
+    insertPayload.venue_table_count = options.venueTableCount
+  }
+
+  const { data: competition, error: competitionError } = await supabase
+    .from('competitions')
+    .insert(insertPayload)
+    .select('id')
+    .single()
+
+  if (competitionError || !competition) {
+    throw new Error(`Failed to seed start-readiness competition: ${competitionError?.message ?? 'Unknown error'}`)
+  }
+
+  const competitionId = competition.id
+
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .insert({
+      competition_id: competitionId,
+      name: 'Pass 1',
+      date: '2025-09-13',
+      session_order: 1,
+    })
+    .select('id')
+    .single()
+
+  if (sessionError || !session) {
+    throw new Error(`Failed to seed start-readiness session: ${sessionError?.message ?? 'Unknown error'}`)
+  }
+
+  const seenNames = new Set<string>()
+  for (const classSeed of classSeeds) {
+    if (seenNames.has(classSeed.name)) {
+      throw new Error(`Duplicate class name in seed: ${classSeed.name}`)
+    }
+    seenNames.add(classSeed.name)
+  }
+
+  const futureDeadline = '2099-01-01T00:00:00Z'
+  const pastDeadline = '2020-01-01T00:00:00Z'
+
+  const { data: insertedClasses, error: classError } = await supabase
+    .from('classes')
+    .insert(
+      classSeeds.map(classSeed => ({
+        session_id: session.id,
+        name: classSeed.name,
+        start_time: classSeed.startTime,
+        attendance_deadline:
+          classSeed.attendanceDeadlineOverride
+          ?? (classSeed.phase === 'awaiting_attendance' ? futureDeadline : pastDeadline),
+        has_seeding: classSeed.hasSeeding ?? true,
+        players_per_pool:
+          classSeed.playersPerPool === undefined ? 4 : classSeed.playersPerPool,
+        planned_tables_per_pool: classSeed.plannedTablesPerPool ?? 1,
+        has_a_playoff: classSeed.hasAPlayoff ?? true,
+        has_b_playoff: classSeed.hasBPlayoff ?? true,
+      })),
+    )
+    .select('id, name, start_time')
+
+  if (classError || !insertedClasses) {
+    throw new Error(`Failed to seed start-readiness classes: ${classError?.message ?? 'Unknown error'}`)
+  }
+
+  const classesByName = new Map<string, { id: string; name: string; start_time: string }>()
+  for (const row of insertedClasses) {
+    classesByName.set(row.name, row)
+  }
+
+  const now = new Date().toISOString()
+
+  for (const classSeed of classSeeds) {
+    const classRow = classesByName.get(classSeed.name)!
+    const confirmed = classSeed.confirmedPlayers ?? []
+    const noResponse = classSeed.noResponsePlayers ?? []
+    const allPlayerSeeds = [...confirmed, ...noResponse]
+
+    if (allPlayerSeeds.length === 0) {
+      await applyStartReadinessWorkflowSteps(supabase, classRow.id, classSeed.phase, now)
+      continue
+    }
+
+    // Reuse a player by name within the competition; create if missing.
+    const existingByName = new Map<string, string>()
+    {
+      const { data: existingRows } = await supabase
+        .from('players')
+        .select('id, name')
+        .eq('competition_id', competitionId)
+        .in('name', allPlayerSeeds.map(p => p.name))
+
+      for (const row of (existingRows ?? []) as Array<{ id: string; name: string }>) {
+        existingByName.set(row.name, row.id)
+      }
+    }
+
+    const playersToInsert = allPlayerSeeds.filter(p => !existingByName.has(p.name))
+    if (playersToInsert.length > 0) {
+      const { data: insertedPlayers, error: playerError } = await supabase
+        .from('players')
+        .insert(
+          playersToInsert.map(player => ({
+            competition_id: competitionId,
+            name: player.name,
+            club: player.club ?? 'BTK Test',
+          })),
+        )
+        .select('id, name')
+
+      if (playerError || !insertedPlayers) {
+        throw new Error(`Failed to seed start-readiness players: ${playerError?.message ?? 'Unknown error'}`)
+      }
+
+      for (const row of insertedPlayers) {
+        existingByName.set(row.name, row.id)
+      }
+    }
+
+    const registrationRows = allPlayerSeeds.map(player => ({
+      player_id: existingByName.get(player.name)!,
+      class_id: classRow.id,
+      status: 'registered' as const,
+    }))
+
+    const { data: regs, error: regError } = await supabase
+      .from('registrations')
+      .insert(registrationRows)
+      .select('id, player_id')
+
+    if (regError || !regs) {
+      throw new Error(`Failed to seed start-readiness registrations: ${regError?.message ?? 'Unknown error'}`)
+    }
+
+    const confirmedPlayerIds = new Set(confirmed.map(p => existingByName.get(p.name)!))
+
+    const attendanceRows = regs
+      .filter(reg => confirmedPlayerIds.has(reg.player_id))
+      .map(reg => ({
+        registration_id: reg.id,
+        status: 'confirmed' as const,
+        reported_at: now,
+        reported_by: 'admin' as const,
+        idempotency_key: `start-readiness-confirmed-${reg.id}`,
+      }))
+
+    if (attendanceRows.length > 0) {
+      const { error: attendanceError } = await supabase.from('attendance').insert(attendanceRows)
+      if (attendanceError) {
+        throw new Error(`Failed to seed start-readiness attendance: ${attendanceError.message}`)
+      }
+    }
+
+    await applyStartReadinessWorkflowSteps(supabase, classRow.id, classSeed.phase, now)
+  }
+
+  return {
+    competitionId,
+    classes: classSeeds.map(classSeed => {
+      const row = classesByName.get(classSeed.name)!
+      return { id: row.id, name: row.name, startTime: row.start_time }
+    }),
+  }
+}

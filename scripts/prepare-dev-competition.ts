@@ -389,6 +389,8 @@ function loadManualFixture(): ManualCompetitionFixture {
   return parsed as ManualCompetitionFixture
 }
 
+const MANUAL_VENUE_TABLE_COUNT = 22
+
 async function ensureCompetition(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   competition: ManualCompetitionFixture['competition'],
@@ -416,6 +418,7 @@ async function ensureCompetition(
         player_pin_hash: playerPinHash,
         admin_pin_hash: adminPinHash,
         deleted_at: null,
+        venue_table_count: MANUAL_VENUE_TABLE_COUNT,
       })
       .eq('id', existing.id)
 
@@ -433,6 +436,7 @@ async function ensureCompetition(
       slug: competition.slug,
       player_pin_hash: playerPinHash,
       admin_pin_hash: adminPinHash,
+      venue_table_count: MANUAL_VENUE_TABLE_COUNT,
     })
     .select('id')
     .single()

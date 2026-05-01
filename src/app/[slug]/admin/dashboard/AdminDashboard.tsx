@@ -8,6 +8,7 @@ import AutoRefreshStatus from '../AutoRefreshStatus'
 import { formatTime } from '../format'
 import PoolProgressStrip from './PoolProgressStrip'
 import PlayoffProgressStrip from './PlayoffProgressStrip'
+import StartReadinessStrip, { type StartReadinessPayload } from './StartReadinessStrip'
 
 const REFRESH_INTERVAL_MS = 30_000
 const REFRESH_INTERVAL_SECONDS = REFRESH_INTERVAL_MS / 1000
@@ -62,6 +63,7 @@ interface ClassSummary {
   counts: ClassCounts
   poolProgress: ClassPoolProgressPayload | null
   playoffProgress: PlayoffProgressPayload | null
+  startReadiness: StartReadinessPayload | null
   workflow: {
     currentPhaseKey: string | null
     currentPhaseLabel: string | null
@@ -374,6 +376,7 @@ export default function AdminDashboard({
                   const isMutatingSkip = dashboardMutation === `${cls.id}:${cls.workflow.nextActionKey}:skipped`
                   const isMutatingCallout = dashboardMutation === `${cls.id}:missing_players_callout`
                   const showWorkflowPanel = cls.workflow.currentPhaseKey !== 'finished'
+                  const showStartReadiness = !!cls.startReadiness && cls.startReadiness.visible
                   const showPoolProgress =
                     cls.workflow.currentPhaseKey === 'pool_play_in_progress'
                     || cls.workflow.currentPhaseKey === 'pool_play_complete'
@@ -461,6 +464,13 @@ export default function AdminDashboard({
                               {answeredCount}/{cls.counts.total} svar
                             </span>
                           </div>
+                        )}
+
+                        {showStartReadiness && cls.startReadiness && (
+                          <StartReadinessStrip
+                            classId={cls.id}
+                            readiness={cls.startReadiness}
+                          />
                         )}
 
                         {showWorkflowPanel && (

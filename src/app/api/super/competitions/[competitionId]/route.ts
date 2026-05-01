@@ -7,19 +7,45 @@ export async function PATCH(
   { params }: { params: { competitionId: string } },
 ) {
   const body = await request.json().catch(() => null)
-  const showOnLandingPage = body?.showOnLandingPage
 
-  if (typeof showOnLandingPage !== 'boolean') {
-    return NextResponse.json({ error: 'Ogiltigt värde för startsidevisning' }, { status: 400 })
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Ogiltig begäran' }, { status: 400 })
+  }
+
+  const updates: Record<string, boolean | number | null> = {}
+
+  if ('showOnLandingPage' in body) {
+    if (typeof body.showOnLandingPage !== 'boolean') {
+      return NextResponse.json({ error: 'Ogiltigt värde för startsidevisning' }, { status: 400 })
+    }
+    updates.show_on_landing_page = body.showOnLandingPage
+  }
+
+  if ('venueTableCount' in body) {
+    const value = body.venueTableCount
+    if (value !== null && (!Number.isInteger(value) || value <= 0)) {
+      return NextResponse.json(
+        { error: 'Antal bord måste vara ett positivt heltal' },
+        { status: 400 },
+      )
+    }
+    updates.venue_table_count = value
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json(
+      { error: 'Minst ett fält måste skickas (showOnLandingPage eller venueTableCount)' },
+      { status: 400 },
+    )
   }
 
   const supabase = createServerClient()
 
   const { data, error } = await supabase
     .from('competitions')
-    .update({ show_on_landing_page: showOnLandingPage })
+    .update(updates)
     .eq('id', params.competitionId)
-    .select('id, slug, show_on_landing_page')
+    .select('id, slug, show_on_landing_page, venue_table_count')
     .maybeSingle()
 
   if (error) {
@@ -35,6 +61,7 @@ export async function PATCH(
   return NextResponse.json({
     id: data.id,
     showOnLandingPage: data.show_on_landing_page,
+    venueTableCount: data.venue_table_count,
   })
 }
 

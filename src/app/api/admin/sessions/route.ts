@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getScopedCompetitionAuth } from '@/lib/scoped-competition-auth'
 import { getClassWorkflowSummaryMap } from '@/lib/class-workflow-server'
 import { getPoolProgressByClassId } from '@/lib/pool-progress'
-import { getPlayoffProgressByClassId } from '@/lib/playoff-progress'
+import { getPlayoffProgressByClassId, getPlayoffActivePlayersByClassId } from '@/lib/playoff-progress'
+import {
+  computeStartReadiness,
+  type StartReadinessClassInput,
+  type StartReadinessConfirmedRegistration,
+} from '@/lib/start-readiness'
 import { createServerClient } from '@/lib/supabase'
 import { getAttendanceField } from '../lib'
 
@@ -27,6 +32,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
     }
 
+    const { data: competitionRow, error: competitionError } = await supabase
+      .from('competitions')
+      .select('venue_table_count')
+      .eq('id', auth.competitionId)
+      .single()
+
+    if (competitionError) {
+      return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
+    }
+
+    const venueTableCount = (competitionRow?.venue_table_count as number | null | undefined) ?? null
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sessions = (sessionData as any[]) ?? []
 
@@ -48,23 +65,21 @@ export async function GET(req: NextRequest) {
     const classIds = classSummaries.map(classRow => classRow.id)
 
     if (classIds.length === 0) {
-      return NextResponse.json({ sessions: [], lastSyncAt: null })
+      return NextResponse.json({ sessions: [], lastSyncAt: null, venueTableCount })
     }
 
     const classKeyRows = classSummaries.map(classRow => ({ id: classRow.id, name: classRow.name }))
 
-    const [poolProgress, playoffProgress] = await Promise.all([
+    const [poolProgress, playoffProgress, playoffActivePlayers] = await Promise.all([
       getPoolProgressByClassId(supabase, auth.competitionId, classKeyRows),
       getPlayoffProgressByClassId(supabase, auth.competitionId, classKeyRows),
+      getPlayoffActivePlayersByClassId(supabase, auth.competitionId, classKeyRows),
     ])
 
-    // Step 2 — registrations + attendance for all classes (2-level nesting).
-    // Doing this as a separate query avoids the 4-level nesting
-    // (sessions→classes→registrations→attendance) which Supabase JS does not
-    // always handle reliably.
+    // Step 2 — registrations + attendance for all classes.
     const { data: regData, error: regError } = await supabase
       .from('registrations')
-      .select('id, class_id, players(name, club), attendance(status)')
+      .select('id, class_id, players(id, name, club), attendance(status)')
       .in('class_id', classIds)
       .eq('status', 'registered')
 
@@ -81,6 +96,8 @@ export async function GET(req: NextRequest) {
       list.push(reg)
       regsByClass.set(reg.class_id, list)
     }
+
+    const now = new Date()
 
     const workflowByClassId = await getClassWorkflowSummaryMap(
       supabase,
@@ -100,9 +117,49 @@ export async function GET(req: NextRequest) {
           },
         }
       }),
-      new Date(),
+      now,
       { includeLastCalloutAt: true },
     )
+
+    // Build readiness inputs once so we can reuse them across classes.
+    const readinessInputByClassId = new Map<string, StartReadinessClassInput>()
+    for (const summary of classSummaries) {
+      const regs = regsByClass.get(summary.id) ?? []
+      const confirmedRegs: StartReadinessConfirmedRegistration[] = regs
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((reg: any) => getAttendanceField(reg, 'status') === 'confirmed')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((reg: any) => ({
+          playerId: (reg.players?.id as string | null | undefined) ?? null,
+          playerName: (reg.players?.name as string | null | undefined) ?? '',
+          playerClub: (reg.players?.club as string | null | undefined) ?? null,
+        }))
+        .filter((reg: StartReadinessConfirmedRegistration) => reg.playerName.length > 0)
+
+      const workflow = workflowByClassId.get(summary.id)
+      const phase = workflow?.currentPhaseKey ?? null
+      const attendanceState = workflow?.attendance.state ?? null
+      const classPoolProgress = poolProgress.byClassId.get(summary.id) ?? null
+      const activePlayoff = playoffActivePlayers.byClassId.get(summary.id) ?? null
+
+      readinessInputByClassId.set(summary.id, {
+        id: summary.id,
+        name: summary.name,
+        startTime: summary.startTime,
+        phase,
+        attendanceState,
+        playersPerPool: summary.playersPerPool,
+        plannedTablesPerPool: summary.plannedTablesPerPool,
+        confirmedRegistrations: confirmedRegs,
+        pendingPlayoffPlayerNames: activePlayoff?.pendingPlayerNames ?? [],
+        pendingPlayoffMatchCount: activePlayoff?.pendingMatchCount ?? 0,
+        poolProgress: classPoolProgress
+          ? { pools: classPoolProgress.pools }
+          : null,
+      })
+    }
+
+    const allReadinessInputs = Array.from(readinessInputByClassId.values())
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = sessions.map((session: any) => ({
@@ -142,6 +199,21 @@ export async function GET(req: NextRequest) {
           const classPoolProgress = poolProgress.byClassId.get(cls.id) ?? null
           const classPlayoffProgress = playoffProgress.byClassId.get(cls.id) ?? null
 
+          const upcomingInput = readinessInputByClassId.get(cls.id)
+          let startReadiness = null
+          if (upcomingInput) {
+            const otherInputs = allReadinessInputs.filter(input => input.id !== cls.id)
+            const computed = computeStartReadiness({
+              upcomingClass: upcomingInput,
+              otherClasses: otherInputs,
+              venueTableCount,
+              lastSyncAt: poolProgress.lastSyncAt,
+              now,
+            })
+
+            startReadiness = computed.visible ? computed : null
+          }
+
           return {
             id: cls.id,
             name: cls.name,
@@ -155,6 +227,7 @@ export async function GET(req: NextRequest) {
             counts: { confirmed, absent, noResponse, total: regs.length },
             poolProgress: classPoolProgress,
             playoffProgress: classPlayoffProgress,
+            startReadiness,
             workflow: workflow
               ? {
                   currentPhaseKey: workflow.currentPhaseKey,
@@ -182,7 +255,7 @@ export async function GET(req: NextRequest) {
         }),
     }))
 
-    return NextResponse.json({ sessions: result, lastSyncAt: poolProgress.lastSyncAt })
+    return NextResponse.json({ sessions: result, lastSyncAt: poolProgress.lastSyncAt, venueTableCount })
   } catch {
     return NextResponse.json({ error: 'Databasfel' }, { status: 500 })
   }
