@@ -8,11 +8,14 @@ import {
   CompetitionImportClassSessionAssignment,
   isoToStockholmDate,
   isoToStockholmTime,
+  stockholmLocalToUtcIso,
   type CompetitionImportApplyResult,
   type CompetitionImportPreview,
   type RosterImportDataset,
 } from './planner'
 import type { OnDataRosterSnapshotClass, OnDataRosterSnapshotPayload } from './ondata-roster-contract'
+
+const ONDATA_DEFAULT_CLASS_TIME = '09:00'
 
 export type RegistrationImportDecisionState =
   | 'no_snapshot'
@@ -325,13 +328,26 @@ function resolveOnDataClassDate(classRow: OnDataRosterSnapshotClass): string {
 }
 
 function resolveOnDataClassTime(classRow: OnDataRosterSnapshotClass): string {
-  return classRow.classTime ?? (classRow.startAt ? isoToStockholmTime(classRow.startAt) : '')
+  return classRow.classTime ?? (classRow.startAt ? isoToStockholmTime(classRow.startAt) : ONDATA_DEFAULT_CLASS_TIME)
+}
+
+function resolveOnDataClassStartAt(classRow: OnDataRosterSnapshotClass): string | null {
+  if (classRow.startAt) {
+    return classRow.startAt
+  }
+
+  const classDate = resolveOnDataClassDate(classRow)
+  if (!classDate) {
+    return null
+  }
+
+  return stockholmLocalToUtcIso(classDate, resolveOnDataClassTime(classRow))
 }
 
 function buildOnDataRosterDatasetErrors(payload: OnDataRosterSnapshotPayload): string[] {
   return payload.classes
-    .filter(classRow => !classRow.startAt)
-    .map(classRow => `Klassen ${classRow.className} saknar starttid i OnData och kan inte importeras som aktiv klass ännu.`)
+    .filter(classRow => !resolveOnDataClassStartAt(classRow))
+    .map(classRow => `Klassen ${classRow.className} saknar datum i OnData och kan inte importeras ännu.`)
 }
 
 export function buildRosterImportDatasetFromOnDataSnapshot(payload: OnDataRosterSnapshotPayload): RosterImportDataset {
@@ -341,6 +357,7 @@ export function buildRosterImportDatasetFromOnDataSnapshot(payload: OnDataRoster
     classes: payload.classes.map(classRow => {
       const classDate = resolveOnDataClassDate(classRow)
       const classTime = resolveOnDataClassTime(classRow)
+      const startAt = resolveOnDataClassStartAt(classRow)
 
       return {
         externalClassKey: classRow.externalClassKey,
@@ -350,7 +367,7 @@ export function buildRosterImportDatasetFromOnDataSnapshot(payload: OnDataRoster
           classTime,
         ),
         className: classRow.className,
-        startAt: classRow.startAt,
+        startAt,
         classDate,
         classTime,
         registrations: classRow.registrations.map(registration => ({
@@ -414,7 +431,7 @@ export async function persistOnDataRegistrationSnapshot(
       external_class_key: classEntry.externalClassKey,
       source_class_id: classEntry.sourceClassId,
       class_name: classEntry.className,
-      start_at: classEntry.startAt,
+      start_at: resolveOnDataClassStartAt(classEntry),
     }))
 
     const registrationRows = payload.classes.flatMap((classEntry, classIndex) =>

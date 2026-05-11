@@ -215,6 +215,25 @@ function buildRegistrationSnapshotPayloadWithRemovedPlayer(onDataSlug: string) {
   return payload
 }
 
+function buildRegistrationSnapshotPayloadWithMissingStartTime(onDataSlug: string) {
+  const payload = buildRegistrationSnapshotPayload(onDataSlug)
+
+  payload.source = {
+    ...payload.source,
+    processedAt: '2026-04-08T12:15:10.000Z',
+    fileHash: 'sha256:registrationhash-missing-start-time',
+  }
+
+  payload.classes[0] = {
+    ...payload.classes[0],
+    classDate: '2026-05-03',
+    classTime: null,
+    startAt: null,
+  }
+
+  return payload
+}
+
 function buildPlayoffSnapshotPayload(onDataSlug: string) {
   return buildPlayoffSnapshotPayloadForBracket(onDataSlug, 'A')
 }
@@ -902,6 +921,66 @@ test.describe('OnData integration', () => {
     expect(status?.decision_reason_code).toBe('none')
 
     await expect(page.getByTestId('registration-latest-applied')).not.toContainText('Ingen data än')
+  })
+
+  test('registration snapshot without startAt defaults missing class time to 09:00', async ({ page }) => {
+    const supabase = testClient()
+    const slug = `${TEST_PREFIX}registration-missing-start-time`
+    const onDataSlug = '001363'
+    const { competitionId } = await seedSuperadminCompetition(supabase, slug)
+
+    await loginAsSuperadmin(page)
+    await openIntegrationPage(page, slug)
+    await page.getByTestId('generate-api-key-button').click()
+
+    const apiKey = await page.getByTestId('generated-api-key-input').inputValue()
+    const ingestResponse = await page.request.post(`/api/integrations/ondata/competitions/${slug}/registration-snapshots`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      data: buildRegistrationSnapshotPayloadWithMissingStartTime(onDataSlug),
+    })
+
+    expect(ingestResponse.status()).toBe(200)
+
+    const ingestBody = await ingestResponse.json()
+    expect(ingestBody.decision?.state).toBe('auto_applied')
+
+    const { data: status } = await supabase
+      .from('ondata_registration_status')
+      .select('current_snapshot_id, decision_state')
+      .eq('competition_id', competitionId)
+      .single()
+
+    expect(status?.current_snapshot_id).toBeTruthy()
+    expect(status?.decision_state).toBe('auto_applied')
+
+    const { data: snapshotClasses } = await supabase
+      .from('ondata_registration_snapshot_classes')
+      .select('class_name, start_at')
+      .eq('snapshot_id', status!.current_snapshot_id)
+      .order('class_order')
+
+    expect(snapshotClasses).toEqual([
+      { class_name: 'Max400', start_at: '2026-05-03T07:00:00+00:00' },
+      { class_name: 'PF11', start_at: '2026-05-03T09:30:00+00:00' },
+    ])
+
+    const { data: sessions } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('competition_id', competitionId)
+
+    const { data: classes } = await supabase
+      .from('classes')
+      .select('name, start_time')
+      .in('session_id', (sessions ?? []).map(session => session.id))
+      .order('name')
+
+    expect(classes).toEqual([
+      { name: 'Max400', start_time: '2026-05-03T07:00:00+00:00' },
+      { name: 'PF11', start_time: '2026-05-03T09:30:00+00:00' },
+    ])
   })
 
   test('confirmed removals stay pending manual review until superadmin applies them', async ({ page }) => {
